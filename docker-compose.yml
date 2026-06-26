@@ -2,7 +2,7 @@
 # CampusShare - Full Stack Docker Compose
 # ========================================
 # 一键部署所有服务：基础设施 + 后端 + 前端
-# 使用方式：docker compose up -d --build
+# 使用方式：docker-compose up -d --build
 
 services:
   # ========================================

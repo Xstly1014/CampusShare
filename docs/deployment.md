@@ -115,7 +115,7 @@ export MYSQL_DATABASE=campushare
 
 ```bash
 # 构建并启动所有服务
-docker compose up -d --build
+docker-compose up -d --build
 
 # 或使用 docker-compose（带横杠版本）
 docker-compose up -d --build
@@ -125,7 +125,7 @@ docker-compose up -d --build
 
 ```bash
 # 查看所有服务状态
-docker compose ps
+docker-compose ps
 
 # 预期输出：
 # NAME                    STATUS
@@ -180,39 +180,39 @@ services:
 
 ```bash
 # 启动所有服务
-docker compose up -d
+docker-compose up -d
 
 # 停止所有服务
-docker compose stop
+docker-compose stop
 
 # 启动已停止的服务
-docker compose start
+docker-compose start
 
 # 重启所有服务
-docker compose restart
+docker-compose restart
 
 # 停止并删除容器（数据保留）
-docker compose down
+docker-compose down
 
 # 停止并删除容器 + 数据卷（⚠️ 数据丢失）
-docker compose down -v
+docker-compose down -v
 ```
 
 ### 5.2 查看状态
 
 ```bash
 # 查看服务状态
-docker compose ps
+docker-compose ps
 
 # 查看所有服务日志（实时）
-docker compose logs -f
+docker-compose logs -f
 
 # 查看单个服务日志
-docker compose logs -f user-service
-docker compose logs -f gateway-service
+docker-compose logs -f user-service
+docker-compose logs -f gateway-service
 
 # 查看最后 100 行日志
-docker compose logs --tail=100 user-service
+docker-compose logs --tail=100 user-service
 ```
 
 ### 5.3 更新部署
@@ -222,26 +222,26 @@ docker compose logs --tail=100 user-service
 git pull origin master
 
 # 2. 重新构建并启动（只变更的服务）
-docker compose up -d --build
+docker-compose up -d --build
 
 # 3. 查看启动日志
-docker compose logs -f
+docker-compose logs -f
 ```
 
 ### 5.4 进入容器
 
 ```bash
 # 进入 MySQL
-docker compose exec mysql mysql -uroot -pcampushare123
+docker-compose exec mysql mysql -uroot -pcampushare123
 
 # 进入 Redis
-docker compose exec redis redis-cli
+docker-compose exec redis redis-cli
 
 # 进入用户服务容器
-docker compose exec user-service sh
+docker-compose exec user-service sh
 
 # 进入前端容器
-docker compose exec frontend sh
+docker-compose exec frontend sh
 ```
 
 ---
@@ -252,30 +252,30 @@ docker compose exec frontend sh
 
 ```bash
 # 备份整个数据库
-docker compose exec mysql mysqldump -uroot -pcampushare123 campushare > backup_$(date +%Y%m%d).sql
+docker-compose exec mysql mysqldump -uroot -pcampushare123 campushare > backup_$(date +%Y%m%d).sql
 
 # 备份指定表
-docker compose exec mysql mysqldump -uroot -pcampushare123 campushare users posts > backup_tables_$(date +%Y%m%d).sql
+docker-compose exec mysql mysqldump -uroot -pcampushare123 campushare users posts > backup_tables_$(date +%Y%m%d).sql
 ```
 
 ### 6.2 数据恢复
 
 ```bash
 # 恢复数据库
-docker compose exec -T mysql mysql -uroot -pcampushare123 campushare < backup_20260627.sql
+docker-compose exec -T mysql mysql -uroot -pcampushare123 campushare < backup_20260627.sql
 ```
 
 ### 6.3 重置数据库（开发环境）
 
 ```bash
 # 1. 停止服务
-docker compose down
+docker-compose down
 
 # 2. 删除 MySQL 数据卷
 docker volume rm campushare-mysql-data
 
 # 3. 重新启动（会自动执行 init.sql 初始化）
-docker compose up -d --build
+docker-compose up -d --build
 ```
 
 ---
@@ -294,17 +294,17 @@ docker compose up -d --build
 
 ```bash
 # 查看上传目录
-docker compose exec user-service ls -la /app/uploads
+docker-compose exec user-service ls -la /app/uploads
 
 # 按日期查看
-docker compose exec user-service ls -la /app/uploads/20260627
+docker-compose exec user-service ls -la /app/uploads/20260627
 ```
 
 ### 7.3 文件备份
 
 ```bash
 # 复制上传文件到宿主机
-docker compose cp user-service:/app/uploads ./uploads_backup
+docker-compose cp user-service:/app/uploads ./uploads_backup
 ```
 
 ---
@@ -381,7 +381,7 @@ VITE_API_BASE_URL=http://服务器IP:8081/api
 
 ```bash
 # 查看具体错误日志
-docker compose logs user-service
+docker-compose logs user-service
 
 # 常见问题：
 # - 端口被占用：修改 docker-compose.yml 端口映射
@@ -393,45 +393,45 @@ docker compose logs user-service
 
 ```bash
 # 检查 MySQL 状态
-docker compose ps mysql
-docker compose logs mysql
+docker-compose ps mysql
+docker-compose logs mysql
 
 # 手动测试连接
-docker compose exec mysql mysql -uroot -pcampushare123 -e "SELECT 1"
+docker-compose exec mysql mysql -uroot -pcampushare123 -e "SELECT 1"
 ```
 
 ### 10.3 Redis 连接失败
 
 ```bash
 # 检查 Redis 状态
-docker compose ps redis
-docker compose logs redis
+docker-compose ps redis
+docker-compose logs redis
 
 # 手动测试连接
-docker compose exec redis redis-cli ping
+docker-compose exec redis redis-cli ping
 ```
 
 ### 10.4 前端无法访问后端
 
 ```bash
 # 检查网关服务
-docker compose ps gateway-service
-docker compose logs gateway-service
+docker-compose ps gateway-service
+docker-compose logs gateway-service
 
 # 检查用户服务
-docker compose ps user-service
-docker compose logs user-service
+docker-compose ps user-service
+docker-compose logs user-service
 
 # 测试网关连通性
 curl http://localhost:8081/api/auth/send-code?account=13800138000
 ```
 
-### 10.5 文件上传失败
+### 11.5 文件上传失败
 
 ```bash
 # 检查上传目录权限
-docker compose exec user-service ls -la /app/uploads
-docker compose exec user-service touch /app/uploads/test.txt
+docker-compose exec user-service ls -la /app/uploads
+docker-compose exec user-service touch /app/uploads/test.txt
 
 # 检查磁盘空间
 df -h
@@ -477,10 +477,10 @@ git log --oneline -10
 git checkout <commit-hash>
 
 # 3. 重新构建
-docker compose up -d --build
+docker-compose up -d --build
 
 # 4. 验证
-docker compose ps
+docker-compose ps
 ```
 
 ---
@@ -497,16 +497,16 @@ echo "===== 1. 拉取代码 ====="
 git pull origin master
 
 echo "===== 2. 停止旧服务 ====="
-docker compose down
+docker-compose down
 
 echo "===== 3. 构建并启动新服务 ====="
-docker compose up -d --build
+docker-compose up -d --build
 
 echo "===== 4. 等待服务启动 ====="
 sleep 10
 
 echo "===== 5. 检查服务状态 ====="
-docker compose ps
+docker-compose ps
 
 echo "===== 部署完成 ====="
 ```

@@ -6,8 +6,14 @@ import com.campushare.common.exception.BusinessException;
 import com.campushare.user.dto.CreatePostRequest;
 import com.campushare.user.entity.Post;
 import com.campushare.user.mapper.PostMapper;
+import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,9 +26,11 @@ public class PostServiceImpl implements PostService {
 
     private final PostMapper postMapper;
     private final RedisTemplate<String, String> redisTemplate;
+    private final MeterRegistry meterRegistry;
 
     @Override
     @Transactional
+    @Timed(value = "campushare.post.create.duration", description = "Time taken to create a post")
     public Post createPost(String userId, CreatePostRequest request) {
         if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
             throw new BusinessException(40001, "标题不能为空");
@@ -30,6 +38,12 @@ public class PostServiceImpl implements PostService {
         if (request.getSchoolId() == null) {
             throw new BusinessException(40002, "学校ID不能为空");
         }
+
+        Counter.builder("campushare.post.create.total")
+                .tag("type", request.getPostType() != null ? request.getPostType() : "discussion")
+                .tag("school", request.getSchoolId())
+                .register(meterRegistry)
+                .increment();
 
         Post post = Post.builder()
                 .schoolId(request.getSchoolId())
@@ -85,6 +99,11 @@ public class PostServiceImpl implements PostService {
     }
 
     @Override
+    @Retryable(
+            retryFor = {RuntimeException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     @Transactional
     public void incrementViewCount(String postId) {
         String key = "post:view:" + postId;
