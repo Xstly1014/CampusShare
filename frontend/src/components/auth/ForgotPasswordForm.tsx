@@ -9,23 +9,30 @@ interface ForgotPasswordFormProps {
     newPassword: string
   ) => void
   onSwitchToLogin: () => void
+  onSendCode?: (account: string, type: string) => Promise<boolean>
+  loading?: boolean
 }
 
 export default function ForgotPasswordForm({
   onResetPassword,
   onSwitchToLogin,
+  onSendCode,
+  loading = false,
 }: ForgotPasswordFormProps) {
   const [resetType, setResetType] = useState<'phone' | 'email'>('phone')
   const [account, setAccount] = useState('')
   const [verifyCode, setVerifyCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [step, setStep] = useState(1) // 1: 选择重置方式, 2: 输入账号验证码, 3: 设置新密码
+  const [step, setStep] = useState(1)
   const [countdown, setCountdown] = useState(0)
 
-  const handleSendCode = () => {
+  const handleSendCode = async () => {
     if (countdown === 0 && account) {
-      // 模拟发送验证码
+      if (onSendCode) {
+        const success = await onSendCode(account, resetType)
+        if (!success) return
+      }
       setCountdown(60)
       const timer = setInterval(() => {
         setCountdown((prev) => {
@@ -75,7 +82,6 @@ export default function ForgotPasswordForm({
         <p className="text-gray-600 text-sm">找回您的账号密码</p>
       </div>
 
-      {/* 步骤1: 选择重置方式 */}
       {step === 1 && (
         <div className="space-y-3">
           <button
@@ -103,7 +109,6 @@ export default function ForgotPasswordForm({
         </div>
       )}
 
-      {/* 步骤2: 输入账号和验证码 */}
       {step === 2 && (
         <div className="space-y-3">
           <div className="relative">
@@ -154,7 +159,6 @@ export default function ForgotPasswordForm({
         </div>
       )}
 
-      {/* 步骤3: 设置新密码 */}
       {step === 3 && (
         <div className="space-y-3">
           <div className="relative">
@@ -184,10 +188,10 @@ export default function ForgotPasswordForm({
 
           <button
             type="submit"
-            disabled={!newPassword}
+            disabled={!newPassword || loading}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 font-medium"
           >
-            重置密码
+            {loading ? '重置中...' : '重置密码'}
           </button>
         </div>
       )}

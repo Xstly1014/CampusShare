@@ -44,4 +44,13 @@ public class AuthController {
         userService.sendVerifyCode(account, type);
         return Result.success("验证码发送成功", null);
     }
+    
+    /**
+     * 重置密码（忘记密码）
+     */
+    @PostMapping("/reset-password")
+    public Result<Void> resetPassword(@RequestBody @Valid ResetPasswordRequest request) {
+        userService.resetPassword(request);
+        return Result.success("密码重置成功", null);
+    }
 }

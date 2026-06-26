@@ -10,21 +10,31 @@ interface RegisterFormProps {
     verifyCode: string
   ) => void
   onSwitchToLogin: () => void
+  onSendCode?: (account: string, type: string) => Promise<boolean>
+  loading?: boolean
 }
 
-export default function RegisterForm({ onRegister, onSwitchToLogin }: RegisterFormProps) {
+export default function RegisterForm({
+  onRegister,
+  onSwitchToLogin,
+  onSendCode,
+  loading = false,
+}: RegisterFormProps) {
   const [registerType, setRegisterType] = useState<'phone' | 'email'>('phone')
   const [account, setAccount] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [verifyCode, setVerifyCode] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [step, setStep] = useState(1) // 1: 选择注册方式, 2: 输入账号验证码, 3: 设置用户名密码
+  const [step, setStep] = useState(1)
   const [countdown, setCountdown] = useState(0)
 
-  const handleSendCode = () => {
+  const handleSendCode = async () => {
     if (countdown === 0 && account) {
-      // 模拟发送验证码
+      if (onSendCode) {
+        const success = await onSendCode(account, registerType)
+        if (!success) return
+      }
       setCountdown(60)
       const timer = setInterval(() => {
         setCountdown((prev) => {
@@ -75,7 +85,6 @@ export default function RegisterForm({ onRegister, onSwitchToLogin }: RegisterFo
         <p className="text-gray-600 text-sm">加入CampusShare社区</p>
       </div>
 
-      {/* 进度指示器 */}
       <div className="flex justify-center items-center space-x-2 mb-8">
         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
           step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
@@ -96,7 +105,6 @@ export default function RegisterForm({ onRegister, onSwitchToLogin }: RegisterFo
         </div>
       </div>
 
-      {/* 步骤1: 选择注册方式 */}
       {step === 1 && (
         <div className="space-y-3">
           <button
@@ -124,7 +132,6 @@ export default function RegisterForm({ onRegister, onSwitchToLogin }: RegisterFo
         </div>
       )}
 
-      {/* 步骤2: 输入账号和验证码 */}
       {step === 2 && (
         <div className="space-y-3">
           <div className="relative">
@@ -175,7 +182,6 @@ export default function RegisterForm({ onRegister, onSwitchToLogin }: RegisterFo
         </div>
       )}
 
-      {/* 步骤3: 设置用户名和密码 */}
       {step === 3 && (
         <div className="space-y-3">
           <div className="relative">
@@ -216,10 +222,10 @@ export default function RegisterForm({ onRegister, onSwitchToLogin }: RegisterFo
 
           <button
             type="submit"
-            disabled={!username || !password}
+            disabled={!username || !password || loading}
             className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 font-medium"
           >
-            注册
+            {loading ? '注册中...' : '注册'}
           </button>
         </div>
       )}

@@ -9,64 +9,68 @@ type AuthMode = 'login' | 'register' | 'forgot-password'
 
 export default function AuthPage() {
   const [mode, setMode] = useState<AuthMode>('login')
+  const [error, setError] = useState('')
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { login, register, sendCode, resetPassword, loading } = useAuth()
 
-  const handleLogin = (account: string, password: string, rememberMe: boolean) => {
-    // 模拟登录成功
-    const user = {
-      id: '1',
-      username: account,
-      email: account.includes('@') ? account : undefined,
-      phone: account.match(/^\d+$/) ? account : undefined,
-      avatar: undefined,
+  const handleLogin = async (account: string, password: string, rememberMe: boolean) => {
+    setError('')
+    try {
+      await login(account, password)
+      if (rememberMe) {
+        localStorage.setItem('campusshare_saved_account', account)
+      }
+      navigate('/home')
+    } catch (e: any) {
+      setError(e.message || '登录失败')
     }
-
-    login(user)
-
-    // 如果勾选记住密码，保存到localStorage
-    if (rememberMe) {
-      localStorage.setItem('campusshare_saved_account', account)
-    }
-
-    navigate('/home')
   }
 
-  const handleRegister = (
+  const handleRegister = async (
     registerType: 'phone' | 'email',
     account: string,
     username: string,
     password: string,
     verifyCode: string
   ) => {
-    // 模拟注册成功并自动登录
-    const user = {
-      id: '1',
-      username: username,
-      email: registerType === 'email' ? account : undefined,
-      phone: registerType === 'phone' ? account : undefined,
-      avatar: undefined,
+    setError('')
+    try {
+      await register({ registerType, account, username, password, verifyCode })
+      navigate('/home')
+    } catch (e: any) {
+      setError(e.message || '注册失败')
     }
-
-    login(user)
-    navigate('/home')
   }
 
-  const handleResetPassword = (
+  const handleResetPassword = async (
     resetType: 'phone' | 'email',
     account: string,
     verifyCode: string,
     newPassword: string
   ) => {
-    // 模拟重置密码成功
-    alert('密码重置成功！')
-    setMode('login')
+    setError('')
+    try {
+      await resetPassword(account, verifyCode, newPassword)
+      alert('密码重置成功！')
+      setMode('login')
+    } catch (e: any) {
+      setError(e.message || '重置密码失败')
+    }
+  }
+
+  const handleSendCode = async (account: string, type: string = 'phone') => {
+    try {
+      await sendCode(account, type)
+      return true
+    } catch (e: any) {
+      setError(e.message || '发送验证码失败')
+      return false
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* Logo和应用名称 */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
             <span className="text-white text-2xl font-bold">CS</span>
@@ -75,32 +79,41 @@ export default function AuthPage() {
           <p className="text-gray-600">校园资源共享平台</p>
         </div>
 
-        {/* 表单容器 */}
         <div className="bg-white rounded-2xl shadow-xl p-8 relative">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg">
+              {error}
+            </div>
+          )}
+
           {mode === 'login' && (
             <LoginForm
               onLogin={handleLogin}
-              onSwitchToRegister={() => setMode('register')}
-              onSwitchToForgotPassword={() => setMode('forgot-password')}
+              onSwitchToRegister={() => { setMode('register'); setError('') }}
+              onSwitchToForgotPassword={() => { setMode('forgot-password'); setError('') }}
+              loading={loading}
             />
           )}
 
           {mode === 'register' && (
             <RegisterForm
               onRegister={handleRegister}
-              onSwitchToLogin={() => setMode('login')}
+              onSwitchToLogin={() => { setMode('login'); setError('') }}
+              onSendCode={handleSendCode}
+              loading={loading}
             />
           )}
 
           {mode === 'forgot-password' && (
             <ForgotPasswordForm
               onResetPassword={handleResetPassword}
-              onSwitchToLogin={() => setMode('login')}
+              onSwitchToLogin={() => { setMode('login'); setError('') }}
+              onSendCode={handleSendCode}
+              loading={loading}
             />
           )}
         </div>
 
-        {/* 底部信息 */}
         <div className="text-center mt-6 text-sm text-gray-600">
           <p>© 2024 CampusShare. 让资源共享更简单</p>
         </div>

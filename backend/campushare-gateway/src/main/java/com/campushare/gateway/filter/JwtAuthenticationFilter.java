@@ -33,11 +33,11 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
      * 不需要认证的路径
      */
     private static final List<String> WHITE_LIST = Arrays.asList(
-        "/auth/login",
-        "/auth/register",
-        "/auth/send-code",
-        "/auth/reset-password",
-        "/auth/refresh-token"
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/send-code",
+        "/api/auth/reset-password",
+        "/api/auth/refresh-token"
     );
     
     @Override

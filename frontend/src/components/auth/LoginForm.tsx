@@ -5,12 +5,14 @@ interface LoginFormProps {
   onLogin: (account: string, password: string, rememberMe: boolean) => void
   onSwitchToRegister: () => void
   onSwitchToForgotPassword: () => void
+  loading?: boolean
 }
 
 export default function LoginForm({
   onLogin,
   onSwitchToRegister,
   onSwitchToForgotPassword,
+  loading = false,
 }: LoginFormProps) {
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
@@ -93,9 +95,10 @@ export default function LoginForm({
 
       <button
         type="submit"
-        className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:scale-98 transition-all duration-200 font-medium"
+        disabled={loading}
+        className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:scale-98 transition-all duration-200 font-medium disabled:bg-blue-400 disabled:cursor-not-allowed"
       >
-        登录
+        {loading ? '登录中...' : '登录'}
       </button>
 
       <div className="text-center pt-4">

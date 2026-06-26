@@ -171,6 +171,31 @@ public class UserServiceImpl implements UserService {
         return convertToUserDTO(user);
     }
     
+    @Override
+    public void resetPassword(ResetPasswordRequest request) {
+        // 1. 验证验证码
+        String cachedCode = redisTemplate.opsForValue().get(
+            RedisConstants.VERIFY_CODE_PREFIX + request.getAccount());
+        if (StrUtil.isBlank(cachedCode) || !cachedCode.equals(request.getVerifyCode())) {
+            throw new BusinessException(ResultCode.VERIFY_CODE_ERROR);
+        }
+        
+        // 2. 查询用户
+        User user = findByAccount(request.getAccount());
+        if (user == null) {
+            throw new BusinessException(ResultCode.USER_ACCOUNT_NOT_EXIST);
+        }
+        
+        // 3. 更新密码
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userMapper.updateById(user);
+        
+        // 4. 删除已使用的验证码
+        redisTemplate.delete(RedisConstants.VERIFY_CODE_PREFIX + request.getAccount());
+        
+        log.info("用户重置密码成功: {}", user.getUsername());
+    }
+    
     /**
      * 根据账号查询用户
      */

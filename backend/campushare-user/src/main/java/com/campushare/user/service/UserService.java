@@ -32,4 +32,9 @@ public interface UserService {
      * 获取当前用户信息
      */
     UserDTO getCurrentUser(String userId);
+    
+    /**
+     * 重置密码（忘记密码）
+     */
+    void resetPassword(ResetPasswordRequest request);
 }

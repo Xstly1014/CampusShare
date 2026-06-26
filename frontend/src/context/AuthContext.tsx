@@ -1,43 +1,101 @@
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, ReactNode, useCallback } from 'react'
+import { authApi } from '../services/api'
 
 interface User {
   id: string
   username: string
   email?: string
   phone?: string
-  avatar?: string
+  avatarUrl?: string
+  bio?: string
+  schoolId?: string
 }
 
 interface AuthContextType {
   user: User | null
   isAuthenticated: boolean
-  login: (user: User) => void
+  loading: boolean
+  login: (account: string, password: string) => Promise<void>
+  register: (data: {
+    registerType: string
+    account: string
+    username: string
+    password: string
+    verifyCode: string
+  }) => Promise<void>
   logout: () => void
+  sendCode: (account: string, type?: string) => Promise<void>
+  resetPassword: (account: string, verifyCode: string, newPassword: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    // 从session storage读取用户信息
-    const savedUser = sessionStorage.getItem('campusshare_user')
+    const savedUser = localStorage.getItem('campusshare_user')
     return savedUser ? JSON.parse(savedUser) : null
   })
+  const [loading, setLoading] = useState(false)
 
   const isAuthenticated = user !== null
 
-  const login = (userData: User) => {
-    setUser(userData)
-    sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
-  }
+  const login = useCallback(async (account: string, password: string) => {
+    setLoading(true)
+    try {
+      const res = await authApi.login(account, password)
+      const { token, user: userData } = res.data
+      localStorage.setItem('campusshare_token', token)
+      localStorage.setItem('campusshare_user', JSON.stringify(userData))
+      setUser(userData)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const logout = () => {
+  const register = useCallback(async (data: {
+    registerType: string
+    account: string
+    username: string
+    password: string
+    verifyCode: string
+  }) => {
+    setLoading(true)
+    try {
+      const res = await authApi.register(data)
+      const { token, user: userData } = res.data
+      localStorage.setItem('campusshare_token', token)
+      localStorage.setItem('campusshare_user', JSON.stringify(userData))
+      setUser(userData)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const logout = useCallback(() => {
     setUser(null)
-    sessionStorage.removeItem('campusshare_user')
-  }
+    localStorage.removeItem('campusshare_token')
+    localStorage.removeItem('campusshare_user')
+  }, [])
+
+  const sendCode = useCallback(async (account: string, type: string = 'phone') => {
+    await authApi.sendCode(account, type)
+  }, [])
+
+  const resetPassword = useCallback(async (account: string, verifyCode: string, newPassword: string) => {
+    await authApi.resetPassword(account, verifyCode, newPassword)
+  }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{
+      user,
+      isAuthenticated,
+      loading,
+      login,
+      register,
+      logout,
+      sendCode,
+      resetPassword,
+    }}>
       {children}
     </AuthContext.Provider>
   )
