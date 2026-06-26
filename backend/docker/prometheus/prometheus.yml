@@ -1,0 +1,60 @@
+# Prometheus 配置文件
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+  external_labels:
+    monitor: 'campushare-monitor'
+
+# 告警规则文件
+rule_files:
+  - "rules/*.yml"
+
+# 告警管理器（后续接入）
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# 抓取配置
+scrape_configs:
+  # Prometheus 自身监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # 用户服务
+  - job_name: 'campushare-user'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['user-service:8081']
+        labels:
+          service: 'campushare-user'
+    scrape_interval: 10s
+
+  # API 网关
+  - job_name: 'campushare-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['gateway-service:8080']
+        labels:
+          service: 'campushare-gateway'
+    scrape_interval: 10s
+
+  # MySQL 监控（需要 mysqld_exporter，后续接入）
+  # - job_name: 'mysql'
+  #   static_configs:
+  #     - targets: ['mysqld-exporter:9104']
+  #       labels:
+  #         service: 'mysql'
+
+  # Redis 监控（需要 redis_exporter，后续接入）
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         service: 'redis'

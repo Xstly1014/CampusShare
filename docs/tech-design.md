@@ -339,36 +339,178 @@ LIMIT 20;
 
 ---
 
-## 六、监控与告警
+## 六、可观测性体系（Observability）
 
-### 6.1 监控指标
+### 6.1 总体架构
 
-| 层级 | 指标 |
+采用 **Metrics + Traces + Logs** 可观测性三支柱方案：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Grafana (统一可视化)                       │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────────────┐     │
+│  │ Metrics  │  │   Traces     │  │   Logs (待接入)    │     │
+│  │ Dashboard│  │   Explore    │  │   (Loki/ELK)      │     │
+│  └─────▲────┘  └──────▲───────┘  └────────▲──────────┘     │
+└────────┼──────────────┼─────────────────────┼───────────────┘
+         │              │                     │
+    ┌────▼────┐    ┌────▼─────┐         ┌─────▼──────┐
+    │ Prometheus│  │   Tempo  │         │  Loki/ES   │
+    │ (指标存储)│  │ (链路存储)│         │ (日志存储)  │
+    └─────▲────┘  └─────▲─────┘         └─────▲──────┘
+          │             │                      │
+          └─────────────┼──────────────────────┘
+                        │
+        ┌───────────────┴───────────────┐
+        │  Spring Boot 应用服务          │
+        │  ┌─────────────────────────┐  │
+        │  │ Micrometer (指标埋点)   │  │
+        │  │ OpenTelemetry (链路)    │  │
+        │  │ SLF4J/Logback (日志)    │  │
+        │  └─────────────────────────┘  │
+        └───────────────────────────────┘
+```
+
+### 6.2 Metrics (指标监控)
+
+#### 6.2.1 技术选型
+
+| 组件 | 选型 | 说明 |
+|------|------|------|
+| 指标采集 | Micrometer + Spring Boot Actuator | 标准指标门面，自动埋点 |
+| 指标存储 | Prometheus | 时序数据库，Pull 模式 |
+| 可视化 | Grafana | 统一仪表盘 |
+| 告警 | Prometheus Alertmanager + (通知渠道) | 告警规则与通知 |
+
+#### 6.2.2 监控指标
+
+| 层级 | 指标 | 来源 |
+|------|------|------|
+| **基础设施** | CPU、内存、磁盘、网络 | Node Exporter（待接入） |
+| **应用层** | QPS、错误率、P50/P95/P99 延迟 | `http_server_requests_seconds_*` |
+| **JVM** | 堆内存、线程数、GC 次数/耗时 | `jvm_*` |
+| **业务层** | 注册量、登录量、发帖量 | 自定义 Counter（待接入） |
+| **数据库** | 连接数、活跃数、等待数 | HikariCP `hikaricp_*` |
+| **缓存** | 命中率、内存使用率、命令数 | Lettuce 自动埋点 |
+| **网关** | 路由延迟、限流次数 | Spring Cloud Gateway Metrics |
+
+#### 6.2.3 告警规则
+
+| 告警项 | 阈值 | 级别 | 通知渠道 |
+|--------|------|------|---------|
+| 服务不可用 | 连续 3 次健康检查失败 | P0 | 电话 + 钉钉 |
+| 接口错误率 | > 5% 持续 5 分钟 | P1 | 钉钉 |
+| 接口 P95 耗时 | > 2s 持续 5 分钟 | P1 | 钉钉 |
+| JVM 堆内存 | > 80% 持续 5 分钟 | P2 | 邮件 |
+| CPU 使用率 | > 80% 持续 10 分钟 | P2 | 邮件 |
+| 磁盘使用率 | > 80% | P2 | 邮件 |
+| Redis 命中率 | < 80% | P3 | 邮件 |
+| 请求量突增 | > 2 倍历史均值 | P3 | 邮件 |
+
+#### 6.2.4 关键指标优化点
+
+重点关注以下可优化的指标，用于指导性能优化：
+
+| 指标 | 优化方向 |
+|------|---------|
+| `http_server_requests_seconds` (按 URI) | 定位慢接口，针对性优化 |
+| `jvm_gc_pause_seconds` | GC 调优、内存优化 |
+| `hikaricp_connections_pending` | 连接池调优、SQL 优化 |
+| `http_server_requests_seconds` (按 method+status) | 错误率分析 |
+| `system_cpu_usage` / `process_cpu_usage` | CPU 瓶颈分析 |
+
+### 6.3 Traces (链路追踪)
+
+#### 6.3.1 技术选型
+
+| 组件 | 选型 | 说明 |
+|------|------|------|
+| 埋点方式 | OpenTelemetry Java Agent | 无侵入自动埋点 |
+| 链路存储 | Grafana Tempo | 轻量级，与 Grafana 无缝集成 |
+| 查询展示 | Grafana Explore | 统一查询界面 |
+| 采样策略 | Parent-based AlwaysOn (开发环境) | 生产环境按需采样 |
+
+#### 6.3.2 自动埋点覆盖范围
+
+OpenTelemetry Java Agent 自动覆盖：
+
+- ✅ **Spring MVC** — HTTP 请求入口
+- ✅ **Spring WebClient / RestTemplate** — HTTP 客户端调用
+- ✅ **MyBatis / JDBC** — SQL 执行（含慢 SQL 定位）
+- ✅ **Redis (Lettuce / Jedis)** — Redis 命令
+- ✅ **Logback / Log4j** — 日志自动注入 Trace ID
+- ✅ **Spring Scheduling** — 定时任务
+- ✅ **Kafka** — 消息队列（待接入 Kafka 后启用）
+
+#### 6.3.3 链路追踪的应用场景
+
+| 场景 | 说明 |
 |------|------|
-| **基础设施** | CPU、内存、磁盘、网络 |
-| **应用层** | QPS、响应时间、错误率、接口耗时分布 |
-| **业务层** | 注册量、登录量、发帖量、DAU/MAU |
-| **数据库** | 连接数、慢查询、主从延迟 |
-| **缓存** | 命中率、内存使用率 |
+| **慢调用定位** | 找到 P95 慢请求的具体耗时环节（网络/SQL/业务逻辑） |
+| **错误根因分析** | 通过 Trace ID 串联全链路日志，快速定位错误源 |
+| **依赖梳理** | 自动生成服务依赖图，了解调用关系 |
+| **重试分析** | 观察下游服务重试次数和效果 |
+| **性能优化** | 识别瓶颈环节，针对性优化 |
 
-### 6.2 告警规则
+#### 6.3.4 自定义埋点
 
-| 告警项 | 阈值 | 级别 |
-|--------|------|------|
-| 服务不可用 | 连续 3 次健康检查失败 | P0 |
-| 接口错误率 | > 5% 持续 5 分钟 | P1 |
-| 接口 P95 耗时 | > 2s 持续 5 分钟 | P1 |
-| CPU 使用率 | > 80% 持续 10 分钟 | P2 |
-| 磁盘使用率 | > 80% | P2 |
-| Redis 命中率 | < 80% | P3 |
+关键业务逻辑可手动添加 Span：
 
-### 6.3 日志规范
+```java
+@Autowired
+private Tracer tracer;
 
-- 统一日志格式：时间 + 级别 + 线程 + 类名 + 消息
-- 关键操作日志：注册、登录、发帖、上传文件
-- 异常日志：完整堆栈信息 + 请求上下文
-- 日志分级：ERROR / WARN / INFO / DEBUG
-- 日志保留：7 天在线，30 天归档
+public void processOrder(String orderId) {
+    Span span = tracer.spanBuilder("processOrder")
+        .setAttribute("order.id", orderId)
+        .setAttribute("order.type", "resource")
+        .startSpan();
+    try (Scope scope = span.makeCurrent()) {
+        // 业务逻辑
+        validateOrder(orderId);
+        createPost(orderId);
+        notifyUser(orderId);
+    } catch (Exception e) {
+        span.recordException(e);
+        span.setStatus(StatusCode.ERROR, e.getMessage());
+        throw e;
+    } finally {
+        span.end();
+    }
+}
+```
+
+### 6.4 Logs (日志) - 规划中
+
+#### 6.4.1 演进路线
+
+| 阶段 | 方案 | 说明 |
+|------|------|------|
+| v1.0 | Docker logs + 本地文件 | 开发测试阶段 |
+| v1.1 | Grafana Loki | 轻量日志聚合，与 Tempo/Grafana 无缝联动 |
+| v2.0 | ELK (Elasticsearch + Logstash + Kibana) | 大规模，复杂查询 |
+
+#### 6.4.2 日志规范
+
+- **统一格式**：时间 + 级别 + 线程 + TraceID + 类名 + 消息
+- **日志分级**：ERROR / WARN / INFO / DEBUG
+- **关键日志**：注册、登录、发帖、上传文件、支付等
+- **异常日志**：完整堆栈 + 请求上下文 + Trace ID
+- **保留策略**：7 天热数据，30 天归档
+
+### 6.5 采样策略
+
+| 环境 | Trace 采样 | 说明 |
+|------|-----------|------|
+| 开发环境 | 100% (AlwaysOn) | 完整追踪，方便调试 |
+| 测试环境 | 100% (AlwaysOn) | 完整追踪，便于压测分析 |
+| 生产环境 | 10% ~ 100% 动态调整 | 根据流量和存储成本调整 |
+
+生产环境建议：
+- 错误请求：100% 采样
+- 慢请求（> 1s）：100% 采样
+- 正常请求：10% 采样
+- 关键业务（支付等）：100% 采样
 
 ---
 

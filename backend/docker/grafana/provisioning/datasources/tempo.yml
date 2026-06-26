@@ -1,0 +1,16 @@
+# Grafana Tempo 数据源配置
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: false
+    editable: true
+    jsonData:
+      httpMethod: GET
+      tracesToLogs:
+        datasourceUid: 'prometheus'
+      nodeGraph:
+        enabled: true

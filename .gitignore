@@ -75,6 +75,9 @@ tmp/
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# IDE - Trae
+.trae/
+
 # ===== 操作系统 =====
 # macOS
 .DS_Store

@@ -1,0 +1,63 @@
+# 服务可用性告警
+groups:
+  - name: service_alerts
+    rules:
+      # 服务宕机告警
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务 {{ $labels.service }} 不可用"
+          description: "服务 {{ $labels.service }} ({{ $labels.instance }}) 已宕机超过 1 分钟"
+
+      # 接口错误率告警
+      - alert: HighErrorRate
+        expr: rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }} 接口错误率过高"
+          description: "{{ $labels.application }} 错误率超过 5%，当前值: {{ $value | humanizePercentage }}"
+
+      # 接口 P95 延迟告警
+      - alert: HighLatency
+        expr: http_server_requests_seconds_max{uri!~".*actuator.*"} > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }} 接口延迟过高"
+          description: "接口 {{ $labels.uri }} P95 延迟超过 2s，当前值: {{ $value }}s"
+
+      # JVM 堆内存告警
+      - alert: JVMHeapHigh
+        expr: jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }} JVM 堆内存使用率过高"
+          description: "堆内存使用率超过 80%，当前值: {{ $value | humanizePercentage }}"
+
+      # CPU 使用率告警
+      - alert: HighCPUUsage
+        expr: system_cpu_usage > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }} CPU 使用率过高"
+          description: "CPU 使用率超过 80%，当前值: {{ $value | humanizePercentage }}"
+
+      # 请求量突增（可能是异常流量）
+      - alert: RequestSpike
+        expr: rate(http_server_requests_seconds_count[5m]) > 2 * avg_over_time(rate(http_server_requests_seconds_count[5m])[1h])
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.application }} 请求量突增"
+          description: "当前 QPS 是过去 1 小时平均的 2 倍以上"

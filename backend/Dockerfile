@@ -36,6 +36,9 @@ WORKDIR /app
 
 RUN apk add --no-cache curl
 
+# 下载 OpenTelemetry Java Agent
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.3.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
+
 COPY --from=builder /build/campushare-user/target/campushare-user-*.jar app.jar
 
 # Expose port
@@ -56,6 +59,9 @@ FROM eclipse-temurin:17-jre-alpine AS gateway-service
 WORKDIR /app
 
 RUN apk add --no-cache curl
+
+# 下载 OpenTelemetry Java Agent
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.3.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
 
 COPY --from=builder /build/campushare-gateway/target/campushare-gateway-*.jar app.jar
 
