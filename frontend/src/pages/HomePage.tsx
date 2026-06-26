@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import SearchBar from '../components/home/SearchBar'
 import SchoolCard from '../components/home/SchoolCard'
 import NavBar from '../components/common/NavBar'
@@ -23,8 +24,10 @@ export default function HomePage() {
     )
   }, [searchKeyword])
 
+  const navigate = useNavigate()
+
   const handleSchoolClick = (schoolId: string) => {
-    console.log('Clicked school:', schoolId)
+    navigate(`/school/${schoolId}`)
   }
 
   return (

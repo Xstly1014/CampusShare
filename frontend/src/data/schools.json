@@ -1,74 +1,14 @@
 [
-  {
-    "id": "1",
-    "name": "北京大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/c/c2/Peking_University_seal.svg",
-    "resourceCount": 1256
-  },
-  {
-    "id": "2",
-    "name": "清华大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/e/ec/Tsinghua_University_Logo.svg",
-    "resourceCount": 1890
-  },
-  {
-    "id": "3",
-    "name": "复旦大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/7/78/Fudan_University_Logo.svg",
-    "resourceCount": 1562
-  },
-  {
-    "id": "4",
-    "name": "浙江大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/3/31/Zhejiang_University_Logo.svg",
-    "resourceCount": 2134
-  },
-  {
-    "id": "5",
-    "name": "上海交通大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/2/28/Shanghai_Jiao_Tong_University_Logo.svg",
-    "resourceCount": 1987
-  },
-  {
-    "id": "6",
-    "name": "南京大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Nanjing_University_Logo.svg",
-    "resourceCount": 987
-  },
-  {
-    "id": "7",
-    "name": "武汉大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/f/f8/Wuhan_University_Logo.svg",
-    "resourceCount": 1456
-  },
-  {
-    "id": "8",
-    "name": "中国人民大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/8/8b/Renmin_University_of_China_Logo.svg",
-    "resourceCount": 1123
-  },
-  {
-    "id": "9",
-    "name": "中山大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/9/90/Sun_Yat-sen_University_Logo.svg",
-    "resourceCount": 1789
-  },
-  {
-    "id": "10",
-    "name": "厦门大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/5/5d/Xiamen_University_Logo.svg",
-    "resourceCount": 876
-  },
-  {
-    "id": "11",
-    "name": "哈尔滨工业大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/6/61/Harbin_Institute_of_Technology_Logo.svg",
-    "resourceCount": 1543
-  },
-  {
-    "id": "12",
-    "name": "深圳大学",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/1/1d/Shenzhen_University_Logo.svg",
-    "resourceCount": 743
-  }
+  { "id": "1", "name": "北京大学", "logo": "/logos/pku.svg", "resourceCount": 1256 },
+  { "id": "2", "name": "清华大学", "logo": "/logos/tsinghua.svg", "resourceCount": 1890 },
+  { "id": "3", "name": "复旦大学", "logo": "/logos/fdu.svg", "resourceCount": 1562 },
+  { "id": "4", "name": "浙江大学", "logo": "/logos/zju.svg", "resourceCount": 2134 },
+  { "id": "5", "name": "上海交通大学", "logo": "/logos/sjtu.svg", "resourceCount": 1987 },
+  { "id": "6", "name": "南京大学", "logo": "/logos/nju.svg", "resourceCount": 987 },
+  { "id": "7", "name": "武汉大学", "logo": "/logos/whu.svg", "resourceCount": 1456 },
+  { "id": "8", "name": "中国人民大学", "logo": "/logos/ruc.svg", "resourceCount": 1123 },
+  { "id": "9", "name": "中山大学", "logo": "/logos/sysu.svg", "resourceCount": 1789 },
+  { "id": "10", "name": "厦门大学", "logo": "/logos/xmu.svg", "resourceCount": 876 },
+  { "id": "11", "name": "哈尔滨工业大学", "logo": "/logos/hit.svg", "resourceCount": 1543 },
+  { "id": "12", "name": "深圳大学", "logo": "/logos/szu.svg", "resourceCount": 743 }
 ]

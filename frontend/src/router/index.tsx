@@ -4,6 +4,7 @@ import AuthPage from '../pages/AuthPage'
 import HomePage from '../pages/HomePage'
 import WarehousePage from '../pages/WarehousePage'
 import ProfilePage from '../pages/ProfilePage'
+import SchoolDetailPage from '../pages/SchoolDetailPage'
 
 // 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,14 @@ export default function Router() {
           element={
             <PrivateRoute>
               <HomePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/school/:schoolId"
+          element={
+            <PrivateRoute>
+              <SchoolDetailPage />
             </PrivateRoute>
           }
         />
