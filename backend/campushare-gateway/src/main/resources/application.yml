@@ -1,0 +1,84 @@
+# API网关配置
+spring:
+  application:
+    name: campushare-gateway
+    
+  # Nacos配置中心
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+        namespace: public
+      config:
+        server-addr: localhost:8848
+        file-extension: yaml
+        namespace: public
+        
+    # Gateway路由配置
+    gateway:
+      # 路由规则
+      routes:
+        # 用户服务
+        - id: user-service
+          uri: lb://campushare-user
+          predicates:
+            - Path=/api/v1/auth/**
+            - Path=/api/v1/users/**
+          filters:
+            - StripPrefix=1
+            
+        # 学校服务（未来）
+        - id: school-service
+          uri: lb://campushare-school
+          predicates:
+            - Path=/api/v1/schools/**
+          filters:
+            - StripPrefix=1
+            
+        # 资源服务（未来）
+        - id: resource-service
+          uri: lb://campushare-resource
+          predicates:
+            - Path=/api/v1/resources/**
+          filters:
+            - StripPrefix=1
+            
+      # 全局跨域配置
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+            
+      # 默认过滤器
+      default-filters:
+        - DedupeResponseHeader=Vary Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
+        
+  # Redis配置（用于限流）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 5000ms
+
+# 服务端口
+server:
+  port: 8080
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.campushare: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+  pattern:
+    console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'

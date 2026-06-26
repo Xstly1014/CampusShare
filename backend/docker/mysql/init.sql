@@ -1,0 +1,113 @@
+-- CampusShare 数据库初始化脚本
+-- 创建数据库
+CREATE DATABASE IF NOT EXISTS campushare 
+    DEFAULT CHARACTER SET utf8mb4 
+    DEFAULT COLLATE utf8mb4_unicode_ci;
+
+USE campushare;
+
+-- 创建用户表
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR(36) PRIMARY KEY COMMENT '用户ID',
+    username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
+    email VARCHAR(100) UNIQUE COMMENT '邮箱',
+    phone VARCHAR(20) UNIQUE COMMENT '手机号',
+    password_hash VARCHAR(255) NOT NULL COMMENT '密码哈希',
+    avatar_url VARCHAR(500) COMMENT '头像URL',
+    bio VARCHAR(200) COMMENT '个人简介',
+    school_id VARCHAR(36) COMMENT '所属学校ID',
+    status TINYINT DEFAULT 1 COMMENT '账号状态：1-正常，0-禁用',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除标记',
+    INDEX idx_username (username),
+    INDEX idx_email (email),
+    INDEX idx_phone (phone),
+    INDEX idx_school (school_id),
+    INDEX idx_status (status),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
+
+-- 创建角色表
+CREATE TABLE IF NOT EXISTS roles (
+    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '角色ID',
+    role_name VARCHAR(50) NOT NULL UNIQUE COMMENT '角色名称',
+    role_code VARCHAR(50) NOT NULL UNIQUE COMMENT '角色编码',
+    description VARCHAR(200) COMMENT '角色描述',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表';
+
+-- 创建用户角色关联表
+CREATE TABLE IF NOT EXISTS user_roles (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(36) NOT NULL,
+    role_id INT NOT NULL,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_role (user_id, role_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户角色关联表';
+
+-- 创建学校表
+CREATE TABLE IF NOT EXISTS schools (
+    id VARCHAR(36) PRIMARY KEY COMMENT '学校ID',
+    name VARCHAR(100) NOT NULL UNIQUE COMMENT '学校名称',
+    logo_url VARCHAR(500) COMMENT '校徽URL',
+    region VARCHAR(100) COMMENT '所属地区',
+    description VARCHAR(500) COMMENT '学校简介',
+    resource_count INT DEFAULT 0 COMMENT '资源数量',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_name (name),
+    INDEX idx_region (region)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学校表';
+
+-- 创建资源表
+CREATE TABLE IF NOT EXISTS resources (
+    id VARCHAR(36) PRIMARY KEY COMMENT '资源ID',
+    title VARCHAR(200) NOT NULL COMMENT '资源标题',
+    description TEXT COMMENT '资源描述',
+    category VARCHAR(50) COMMENT '资源分类',
+    file_url VARCHAR(500) NOT NULL COMMENT '文件URL',
+    file_type VARCHAR(50) COMMENT '文件类型',
+    file_size BIGINT COMMENT '文件大小（字节）',
+    thumbnail_url VARCHAR(500) COMMENT '缩略图URL',
+    school_id VARCHAR(36) NOT NULL COMMENT '所属学校ID',
+    uploader_id VARCHAR(36) NOT NULL COMMENT '上传者ID',
+    download_count INT DEFAULT 0 COMMENT '下载次数',
+    like_count INT DEFAULT 0 COMMENT '点赞次数',
+    comment_count INT DEFAULT 0 COMMENT '评论次数',
+    rating DECIMAL(3,2) DEFAULT 0.00 COMMENT '评分',
+    status TINYINT DEFAULT 1 COMMENT '状态：1-正常，0-下架',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除标记',
+    INDEX idx_school (school_id),
+    INDEX idx_uploader (uploader_id),
+    INDEX idx_category (category),
+    INDEX idx_status (status),
+    INDEX idx_create_time (create_time),
+    FULLTEXT idx_title_desc (title, description)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资源表';
+
+-- 插入初始角色数据
+INSERT INTO roles (role_name, role_code, description) VALUES
+('普通用户', 'USER', '普通注册用户'),
+('管理员', 'ADMIN', '系统管理员');
+
+-- 插入示例学校数据
+INSERT INTO schools (id, name, logo_url, region, description, resource_count) VALUES
+('1', '北京大学', 'https://example.com/pku-logo.png', '北京市', '中国最著名的高等学府之一', 1256),
+('2', '清华大学', 'https://example.com/tsinghua-logo.png', '北京市', '中国顶尖综合性大学', 1890),
+('3', '深圳大学', 'https://example.com/szu-logo.png', '广东省深圳市', '特区创新型大学', 743),
+('4', '复旦大学', 'https://example.com/fudan-logo.png', '上海市', '综合性研究型大学', 1562),
+('5', '浙江大学', 'https://example.com/zju-logo.png', '浙江省杭州市', '高水平研究型大学', 2134),
+('6', '南京大学', 'https://example.com/nju-logo.png', '江苏省南京市', '历史悠久的名校', 987),
+('7', '武汉大学', 'https://example.com/whu-logo.png', '湖北省武汉市', '综合性大学', 1456),
+('8', '中山大学', 'https://example.com/sysu-logo.png', '广东省广州市', '教育部直属高校', 1789);
+
+-- 插入测试用户数据（密码为: Test123456）
+INSERT INTO users (id, username, email, phone, password_hash, bio, school_id, status) VALUES
+('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'test@example.com', '13800138000', 
+ '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH', 
+ '这是一名测试用户', '3', 1);
