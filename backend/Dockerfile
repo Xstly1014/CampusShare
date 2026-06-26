@@ -1,0 +1,65 @@
+# ========================================
+# CampusShare Backend - Multi-stage Build
+# ========================================
+
+# Stage 1: Build stage
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
+
+WORKDIR /build
+
+# Copy pom files
+COPY pom.xml .
+COPY campushare-common/pom.xml campushare-common/
+COPY campushare-user/pom.xml campushare-user/
+COPY campushare-gateway/pom.xml campushare-gateway/
+
+# Download dependencies (this layer will be cached)
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY campushare-common/src campushare-common/src
+COPY campushare-user/src campushare-user/src
+COPY campushare-gateway/src campushare-gateway/src
+
+# Build the project
+RUN mvn clean package -DskipTests
+
+# ========================================
+# Stage 2: User Service
+# ========================================
+FROM eclipse-temurin:17-jre-alpine AS user-service
+
+WORKDIR /app
+
+# Copy user service jar
+COPY --from=builder /build/campushare-user/target/campushare-user-*.jar app.jar
+
+# Expose port
+EXPOSE 8081
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8081/actuator/health || exit 1
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=docker", "app.jar"]
+
+# ========================================
+# Stage 3: Gateway Service
+# ========================================
+FROM eclipse-temurin:17-jre-alpine AS gateway-service
+
+WORKDIR /app
+
+# Copy gateway jar
+COPY --from=builder /build/campushare-gateway/target/campushare-gateway-*.jar app.jar
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=docker", "app.jar"]

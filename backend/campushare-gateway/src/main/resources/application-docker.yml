@@ -1,0 +1,39 @@
+spring:
+  cloud:
+    gateway:
+      # Docker环境下的路由配置
+      routes:
+        - id: user-service
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/user/**,/api/auth/**
+          filters:
+            - StripPrefix=0
+
+      # 全局跨域配置
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+# JWT配置
+jwt:
+  secret: CampusShare-Secret-Key-For-Docker-Deployment-2024-Minimum-256-Bits-Required
+
+# 服务器配置
+server:
+  port: 8080
+
+# Actuator健康检查
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

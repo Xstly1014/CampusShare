@@ -1,0 +1,186 @@
+# ========================================
+# CampusShare - Full Stack Docker Compose
+# ========================================
+# 一键部署所有服务：基础设施 + 后端 + 前端
+# 使用方式：docker-compose up -d
+
+version: '3.8'
+
+services:
+  # ========================================
+  # 基础设施服务
+  # ========================================
+
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: campushare-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: campushare
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --default-authentication-plugin=mysql_native_password --skip-mysqlx
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - campushare-network
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: campushare-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - campushare-network
+
+  # ========================================
+  # 后端应用服务
+  # ========================================
+
+  # 用户服务
+  user-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: user-service
+    container_name: campushare-user-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - campushare-network
+
+  # API网关服务
+  gateway-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: gateway-service
+    container_name: campushare-gateway-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - JAVA_OPTS=-Xms128m -Xmx256m
+    depends_on:
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - campushare-network
+
+  # ========================================
+  # 前端应用服务
+  # ========================================
+
+  # 前端Web应用
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: campushare-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - campushare-network
+
+# ========================================
+# 数据卷
+# ========================================
+volumes:
+  mysql_data:
+    driver: local
+    name: campushare-mysql-data
+  redis_data:
+    driver: local
+    name: campushare-redis-data
+
+# ========================================
+# 网络
+# ========================================
+networks:
+  campushare-network:
+    driver: bridge
+    name: campushare-network
+
+# ========================================
+# 使用说明
+# ========================================
+# 1. 启动所有服务：
+#    docker-compose up -d
+#
+# 2. 查看服务状态：
+#    docker-compose ps
+#
+# 3. 查看日志：
+#    docker-compose logs -f [service_name]
+#
+# 4. 停止所有服务：
+#    docker-compose down
+#
+# 5. 停止并清理数据：
+#    docker-compose down -v
+#
+# 6. 重新构建服务：
+#    docker-compose build [service_name]
+#    docker-compose up -d [service_name]
+#
+# 访问地址：
+# - 前端应用：http://localhost
+# - API网关：http://localhost:8080
+# - 用户服务：http://localhost:8081
+# - MySQL：localhost:3306
+# - Redis：localhost:6379

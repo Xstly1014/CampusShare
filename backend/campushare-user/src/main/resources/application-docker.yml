@@ -1,0 +1,44 @@
+spring:
+  datasource:
+    # Docker环境下的MySQL连接配置
+    url: jdbc:mysql://mysql:3306/campushare?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # Docker环境下的Redis连接配置
+  data:
+    redis:
+      host: redis
+      port: 6379
+      password: ""
+      database: 0
+
+# JWT配置
+jwt:
+  secret: CampusShare-Secret-Key-For-Docker-Deployment-2024-Minimum-256-Bits-Required
+  expiration: 86400000 # 24小时
+
+# MyBatis Plus配置
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# 服务器配置
+server:
+  port: 8081
+
+# Actuator健康检查
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
