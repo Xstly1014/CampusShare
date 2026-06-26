@@ -34,7 +34,8 @@ FROM eclipse-temurin:17-jre-alpine AS user-service
 
 WORKDIR /app
 
-# Copy user service jar
+RUN apk add --no-cache curl
+
 COPY --from=builder /build/campushare-user/target/campushare-user-*.jar app.jar
 
 # Expose port
@@ -54,7 +55,8 @@ FROM eclipse-temurin:17-jre-alpine AS gateway-service
 
 WORKDIR /app
 
-# Copy gateway jar
+RUN apk add --no-cache curl
+
 COPY --from=builder /build/campushare-gateway/target/campushare-gateway-*.jar app.jar
 
 # Expose port
