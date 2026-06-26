@@ -108,6 +108,6 @@ INSERT INTO schools (id, name, logo_url, region, description, resource_count) VA
 
 -- 插入测试用户数据（密码为: Test123456）
 INSERT INTO users (id, username, email, phone, password_hash, bio, school_id, status) VALUES
-('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'test@example.com', '13800138000', 
- '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH', 
+('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'test@example.com', '13800138000',
+ '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
  '这是一名测试用户', '3', 1);
