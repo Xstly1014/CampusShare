@@ -2,9 +2,7 @@
 # CampusShare - Full Stack Docker Compose
 # ========================================
 # 一键部署所有服务：基础设施 + 后端 + 前端
-# 使用方式：
-#   1. 先执行 build.sh 构建镜像
-#   2. 再执行 docker compose up -d
+# 使用方式：docker compose up -d --build
 
 services:
   # ========================================
@@ -61,6 +59,10 @@ services:
 
   # 用户服务
   user-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: user-service
     image: campusshare/user-service:latest
     container_name: campushare-user-service
     restart: unless-stopped
@@ -85,6 +87,10 @@ services:
 
   # API网关服务
   gateway-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: gateway-service
     image: campusshare/gateway-service:latest
     container_name: campushare-gateway-service
     restart: unless-stopped
@@ -111,6 +117,10 @@ services:
 
   # 前端Web应用
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
     image: campusshare/frontend:latest
     container_name: campushare-frontend
     restart: unless-stopped
