@@ -27,6 +27,13 @@ jwt:
 # 服务器配置
 server:
   port: 8080
+  max-http-header-size: 64KB
+  netty:
+    # 最大请求体大小（支持文件上传）
+    max-initial-line-length: 4096
+    max-header-size: 4096
+    # 单请求最大 100MB
+    max-content-length: 104857600
 
 # Actuator健康检查
 management:
