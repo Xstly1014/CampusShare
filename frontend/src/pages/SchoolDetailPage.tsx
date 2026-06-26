@@ -38,12 +38,21 @@ function formatNumber(n: number): string {
 
 interface PostCardProps {
   post: Post
+  schoolId: string
   onStar: (postId: string) => void
 }
 
-function PostCard({ post, onStar }: PostCardProps) {
+function PostCard({ post, schoolId, onStar }: PostCardProps) {
+  const navigate = useNavigate()
+
+  const handleClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button')) return
+    navigate(`/school/${schoolId}/post/${post.id}`)
+  }
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4">
+    <div onClick={handleClick} className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer">
       <div className="flex items-start gap-3">
         {/* 头像 */}
         <img
@@ -292,6 +301,7 @@ export default function SchoolDetailPage() {
               <PostCard
                 key={post.id}
                 post={{ ...post, isStarred: starredPosts.has(post.id) }}
+                schoolId={schoolId || ''}
                 onStar={handleStar}
               />
             ))}

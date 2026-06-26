@@ -5,6 +5,7 @@ import HomePage from '../pages/HomePage'
 import WarehousePage from '../pages/WarehousePage'
 import ProfilePage from '../pages/ProfilePage'
 import SchoolDetailPage from '../pages/SchoolDetailPage'
+import PostDetailPage from '../pages/PostDetailPage'
 
 // 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,14 @@ export default function Router() {
           element={
             <PrivateRoute>
               <SchoolDetailPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/school/:schoolId/post/:postId"
+          element={
+            <PrivateRoute>
+              <PostDetailPage />
             </PrivateRoute>
           }
         />

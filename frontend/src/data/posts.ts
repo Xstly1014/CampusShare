@@ -24,6 +24,82 @@ export interface Post {
   content?: string
 }
 
+export interface Comment {
+  id: string
+  postId: string
+  author: {
+    id: string
+    username: string
+    avatar: string
+  }
+  content: string
+  createdAt: string
+  likes: number
+  isLiked: boolean
+  replyTo?: {
+    id: string
+    username: string
+  }
+}
+
+export const commentsData: Comment[] = [
+  {
+    id: 'c1',
+    postId: 'r1',
+    author: { id: 'u9', username: '数学系学渣', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jack' },
+    content: '感谢分享！刚好期末要用到，太及时了',
+    createdAt: '2024-12-16',
+    likes: 12,
+    isLiked: false,
+  },
+  {
+    id: 'c2',
+    postId: 'r1',
+    author: { id: 'u10', username: '熬夜复习人', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kiki' },
+    content: '第三章的例题和老师讲的不一样啊，是版本问题吗？',
+    createdAt: '2024-12-16',
+    likes: 3,
+    isLiked: false,
+    replyTo: { id: 'u1', username: '数学小王子' },
+  },
+  {
+    id: 'c3',
+    postId: 'r1',
+    author: { id: 'u1', username: '数学小王子', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' },
+    content: '是用的最新版教材整理的，可能和之前的版本有差异，以老师PPT为准哈',
+    createdAt: '2024-12-17',
+    likes: 8,
+    isLiked: false,
+  },
+  {
+    id: 'c4',
+    postId: 'd1',
+    author: { id: 'u11', username: '选课困难户', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily' },
+    content: '同问！有没有推荐的水课？想选几门轻松点的',
+    createdAt: '2024-12-18',
+    likes: 23,
+    isLiked: false,
+  },
+  {
+    id: 'c5',
+    postId: 'd1',
+    author: { id: 'u12', username: '绩点4.0', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike' },
+    content: '推荐张老师的西方哲学史，讲课很有意思，给分也不错',
+    createdAt: '2024-12-19',
+    likes: 56,
+    isLiked: true,
+  },
+  {
+    id: 'c6',
+    postId: 'd1',
+    author: { id: 'u13', username: '计算机新生', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Nina' },
+    content: '避雷李老师的计算机导论，作业巨多，考试还难',
+    createdAt: '2024-12-19',
+    likes: 34,
+    isLiked: false,
+  },
+]
+
 export const postsData: Post[] = [
   {
     id: 'r1',
