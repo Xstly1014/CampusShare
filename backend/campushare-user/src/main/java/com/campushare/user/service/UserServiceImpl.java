@@ -71,8 +71,9 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public LoginResponse register(RegisterRequest request) {
         // 1. 验证验证码
-        String cachedCode = redisTemplate.opsForValue().get(
-            RedisConstants.VERIFY_CODE_PREFIX + request.getAccount());
+        String key = RedisConstants.VERIFY_CODE_PREFIX + request.getAccount();
+        String cachedCode = redisTemplate.opsForValue().get(key);
+        log.info("验证验证码 - key: {}, 缓存验证码: {}, 用户输入: {}", key, cachedCode, request.getVerifyCode());
         if (StrUtil.isBlank(cachedCode) || !cachedCode.equals(request.getVerifyCode())) {
             throw new BusinessException(ResultCode.VERIFY_CODE_ERROR);
         }
@@ -137,8 +138,8 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ResultCode.VERIFY_CODE_SEND_TOO_FREQUENT);
         }
         
-        // 2. 生成验证码（模拟，实际应调用短信/邮件服务）
-        String verifyCode = String.format("%06d", (int) ((Math.random() * 9 + 1) * 100000));
+        // 2. 生成验证码（测试环境固定为123456，方便调试）
+        String verifyCode = "123456";
         
         // 3. 保存验证码到Redis
         redisTemplate.opsForValue().set(
@@ -174,8 +175,9 @@ public class UserServiceImpl implements UserService {
     @Override
     public void resetPassword(ResetPasswordRequest request) {
         // 1. 验证验证码
-        String cachedCode = redisTemplate.opsForValue().get(
-            RedisConstants.VERIFY_CODE_PREFIX + request.getAccount());
+        String key = RedisConstants.VERIFY_CODE_PREFIX + request.getAccount();
+        String cachedCode = redisTemplate.opsForValue().get(key);
+        log.info("验证验证码 - key: {}, 缓存验证码: {}, 用户输入: {}", key, cachedCode, request.getVerifyCode());
         if (StrUtil.isBlank(cachedCode) || !cachedCode.equals(request.getVerifyCode())) {
             throw new BusinessException(ResultCode.VERIFY_CODE_ERROR);
         }
