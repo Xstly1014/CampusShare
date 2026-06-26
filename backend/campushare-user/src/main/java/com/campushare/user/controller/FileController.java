@@ -5,13 +5,13 @@ import com.campushare.common.result.Result;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +35,21 @@ public class FileController {
     private String accessUrl;
 
     private final MeterRegistry meterRegistry;
+
+    @PostConstruct
+    public void init() {
+        try {
+            Path path = Paths.get(uploadPath);
+            if (!Files.exists(path)) {
+                Files.createDirectories(path);
+                log.info("上传目录已创建: {}", path.toAbsolutePath());
+            } else {
+                log.info("上传目录已存在: {}", path.toAbsolutePath());
+            }
+        } catch (IOException e) {
+            log.error("初始化上传目录失败", e);
+        }
+    }
 
     @PostMapping("/upload")
     public Result<Map<String, Object>> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -65,12 +80,12 @@ public class FileController {
             String newFileName = UUID.randomUUID().toString().replace("-", "") + fileExtension;
             String relativePath = dateStr + "/" + newFileName;
 
-            Path dirPath = Paths.get(uploadPath + dateStr);
+            Path dirPath = Paths.get(uploadPath, dateStr);
             if (!Files.exists(dirPath)) {
                 Files.createDirectories(dirPath);
             }
 
-            Path filePath = Paths.get(uploadPath + relativePath);
+            Path filePath = Paths.get(uploadPath, relativePath);
             file.transferTo(filePath.toFile());
 
             Map<String, Object> data = new HashMap<>();

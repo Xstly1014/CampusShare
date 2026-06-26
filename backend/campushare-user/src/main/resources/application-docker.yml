@@ -33,6 +33,11 @@ mybatis-plus:
 server:
   port: 8081
 
+# 文件存储配置（Docker环境使用绝对路径）
+file:
+  upload-path: /app/uploads/
+  access-url: /files/
+
 # Actuator健康检查
 management:
   endpoints:

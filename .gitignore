@@ -69,14 +69,13 @@ bin/
 tmp/
 
 # IDE - VS Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+.vscode/
 
 # IDE - Trae
 .trae/
+
+# 变更记录（本地记录，不提交）
+changelog/
 
 # ===== 操作系统 =====
 # macOS

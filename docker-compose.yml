@@ -77,6 +77,8 @@ services:
       - OTEL_LOGS_EXPORTER=none
       - OTEL_METRICS_EXPORTER=none
       - OTEL_TRACES_SAMPLER=parentbased_always_on
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -241,6 +243,9 @@ volumes:
   redis_data:
     driver: local
     name: campushare-redis-data
+  uploads_data:
+    driver: local
+    name: campushare-uploads-data
   prometheus_data:
     driver: local
     name: campushare-prometheus-data
