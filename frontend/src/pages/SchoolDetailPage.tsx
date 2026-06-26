@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Search,
@@ -16,10 +16,51 @@ import {
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
-import { postsData, Post, PostType } from '../data/posts'
+import { PostType } from '../data/posts'
 import { fileApi, postApi } from '../services/api'
+import { toast } from '../stores/toastStore'
 
 type SortType = 'latest' | 'hottest' | 'active'
+
+interface BackendPost {
+  id: string
+  schoolId: string
+  authorId: string
+  postType: string
+  title: string
+  content: string
+  fileUrl?: string
+  fileName?: string
+  fileType?: string
+  fileSize?: number
+  viewCount: number
+  starCount: number
+  likeCount: number
+  commentCount: number
+  createTime: string
+}
+
+interface PostView {
+  id: string
+  schoolId: string
+  type: PostType
+  title: string
+  author: {
+    id: string
+    username: string
+    avatar?: string
+  }
+  createdAt: string
+  stars: number
+  comments: number
+  views: number
+  isStarred: boolean
+  fileUrl?: string
+  fileType?: string
+  fileSize?: string
+  description?: string
+  content?: string
+}
 
 const typeLabels: Record<PostType, string> = {
   resource: '资料',
@@ -51,7 +92,7 @@ function formatNumber(n: number): string {
 }
 
 interface PostCardProps {
-  post: Post
+  post: PostView
   schoolId: string
   onStar: (postId: string) => void
 }
@@ -146,14 +187,56 @@ export default function SchoolDetailPage() {
   const navigate = useNavigate()
 
   const school = schoolsData.find((s) => s.id === schoolId)
-  const schoolPosts = postsData.filter((p) => p.schoolId === schoolId)
 
+  const [posts, setPosts] = useState<PostView[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [sortType, setSortType] = useState<SortType>('latest')
   const [filterType, setFilterType] = useState<PostType | 'all'>('all')
-  const [starredPosts, setStarredPosts] = useState<Set<string>>(
-    new Set(schoolPosts.filter((p) => p.isStarred).map((p) => p.id))
-  )
+  const [starredPosts, setStarredPosts] = useState<Set<string>>(new Set())
+
+  const fetchPosts = useCallback(async () => {
+    if (!schoolId) return
+    setLoading(true)
+    try {
+      const data = await postApi.getBySchool(schoolId, {
+        postType: filterType === 'all' ? undefined : filterType,
+        sortType,
+        page: 1,
+        size: 50,
+      })
+      const viewPosts: PostView[] = (data as unknown as BackendPost[]).map((p) => ({
+        id: p.id,
+        schoolId: p.schoolId,
+        type: (p.postType as PostType) || 'discussion',
+        title: p.title,
+        author: {
+          id: p.authorId,
+          username: p.authorId.slice(0, 8),
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
+        },
+        createdAt: p.createTime,
+        stars: p.starCount || 0,
+        comments: p.commentCount || 0,
+        views: p.viewCount || 0,
+        isStarred: false,
+        fileUrl: p.fileUrl,
+        fileType: p.fileType,
+        fileSize: p.fileSize ? (p.fileSize / 1024 / 1024).toFixed(2) + ' MB' : undefined,
+        description: p.content,
+        content: p.content,
+      }))
+      setPosts(viewPosts)
+    } catch (err) {
+      toast.error('加载帖子列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [schoolId, filterType, sortType])
+
+  useEffect(() => {
+    fetchPosts()
+  }, [fetchPosts])
 
   // 发布弹窗
   const [showPostModal, setShowPostModal] = useState(false)
@@ -182,8 +265,9 @@ export default function SchoolDetailPage() {
         type: data.fileType,
         size: data.fileSize,
       })
+      toast.success('上传成功')
     } catch (err) {
-      alert((err as Error).message || '上传失败')
+      toast.error((err as Error).message || '上传失败')
     } finally {
       setUploading(false)
     }
@@ -195,11 +279,11 @@ export default function SchoolDetailPage() {
 
   const handleSubmitPost = async () => {
     if (!postTitle.trim()) {
-      alert('请输入标题')
+      toast.warning('请输入标题')
       return
     }
     if (postType === 'resource' && !uploadedFile) {
-      alert('请上传资源文件')
+      toast.warning('请上传资源文件')
       return
     }
 
@@ -216,49 +300,34 @@ export default function SchoolDetailPage() {
         fileSize: uploadedFile?.size,
       })
 
-      alert('发布成功！')
+      toast.success('发布成功！')
       setShowPostModal(false)
       setPostTitle('')
       setPostContent('')
       setUploadedFile(null)
-      // 刷新页面
-      window.location.reload()
+      fetchPosts()
     } catch (err) {
-      alert((err as Error).message || '发布失败')
+      toast.error((err as Error).message || '发布失败')
     } finally {
       setSubmitting(false)
     }
   }
 
   const filteredPosts = useMemo(() => {
-    let posts = [...schoolPosts]
+    let result = [...posts]
 
     // 搜索过滤
     if (searchKeyword) {
-      posts = posts.filter(
+      result = result.filter(
         (p) =>
           p.title.toLowerCase().includes(searchKeyword.toLowerCase()) ||
           p.author.username.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-          (p.description && p.description.toLowerCase().includes(searchKeyword.toLowerCase()))
+          (p.content && p.content.toLowerCase().includes(searchKeyword.toLowerCase()))
       )
     }
 
-    // 类型过滤
-    if (filterType !== 'all') {
-      posts = posts.filter((p) => p.type === filterType)
-    }
-
-    // 排序
-    if (sortType === 'latest') {
-      posts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    } else if (sortType === 'hottest') {
-      posts.sort((a, b) => b.stars - a.stars)
-    } else if (sortType === 'active') {
-      posts.sort((a, b) => b.comments - a.comments)
-    }
-
-    return posts
-  }, [schoolPosts, searchKeyword, sortType, filterType])
+    return result
+  }, [posts, searchKeyword])
 
   const handleStar = (postId: string) => {
     setStarredPosts((prev) => {
@@ -384,7 +453,12 @@ export default function SchoolDetailPage() {
 
       {/* 帖子列表 */}
       <div className="max-w-5xl mx-auto px-4 py-4">
-        {filteredPosts.length > 0 ? (
+        {loading ? (
+          <div className="text-center py-16">
+            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-gray-400 text-sm">加载中...</p>
+          </div>
+        ) : filteredPosts.length > 0 ? (
           <div className="space-y-3">
             {filteredPosts.map((post) => (
               <PostCard

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import LoginForm from '../components/auth/LoginForm'
 import RegisterForm from '../components/auth/RegisterForm'
 import ForgotPasswordForm from '../components/auth/ForgotPasswordForm'
+import { toast } from '../stores/toastStore'
 
 type AuthMode = 'login' | 'register' | 'forgot-password'
 
@@ -51,7 +52,7 @@ export default function AuthPage() {
     setError('')
     try {
       await resetPassword(account, verifyCode, newPassword)
-      alert('密码重置成功！')
+      toast.success('密码重置成功！')
       setMode('login')
     } catch (e: any) {
       setError(e.message || '重置密码失败')
