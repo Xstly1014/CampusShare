@@ -1,0 +1,15 @@
+package com.campushare.user.dto;
+
+import lombok.Data;
+
+@Data
+public class CreatePostRequest {
+    private String schoolId;
+    private String postType;
+    private String title;
+    private String content;
+    private String fileUrl;
+    private String fileName;
+    private String fileType;
+    private Long fileSize;
+}

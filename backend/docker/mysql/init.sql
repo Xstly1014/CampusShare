@@ -62,6 +62,84 @@ CREATE TABLE IF NOT EXISTS schools (
     INDEX idx_region (region)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学校表';
 
+-- 创建帖子表
+CREATE TABLE IF NOT EXISTS posts (
+    id VARCHAR(36) PRIMARY KEY COMMENT '帖子ID',
+    school_id VARCHAR(36) NOT NULL COMMENT '所属学校ID',
+    author_id VARCHAR(36) NOT NULL COMMENT '作者ID',
+    post_type VARCHAR(20) NOT NULL DEFAULT 'discussion' COMMENT '帖子类型：resource-资源贴，discussion-讨论贴',
+    title VARCHAR(200) NOT NULL COMMENT '帖子标题',
+    content TEXT COMMENT '帖子正文内容',
+    file_url VARCHAR(500) COMMENT '附件文件URL',
+    file_name VARCHAR(200) COMMENT '附件文件名',
+    file_type VARCHAR(50) COMMENT '附件文件类型',
+    file_size BIGINT COMMENT '附件文件大小（字节）',
+    view_count INT DEFAULT 0 COMMENT '浏览次数',
+    star_count INT DEFAULT 0 COMMENT '收藏次数',
+    like_count INT DEFAULT 0 COMMENT '点赞次数',
+    comment_count INT DEFAULT 0 COMMENT '评论次数',
+    status TINYINT DEFAULT 1 COMMENT '状态：1-正常，0-删除',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除标记',
+    INDEX idx_school (school_id),
+    INDEX idx_author (author_id),
+    INDEX idx_type (post_type),
+    INDEX idx_status (status),
+    INDEX idx_create_time (create_time),
+    FULLTEXT idx_title_content (title, content)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='帖子表';
+
+-- 创建评论表
+CREATE TABLE IF NOT EXISTS comments (
+    id VARCHAR(36) PRIMARY KEY COMMENT '评论ID',
+    post_id VARCHAR(36) NOT NULL COMMENT '帖子ID',
+    user_id VARCHAR(36) NOT NULL COMMENT '用户ID',
+    parent_id VARCHAR(36) COMMENT '父评论ID（用于回复）',
+    reply_to_user_id VARCHAR(36) COMMENT '回复的用户ID',
+    content TEXT NOT NULL COMMENT '评论内容',
+    like_count INT DEFAULT 0 COMMENT '点赞次数',
+    status TINYINT DEFAULT 1 COMMENT '状态：1-正常，0-删除',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted TINYINT DEFAULT 0 COMMENT '逻辑删除标记',
+    INDEX idx_post (post_id),
+    INDEX idx_user (user_id),
+    INDEX idx_parent (parent_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评论表';
+
+-- 创建收藏表
+CREATE TABLE IF NOT EXISTS post_stars (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id VARCHAR(36) NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_post_user (post_id, user_id),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='帖子收藏表';
+
+-- 创建点赞表
+CREATE TABLE IF NOT EXISTS post_likes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id VARCHAR(36) NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_post_user (post_id, user_id),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='帖子点赞表';
+
+-- 创建浏览历史表
+CREATE TABLE IF NOT EXISTS view_history (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id VARCHAR(36) NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
+    view_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id),
+    INDEX idx_post (post_id),
+    INDEX idx_view_time (view_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='浏览历史表';
+
 -- 创建资源表
 CREATE TABLE IF NOT EXISTS resources (
     id VARCHAR(36) PRIMARY KEY COMMENT '资源ID',

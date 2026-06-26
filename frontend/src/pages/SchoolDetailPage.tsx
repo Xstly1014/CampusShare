@@ -1,9 +1,23 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Search, Flame, Clock, Star, FileText, MessageSquare, Eye, ChevronLeft } from 'lucide-react'
+import {
+  Search,
+  Flame,
+  Clock,
+  Star,
+  FileText,
+  MessageSquare,
+  Eye,
+  ChevronLeft,
+  Plus,
+  X,
+  Upload,
+  File,
+} from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
 import { postsData, Post, PostType } from '../data/posts'
+import { fileApi, postApi } from '../services/api'
 
 type SortType = 'latest' | 'hottest' | 'active'
 
@@ -140,6 +154,81 @@ export default function SchoolDetailPage() {
   const [starredPosts, setStarredPosts] = useState<Set<string>>(
     new Set(schoolPosts.filter((p) => p.isStarred).map((p) => p.id))
   )
+
+  // 发布弹窗
+  const [showPostModal, setShowPostModal] = useState(false)
+  const [postType, setPostType] = useState<'resource' | 'discussion'>('resource')
+  const [postTitle, setPostTitle] = useState('')
+  const [postContent, setPostContent] = useState('')
+  const [uploadedFile, setUploadedFile] = useState<{
+    url: string
+    name: string
+    type: string
+    size: number
+  } | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const data = await fileApi.upload(file)
+      setUploadedFile({
+        url: data.url,
+        name: data.fileName,
+        type: data.fileType,
+        size: data.fileSize,
+      })
+    } catch (err) {
+      alert((err as Error).message || '上传失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemoveFile = () => {
+    setUploadedFile(null)
+  }
+
+  const handleSubmitPost = async () => {
+    if (!postTitle.trim()) {
+      alert('请输入标题')
+      return
+    }
+    if (postType === 'resource' && !uploadedFile) {
+      alert('请上传资源文件')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await postApi.create({
+        schoolId: schoolId || '',
+        postType,
+        title: postTitle,
+        content: postContent,
+        fileUrl: uploadedFile?.url,
+        fileName: uploadedFile?.name,
+        fileType: uploadedFile?.type,
+        fileSize: uploadedFile?.size,
+      })
+
+      alert('发布成功！')
+      setShowPostModal(false)
+      setPostTitle('')
+      setPostContent('')
+      setUploadedFile(null)
+      // 刷新页面
+      window.location.reload()
+    } catch (err) {
+      alert((err as Error).message || '发布失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const filteredPosts = useMemo(() => {
     let posts = [...schoolPosts]
@@ -317,6 +406,164 @@ export default function SchoolDetailPage() {
 
       {/* 底部导航栏 */}
       <NavBar />
+
+      {/* 发布按钮 */}
+      <button
+        onClick={() => setShowPostModal(true)}
+        className="fixed right-4 bottom-20 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 hover:scale-105 transition-all flex items-center justify-center z-10"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
+
+      {/* 发布弹窗 */}
+      {showPostModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
+          onClick={() => setShowPostModal(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-xl sm:rounded-2xl rounded-t-3xl max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 弹窗头部 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">发布</h2>
+              <button
+                onClick={() => setShowPostModal(false)}
+                className="p-1 -mr-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            {/* 类型切换 */}
+            <div className="px-5 pt-4 pb-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPostType('resource')}
+                  className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition-colors ${
+                    postType === 'resource'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  发布资料
+                </button>
+                <button
+                  onClick={() => setPostType('discussion')}
+                  className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition-colors ${
+                    postType === 'discussion'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  发讨论帖
+                </button>
+              </div>
+            </div>
+
+            {/* 表单内容 */}
+            <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
+              {/* 标题 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {postType === 'resource' ? '资源标题' : '帖子标题'}
+                </label>
+                <input
+                  type="text"
+                  value={postTitle}
+                  onChange={(e) => setPostTitle(e.target.value)}
+                  placeholder={
+                    postType === 'resource'
+                      ? '请输入资源名称，例如：高等数学期末复习资料'
+                      : '请输入帖子标题，吸引大家来讨论'
+                  }
+                  maxLength={100}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-transparent transition-all"
+                />
+              </div>
+
+              {/* 内容描述 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {postType === 'resource' ? '资源描述' : '内容'}
+                </label>
+                <textarea
+                  value={postContent}
+                  onChange={(e) => setPostContent(e.target.value)}
+                  placeholder={
+                    postType === 'resource'
+                      ? '简单介绍一下这份资源的内容、适用人群、参考价值等...'
+                      : '分享你的想法、问题或者经验，和大家一起讨论...'
+                  }
+                  rows={5}
+                  maxLength={2000}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-transparent transition-all resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-1 text-right">
+                  {postContent.length}/2000
+                </p>
+              </div>
+
+              {/* 文件上传 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {postType === 'resource' ? '上传文件' : '附件（可选）'}
+                </label>
+                {uploadedFile ? (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <File className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 font-medium truncate">
+                        {uploadedFile.name}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {uploadedFile.type.toUpperCase()} · {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleRemoveFile}
+                      className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                    >
+                      <X className="w-4 h-4 text-gray-400" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="block w-full p-6 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors text-center">
+                    <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">
+                      {uploading ? '上传中...' : '点击上传文件'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      支持 PDF、Word、Excel、PPT、ZIP、图片等格式，最大 50MB
+                    </p>
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                      multiple
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-5 py-4 border-t border-gray-100">
+              <button
+                onClick={handleSubmitPost}
+                disabled={submitting || !postTitle.trim()}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {submitting ? '发布中...' : '发布'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

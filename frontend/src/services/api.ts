@@ -79,3 +79,57 @@ export const authApi = {
 
   getCurrentUser: () => api.get('/users/me'),
 }
+
+export const fileApi = {
+  upload: async (file: File) => {
+    const token = localStorage.getItem('campusshare_token')
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch(`${API_BASE_URL}/files/upload`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    })
+
+    const data = await response.json()
+    if (!response.ok || data.code !== 200) {
+      throw new Error(data.message || '上传失败')
+    }
+    return data.data
+  },
+}
+
+export const postApi = {
+  create: (data: {
+    schoolId: string
+    postType: string
+    title: string
+    content: string
+    fileUrl?: string
+    fileName?: string
+    fileType?: string
+    fileSize?: number
+  }) => api.post('/posts', data),
+
+  getDetail: (postId: string) => api.get(`/posts/${postId}`),
+
+  getBySchool: (
+    schoolId: string,
+    params: { postType?: string; sortType?: string; page?: number; size?: number } = {}
+  ) => {
+    const query = new URLSearchParams()
+    if (params.postType) query.set('postType', params.postType)
+    if (params.sortType) query.set('sortType', params.sortType)
+    if (params.page) query.set('page', String(params.page))
+    if (params.size) query.set('size', String(params.size))
+    const queryStr = query.toString()
+    return api.get(`/posts/school/${schoolId}${queryStr ? `?${queryStr}` : ''}`)
+  },
+
+  toggleStar: (postId: string) => api.post(`/posts/${postId}/star`),
+
+  toggleLike: (postId: string) => api.post(`/posts/${postId}/like`),
+}
