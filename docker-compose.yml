@@ -2,9 +2,9 @@
 # CampusShare - Full Stack Docker Compose
 # ========================================
 # 一键部署所有服务：基础设施 + 后端 + 前端
-# 使用方式：docker-compose up -d
-
-version: '3.8'
+# 使用方式：
+#   1. 先执行 build.sh 构建镜像
+#   2. 再执行 docker compose up -d
 
 services:
   # ========================================
@@ -28,7 +28,7 @@ services:
       - ./backend/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     command: --default-authentication-plugin=mysql_native_password --skip-mysqlx
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,7 +47,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -61,10 +61,7 @@ services:
 
   # 用户服务
   user-service:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      target: user-service
+    image: campusshare/user-service:latest
     container_name: campushare-user-service
     restart: unless-stopped
     ports:
@@ -78,7 +75,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8081/actuator/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -88,10 +85,7 @@ services:
 
   # API网关服务
   gateway-service:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      target: gateway-service
+    image: campusshare/gateway-service:latest
     container_name: campushare-gateway-service
     restart: unless-stopped
     ports:
@@ -103,7 +97,7 @@ services:
       user-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/actuator/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -117,10 +111,7 @@ services:
 
   # 前端Web应用
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: production
+    image: campusshare/frontend:latest
     container_name: campushare-frontend
     restart: unless-stopped
     ports:
@@ -129,7 +120,7 @@ services:
       gateway-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -155,32 +146,3 @@ networks:
   campushare-network:
     driver: bridge
     name: campushare-network
-
-# ========================================
-# 使用说明
-# ========================================
-# 1. 启动所有服务：
-#    docker-compose up -d
-#
-# 2. 查看服务状态：
-#    docker-compose ps
-#
-# 3. 查看日志：
-#    docker-compose logs -f [service_name]
-#
-# 4. 停止所有服务：
-#    docker-compose down
-#
-# 5. 停止并清理数据：
-#    docker-compose down -v
-#
-# 6. 重新构建服务：
-#    docker-compose build [service_name]
-#    docker-compose up -d [service_name]
-#
-# 访问地址：
-# - 前端应用：http://localhost
-# - API网关：http://localhost:8080
-# - 用户服务：http://localhost:8081
-# - MySQL：localhost:3306
-# - Redis：localhost:6379
