@@ -7,6 +7,9 @@ FROM maven:3.9.6-eclipse-temurin-17 AS builder
 
 WORKDIR /build
 
+# Copy Maven settings with Aliyun mirror for faster downloads in China
+COPY settings.xml /usr/share/maven/conf/settings.xml
+
 # Copy pom files
 COPY pom.xml .
 COPY campushare-common/pom.xml campushare-common/
