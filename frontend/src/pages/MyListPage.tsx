@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare } from 'lucide-react'
+import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText } from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
-type ListType = 'history' | 'starred' | 'liked'
+type ListType = 'history' | 'starred' | 'liked' | 'mine'
 
 interface BackendPost {
   id: string
@@ -28,6 +28,7 @@ const listConfig: Record<ListType, { title: string; icon: React.ReactNode; fetch
   history: { title: '浏览历史', icon: <Clock className="w-5 h-5" />, fetcher: postApi.getHistory },
   starred: { title: '我的收藏', icon: <Star className="w-5 h-5" />, fetcher: postApi.getStarred },
   liked: { title: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, fetcher: postApi.getLiked },
+  mine: { title: '我的帖子', icon: <FileText className="w-5 h-5" />, fetcher: postApi.getMyPosts },
 }
 
 function formatNumber(n: number): string {

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.user.dto.CreatePostRequest;
+import com.campushare.user.dto.UserPostStats;
 import com.campushare.user.entity.Post;
 import com.campushare.user.entity.PostLike;
 import com.campushare.user.entity.PostStar;
@@ -389,5 +390,37 @@ public class PostServiceImpl implements PostService {
             }
         }
         return result;
+    }
+
+    // ================================================================
+    // My posts + aggregate stats
+    // ================================================================
+    @Override
+    public List<Post> getMyPosts(String userId, int page, int size) {
+        Page<Post> postPage = postMapper.selectPage(
+                new Page<>(page, size),
+                new LambdaQueryWrapper<Post>()
+                        .eq(Post::getAuthorId, userId)
+                        .eq(Post::getDeleted, false)
+                        .orderByDesc(Post::getCreateTime));
+        return postPage.getRecords();
+    }
+
+    @Override
+    public UserPostStats getMyPostStats(String userId) {
+        List<Post> myPosts = postMapper.selectList(
+                new LambdaQueryWrapper<Post>()
+                        .eq(Post::getAuthorId, userId)
+                        .eq(Post::getDeleted, false));
+
+        long totalViews = 0;
+        long totalLikes = 0;
+        long totalStars = 0;
+        for (Post p : myPosts) {
+            if (p.getViewCount() != null) totalViews += p.getViewCount();
+            if (p.getLikeCount() != null) totalLikes += p.getLikeCount();
+            if (p.getStarCount() != null) totalStars += p.getStarCount();
+        }
+        return new UserPostStats(totalViews, totalLikes, totalStars, myPosts.size());
     }
 }

@@ -18,6 +18,8 @@ import {
   Settings,
   HelpCircle,
   Shield,
+  FileText,
+  Eye,
 } from 'lucide-react'
 
 export default function ProfilePage() {
@@ -29,29 +31,33 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('这个人很懒，什么都没留下...')
   const [avatar, setAvatar] = useState<string | null>(null)
   const [counts, setCounts] = useState({ browse: 0, starred: 0, liked: 0 })
+  const [stats, setStats] = useState({ totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
 
-  // Fetch counts for the three lists
+  // Fetch counts for the three lists + my post stats
   useEffect(() => {
-    const fetchCounts = async () => {
+    const fetchData = async () => {
       try {
-        const [historyRes, starredRes, likedRes] = await Promise.all([
+        const [historyRes, starredRes, likedRes, statsRes] = await Promise.all([
           postApi.getHistory(1, 1),
           postApi.getStarred(1, 1),
           postApi.getLiked(1, 1),
+          postApi.getMyPostStats(),
         ])
         setCounts({
           browse: (historyRes.data || []).length,
           starred: (starredRes.data || []).length,
           liked: (likedRes.data || []).length,
         })
+        setStats(statsRes.data || { totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
       } catch (err) {
         // Silently ignore, counts stay 0
       }
     }
-    fetchCounts()
+    fetchData()
   }, [])
 
   const listEntries = [
+    { key: 'mine', label: '我的帖子', icon: <FileText className="w-5 h-5" />, count: stats.postCount, color: 'bg-indigo-50 text-indigo-600' },
     { key: 'history', label: '浏览历史', icon: <Clock className="w-5 h-5" />, count: counts.browse, color: 'bg-blue-50 text-blue-600' },
     { key: 'starred', label: '我的收藏', icon: <Star className="w-5 h-5" />, count: counts.starred, color: 'bg-orange-50 text-orange-600' },
     { key: 'liked', label: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, count: counts.liked, color: 'bg-red-50 text-red-600' },
@@ -123,33 +129,36 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 统计数据 - 可点击跳转 */}
+          {/* 统计数据 - 我的帖子的总浏览量/获赞/被收藏/帖子数 */}
           <div className="grid grid-cols-4 gap-2 mt-5">
             <button
-              onClick={() => navigate('/profile/history')}
+              onClick={() => navigate('/profile/mine')}
               className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
             >
-              <p className="text-base font-bold text-gray-900">{counts.browse}</p>
-              <p className="text-xs text-gray-400 mt-0.5">浏览</p>
+              <p className="text-base font-bold text-gray-900">{stats.totalViews}</p>
+              <p className="text-xs text-gray-400 mt-0.5">总浏览</p>
             </button>
             <button
-              onClick={() => navigate('/profile/starred')}
+              onClick={() => navigate('/profile/mine')}
               className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
             >
-              <p className="text-base font-bold text-gray-900">{counts.starred}</p>
-              <p className="text-xs text-gray-400 mt-0.5">收藏</p>
+              <p className="text-base font-bold text-gray-900">{stats.totalLikes}</p>
+              <p className="text-xs text-gray-400 mt-0.5">获赞</p>
             </button>
             <button
-              onClick={() => navigate('/profile/liked')}
+              onClick={() => navigate('/profile/mine')}
               className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
             >
-              <p className="text-base font-bold text-gray-900">{counts.liked}</p>
-              <p className="text-xs text-gray-400 mt-0.5">点赞</p>
+              <p className="text-base font-bold text-gray-900">{stats.totalStars}</p>
+              <p className="text-xs text-gray-400 mt-0.5">被收藏</p>
             </button>
-            <div className="text-center">
-              <p className="text-base font-bold text-gray-900">0</p>
-              <p className="text-xs text-gray-400 mt-0.5">上传</p>
-            </div>
+            <button
+              onClick={() => navigate('/profile/mine')}
+              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
+            >
+              <p className="text-base font-bold text-gray-900">{stats.postCount}</p>
+              <p className="text-xs text-gray-400 mt-0.5">帖子</p>
+            </button>
           </div>
         </div>
       </div>

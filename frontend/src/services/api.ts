@@ -143,4 +143,9 @@ export const postApi = {
 
   getLiked: (page: number = 1, size: number = 50) =>
     api.get(`/posts/liked?page=${page}&size=${size}`),
+
+  getMyPosts: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/mine?page=${page}&size=${size}`),
+
+  getMyPostStats: () => api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>('/posts/my-stats'),
 }

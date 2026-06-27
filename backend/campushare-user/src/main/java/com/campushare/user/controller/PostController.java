@@ -4,6 +4,7 @@ import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.CreatePostRequest;
 import com.campushare.user.dto.PostStatus;
+import com.campushare.user.dto.UserPostStats;
 import com.campushare.user.entity.Post;
 import com.campushare.user.service.PostService;
 import lombok.RequiredArgsConstructor;
@@ -118,6 +119,24 @@ public class PostController {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         List<Post> posts = postService.getLikedPosts(userId, page, size);
         return Result.success(posts);
+    }
+
+    @GetMapping("/mine")
+    public Result<List<Post>> getMyPosts(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<Post> posts = postService.getMyPosts(userId, page, size);
+        return Result.success(posts);
+    }
+
+    @GetMapping("/my-stats")
+    public Result<UserPostStats> getMyPostStats(
+            @RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        UserPostStats stats = postService.getMyPostStats(userId);
+        return Result.success(stats);
     }
 
     // ================================================================

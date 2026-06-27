@@ -1,6 +1,7 @@
 package com.campushare.user.service;
 
 import com.campushare.user.dto.CreatePostRequest;
+import com.campushare.user.dto.UserPostStats;
 import com.campushare.user.entity.Post;
 
 import java.util.List;
@@ -33,4 +34,10 @@ public interface PostService {
 
     /** Get user's liked posts */
     List<Post> getLikedPosts(String userId, int page, int size);
+
+    /** Get posts authored by the user */
+    List<Post> getMyPosts(String userId, int page, int size);
+
+    /** Get aggregate stats of a user's posts: total views, total likes, total stars */
+    UserPostStats getMyPostStats(String userId);
 }

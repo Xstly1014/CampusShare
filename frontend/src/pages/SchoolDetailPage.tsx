@@ -229,6 +229,29 @@ export default function SchoolDetailPage() {
         content: p.content,
       }))
       setPosts(viewPosts)
+
+      // Fetch star status for each post (if logged in)
+      const token = localStorage.getItem('campusshare_token')
+      if (token && postList.length > 0) {
+        try {
+          const starredSet = new Set<string>()
+          await Promise.all(
+            postList.map(async (p) => {
+              try {
+                const statusRes = await postApi.getStatus(p.id)
+                if (statusRes.data.starred) {
+                  starredSet.add(p.id)
+                }
+              } catch {
+                // ignore individual errors
+              }
+            })
+          )
+          setStarredPosts(starredSet)
+        } catch {
+          // ignore
+        }
+      }
     } catch (err) {
       toast.error('加载帖子列表失败')
     } finally {
@@ -331,7 +354,9 @@ export default function SchoolDetailPage() {
     return result
   }, [posts, searchKeyword])
 
-  const handleStar = (postId: string) => {
+  const handleStar = async (postId: string) => {
+    // Optimistic UI update
+    const wasStarred = starredPosts.has(postId)
     setStarredPosts((prev) => {
       const next = new Set(prev)
       if (next.has(postId)) {
@@ -341,6 +366,36 @@ export default function SchoolDetailPage() {
       }
       return next
     })
+    // Update star count optimistically
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? { ...p, stars: wasStarred ? p.stars - 1 : p.stars + 1 }
+          : p
+      )
+    )
+    try {
+      await postApi.toggleStar(postId)
+    } catch (err) {
+      // Rollback on failure
+      setStarredPosts((prev) => {
+        const next = new Set(prev)
+        if (wasStarred) {
+          next.add(postId)
+        } else {
+          next.delete(postId)
+        }
+        return next
+      })
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, stars: wasStarred ? p.stars + 1 : p.stars - 1 }
+            : p
+        )
+      )
+      toast.error((err as Error).message || '操作失败')
+    }
   }
 
   if (!school) {
