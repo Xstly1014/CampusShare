@@ -3,6 +3,7 @@ package com.campushare.user.controller;
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.CreatePostRequest;
+import com.campushare.user.dto.PostStatus;
 import com.campushare.user.entity.Post;
 import com.campushare.user.service.PostService;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,22 @@ public class PostController {
             @RequestParam(defaultValue = "20") int size) {
         List<Post> posts = postService.getPostsBySchool(schoolId, postType, sortType, page, size);
         return Result.success(posts);
+    }
+
+    @GetMapping("/{postId}/status")
+    public Result<PostStatus> getPostStatus(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @PathVariable String postId) {
+        String userId = extractUserId(token);
+        PostStatus status = new PostStatus();
+        if (userId != null && !userId.isEmpty()) {
+            status.setStarred(postService.isStarredBy(userId, postId));
+            status.setLiked(postService.isLikedBy(userId, postId));
+        } else {
+            status.setStarred(false);
+            status.setLiked(false);
+        }
+        return Result.success(status);
     }
 
     @PostMapping("/{postId}/star")

@@ -116,6 +116,8 @@ export const postApi = {
 
   getDetail: (postId: string) => api.get(`/posts/${postId}`),
 
+  getStatus: (postId: string) => api.get<{ starred: boolean; liked: boolean }>(`/posts/${postId}/status`),
+
   getBySchool: (
     schoolId: string,
     params: { postType?: string; sortType?: string; page?: number; size?: number } = {}
