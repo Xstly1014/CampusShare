@@ -34,7 +34,11 @@ FROM eclipse-temurin:17-jre-alpine AS user-service
 
 WORKDIR /app
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl tzdata && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+ENV TZ=Asia/Shanghai
 
 # 下载 OpenTelemetry Java Agent
 ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.3.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
@@ -58,7 +62,11 @@ FROM eclipse-temurin:17-jre-alpine AS gateway-service
 
 WORKDIR /app
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl tzdata && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+ENV TZ=Asia/Shanghai
 
 # 下载 OpenTelemetry Java Agent
 ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.3.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar

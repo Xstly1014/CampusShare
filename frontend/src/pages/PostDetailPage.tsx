@@ -452,17 +452,33 @@ export default function PostDetailPage() {
                     <p className="text-sm font-medium text-gray-900 truncate">{post.fileName || post.title}</p>
                     <p className="text-xs text-gray-400">
                       {post.fileType?.toUpperCase()}
-                      {post.fileSize ? ` · ${(post.fileSize / 1024).toFixed(1)} KB` : ''}
+                      {post.fileSize ? ` · ${post.fileSize >= 1048576 ? (post.fileSize / 1048576).toFixed(2) + ' MB' : (post.fileSize / 1024).toFixed(1) + ' KB'}` : ''}
                     </p>
                   </div>
-                  <a
-                    href={`/api${post.fileUrl}`}
-                    download={post.fileName}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(`/api${post.fileUrl}`)
+                        if (!res.ok) throw new Error('文件不存在')
+                        const blob = await res.blob()
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = post.fileName || 'download'
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        URL.revokeObjectURL(url)
+                        toast.success('下载成功')
+                      } catch (err) {
+                        toast.error((err as Error).message || '下载失败')
+                      }
+                    }}
                     className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
                   >
                     <Download className="w-4 h-4" />
                     下载
-                  </a>
+                  </button>
                 </div>
               )}
             </>
