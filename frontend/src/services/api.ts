@@ -206,7 +206,7 @@ export const userApi = {
 
   toggleFollow: (userId: string) => api.post(`/users/${userId}/follow`),
 
-  getFollowStats: () => api.get<Record<string, number>>('/users/me/follow-stats'),
+  getFollowStats: () => api.get<{ following: number; followers: number; mutual: number }>('/users/me/follow-stats'),
 
   getFollowingList: () => api.get('/users/me/following'),
 
