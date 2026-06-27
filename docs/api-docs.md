@@ -510,7 +510,152 @@ Authorization: Bearer {token}
 
 ---
 
-## 四、管理模块
+### 3.12 获取各学校帖子数
+
+- **接口**: `GET /api/posts/school-counts`
+- **说明**: 获取每个学校的帖子总数，用于首页展示
+- **是否需要登录**: 否
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "1": 10,
+    "2": 10,
+    "3": 10
+  },
+  "timestamp": 1719456789000
+}
+```
+
+> `data` 为 `{ schoolId: postCount }` 映射。
+
+---
+
+### 3.13 获取帖子评论列表
+
+- **接口**: `GET /api/posts/{postId}/comments`
+- **说明**: 获取指定帖子的评论列表，按创建时间正序
+- **是否需要登录**: 否
+
+**路径参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `postId` | string | 是 | 帖子ID |
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "id": "comment-uuid-xxx",
+      "postId": "post-uuid-xxx",
+      "userId": "user-uuid-xxx",
+      "username": "testuser",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=user-uuid-xxx",
+      "parentId": null,
+      "replyToUserId": null,
+      "content": "这份资料很有用，感谢分享！",
+      "likeCount": 0,
+      "createTime": "2026-06-27 14:00:00"
+    }
+  ],
+  "timestamp": 1719456789000
+}
+```
+
+---
+
+### 3.14 发表评论
+
+- **接口**: `POST /api/posts/{postId}/comments`
+- **说明**: 在指定帖子下发表评论，同时帖子 comment_count +1
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "content": "这份资料很有用，感谢分享！",
+  "parentId": null,
+  "replyToUserId": null
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `content` | string | 是 | 评论内容 |
+| `parentId` | string | 否 | 父评论ID（用于楼中楼回复） |
+| `replyToUserId` | string | 否 | 回复的用户ID |
+
+**响应示例**: 同 3.13 单条评论结构
+
+---
+
+### 3.15 获取我的回复
+
+- **接口**: `GET /api/posts/my-comments`
+- **说明**: 获取当前用户发表的所有评论，按创建时间倒序
+- **是否需要登录**: 是
+
+**响应示例**: 同 3.13 评论列表结构
+
+---
+
+## 四、用户模块
+
+### 4.1 更新用户资料
+
+- **接口**: `PUT /api/users/me`
+- **说明**: 更新当前用户的昵称、个人简介、头像
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "username": "新昵称",
+  "bio": "新的个人简介",
+  "avatarUrl": "/files/20260627/uuid.png"
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `username` | string | 否 | 新昵称（修改时检查重复） |
+| `bio` | string | 否 | 个人简介 |
+| `avatarUrl` | string | 否 | 头像URL（上传文件后获取） |
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "user-uuid-xxx",
+    "username": "新昵称",
+    "email": "test@example.com",
+    "phone": "13800138000",
+    "avatarUrl": "/files/20260627/uuid.png",
+    "bio": "新的个人简介",
+    "schoolId": "3",
+    "createTime": "2026-06-27 12:00:00"
+  },
+  "timestamp": 1719456789000
+}
+```
+
+---
+
+## 五、管理模块
 
 ### 4.1 清空帖子数据
 
@@ -558,9 +703,9 @@ Authorization: Bearer {token}
 
 ---
 
-## 五、文件模块
+## 六、文件模块
 
-### 5.1 文件上传
+### 6.1 文件上传
 
 - **接口**: `POST /api/files/upload`
 - **说明**: 上传文件
@@ -605,7 +750,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 5.2 文件访问
+### 6.2 文件访问
 
 - **接口**: `GET /api/files/{date}/{filename}`
 - **说明**: 访问/下载上传的文件
@@ -614,7 +759,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 六、错误码汇总
+## 七、错误码汇总
 
 | 错误码 | 错误信息 | 可能原因 |
 |--------|---------|---------|
@@ -637,10 +782,11 @@ Authorization: Bearer {token}
 
 ---
 
-## 七、版本历史
+## 八、版本历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | v1.0 | 2026-06-27 | 初始版本，包含认证、帖子、文件模块 |
 | v1.1 | 2026-06-27 | 收藏/点赞改为DB持久化+Redis缓存；帖子详情记录浏览历史；新增管理模块（清空/生成数据）；网关白名单修复 |
 | v1.2 | 2026-06-27 | 新增帖子状态查询接口(status)；新增个人主页接口(history/starred/liked/mine/my-stats)；列表页收藏按钮对接后端；个人主页改为入口按钮+独立列表页 |
+| v1.3 | 2026-06-27 | 新增评论功能(发表/列表)；新增用户资料更新(头像/昵称/简介)；新增我的回复；新增学校帖子数统计；修复nginx /api/代理优先级 |
