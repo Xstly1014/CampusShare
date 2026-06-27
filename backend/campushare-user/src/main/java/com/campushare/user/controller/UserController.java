@@ -30,6 +30,7 @@ public class UserController {
     private final UserMapper userMapper;
     private final FollowMapper followMapper;
     private final PostService postService;
+    private final com.campushare.user.service.NotificationService notificationService;
 
     /**
      * 获取当前用户信息
@@ -222,6 +223,8 @@ public class UserController {
                     .followingId(userId)
                     .build();
             followMapper.insert(follow);
+            // Create follow notification
+            notificationService.createNotification(userId, currentUserId, "FOLLOW", null, null);
             return Result.success(true);
         }
     }

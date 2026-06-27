@@ -175,6 +175,21 @@ CREATE TABLE IF NOT EXISTS messages (
     INDEX idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私信消息表';
 
+-- 创建通知表
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(36) NOT NULL COMMENT '接收者ID',
+    sender_id VARCHAR(36) NOT NULL COMMENT '触发者ID',
+    type VARCHAR(20) NOT NULL COMMENT '类型：LIKE-点赞，STAR-收藏，FOLLOW-关注',
+    target_id VARCHAR(36) COMMENT '目标ID（帖子ID，关注类为NULL）',
+    target_title VARCHAR(200) COMMENT '目标标题（帖子标题）',
+    is_read TINYINT DEFAULT 0 COMMENT '是否已读：0-未读，1-已读',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    INDEX idx_user (user_id),
+    INDEX idx_user_type (user_id, type),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知表';
+
 -- 创建资源表
 CREATE TABLE IF NOT EXISTS resources (
     id VARCHAR(36) PRIMARY KEY COMMENT '资源ID',

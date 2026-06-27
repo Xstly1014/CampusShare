@@ -11,6 +11,7 @@ import SettingsPage from '../pages/SettingsPage'
 import UserProfilePage from '../pages/UserProfilePage'
 import FollowListPage from '../pages/FollowListPage'
 import MessagePage from '../pages/MessagePage'
+import NotificationPage from '../pages/NotificationPage'
 
 // 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -114,6 +115,10 @@ export default function Router() {
         <Route
           path="/messages/:userId"
           element={<PrivateRoute><MessagePage /></PrivateRoute>}
+        />
+        <Route
+          path="/notifications"
+          element={<PrivateRoute><NotificationPage /></PrivateRoute>}
         />
 
         {/* 未匹配路由：重定向到首页 */}

@@ -75,6 +75,7 @@ export default function UserProfilePage() {
   const [activeTab, setActiveTab] = useState<TabType>('posts')
   const [posts, setPosts] = useState<BackendPost[]>([])
   const [listLoading, setListLoading] = useState(false)
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
 
   const fetchProfile = useCallback(async () => {
     if (!userId) return
@@ -157,7 +158,10 @@ export default function UserProfilePage() {
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-5xl mx-auto px-4 py-6">
           <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <div
+              onClick={() => profile.avatarUrl && setShowAvatarModal(true)}
+              className={`w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0 ${profile.avatarUrl ? 'cursor-pointer' : ''}`}
+            >
               {profile.avatarUrl ? (
                 <img src={profile.avatarUrl.startsWith('/files/') ? `/api${profile.avatarUrl}` : profile.avatarUrl} alt={profile.username} className="w-full h-full object-cover" />
               ) : (
@@ -248,6 +252,27 @@ export default function UserProfilePage() {
           <div className="text-center py-12"><p className="text-gray-400 text-sm">暂无内容</p></div>
         )}
       </div>
+
+      {/* Avatar viewer modal */}
+      {showAvatarModal && profile?.avatarUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center"
+          onClick={() => setShowAvatarModal(false)}
+        >
+          <img
+            src={profile.avatarUrl.startsWith('/files/') ? `/api${profile.avatarUrl}` : profile.avatarUrl}
+            alt={profile.username}
+            className="max-w-[80vw] max-h-[80vh] rounded-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setShowAvatarModal(false)}
+            className="absolute top-6 right-6 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white text-xl"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }

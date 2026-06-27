@@ -4,6 +4,7 @@ import { ChevronLeft, Send, MessageSquare } from 'lucide-react'
 import { messageApi, userApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
+import { formatTime } from '../utils/time'
 
 interface MessageItem {
   id: string
@@ -14,21 +15,6 @@ interface MessageItem {
   content: string
   isRead: number
   createTime: string
-}
-
-function formatTime(dateStr: string): string {
-  if (!dateStr) return ''
-  const date = new Date(dateStr.replace(' ', 'T'))
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const minutes = Math.floor(diff / (1000 * 60))
-  const hours = Math.floor(diff / (1000 * 60 * 60))
-  const isSameDay = date.toDateString() === now.toDateString()
-  if (isSameDay) {
-    if (minutes < 60) return `${minutes}分钟前`
-    return `${hours}小时前`
-  }
-  return `${date.getMonth() + 1}月${date.getDate()}日`
 }
 
 export default function MessagePage() {

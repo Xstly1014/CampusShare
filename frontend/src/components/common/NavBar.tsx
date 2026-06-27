@@ -1,4 +1,4 @@
-import { Home, Package, User } from 'lucide-react'
+import { Home, Package, Bell, User } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 export default function NavBar() {
@@ -8,7 +8,8 @@ export default function NavBar() {
   const navItems = [
     { path: '/home', icon: Home, label: '首页' },
     { path: '/warehouse', icon: Package, label: '仓库' },
-    { path: '/profile', icon: User, label: '个人主页' },
+    { path: '/notifications', icon: Bell, label: '通知' },
+    { path: '/profile', icon: User, label: '我的' },
   ]
 
   const isActive = (path: string) => {
@@ -26,7 +27,7 @@ export default function NavBar() {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex flex-col items-center justify-center py-2 px-3 transition-colors ${
+                className={`flex flex-col items-center justify-center py-2 px-3 transition-colors relative ${
                   active
                     ? 'text-blue-600'
                     : 'text-gray-600 hover:text-blue-600'

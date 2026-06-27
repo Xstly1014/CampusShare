@@ -14,6 +14,7 @@ import com.campushare.user.mapper.PostLikeMapper;
 import com.campushare.user.mapper.PostMapper;
 import com.campushare.user.mapper.PostStarMapper;
 import com.campushare.user.mapper.ViewHistoryMapper;
+import com.campushare.user.service.NotificationService;
 import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -41,6 +42,7 @@ public class PostServiceImpl implements PostService {
     private final ViewHistoryMapper viewHistoryMapper;
     private final RedisTemplate<String, String> redisTemplate;
     private final MeterRegistry meterRegistry;
+    private final NotificationService notificationService;
 
     // Redis key patterns
     private static final String REDIS_KEY_STAR = "post:star:";
@@ -205,7 +207,7 @@ public class PostServiceImpl implements PostService {
     @Transactional
     public boolean toggleStar(String userId, String postId) {
         // Verify post exists
-        getPostById(postId);
+        Post post = getPostById(postId);
 
         String redisKey = REDIS_KEY_STAR + postId + ":" + userId;
 
@@ -236,6 +238,8 @@ public class PostServiceImpl implements PostService {
                     .eq(Post::getId, postId)
                     .setSql("star_count = star_count + 1"));
             redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
+            // Create notification for post author
+            notificationService.createNotification(post.getAuthorId(), userId, "STAR", postId, post.getTitle());
             log.info("用户 {} 收藏帖子 {}", userId, postId);
             return true;
         }
@@ -248,7 +252,7 @@ public class PostServiceImpl implements PostService {
     @Transactional
     public boolean toggleLike(String userId, String postId) {
         // Verify post exists
-        getPostById(postId);
+        Post post = getPostById(postId);
 
         String redisKey = REDIS_KEY_LIKE + postId + ":" + userId;
 
@@ -279,6 +283,8 @@ public class PostServiceImpl implements PostService {
                     .eq(Post::getId, postId)
                     .setSql("like_count = like_count + 1"));
             redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
+            // Create notification for post author
+            notificationService.createNotification(post.getAuthorId(), userId, "LIKE", postId, post.getTitle());
             log.info("用户 {} 点赞帖子 {}", userId, postId);
             return true;
         }
