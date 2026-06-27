@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText, ArrowTurnDownLeft } from 'lucide-react'
+import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText } from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
