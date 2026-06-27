@@ -199,13 +199,15 @@ export default function SchoolDetailPage() {
     if (!schoolId) return
     setLoading(true)
     try {
-      const data = await postApi.getBySchool(schoolId, {
+      const response = await postApi.getBySchool(schoolId, {
         postType: filterType === 'all' ? undefined : filterType,
         sortType,
         page: 1,
         size: 50,
       })
-      const viewPosts: PostView[] = (data as unknown as BackendPost[]).map((p) => ({
+      // response is ApiResponse, actual post list is in response.data
+      const postList: BackendPost[] = response.data || []
+      const viewPosts: PostView[] = postList.map((p) => ({
         id: p.id,
         schoolId: p.schoolId,
         type: (p.postType as PostType) || 'discussion',

@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -74,8 +73,10 @@ public class DataInitServiceImpl implements DataInitService {
 
     private static final Random random = new Random();
 
+    /** Maximum size for dummy test files: 1KB (avoids OOM when generating 6000+ files) */
+    private static final int MAX_DUMMY_FILE_SIZE = 1024;
+
     @Override
-    @Transactional
     public String initTestData(int postsPerSchool) {
         int totalPosts = 0;
         int totalFiles = 0;
@@ -88,45 +89,60 @@ public class DataInitServiceImpl implements DataInitService {
                 String postType = getRandomPostType();
                 String title = generateTitle();
                 String content = generateContent();
+                LocalDateTime now = LocalDateTime.now();
+                LocalDateTime randomTime = generateRandomTime();
 
-                Post.PostBuilder builder = Post.builder()
-                        .schoolId(schoolId)
-                        .authorId(generateRandomUserId())
-                        .postType(postType)
-                        .title(title)
-                        .content(content)
-                        .viewCount(random.nextInt(5000))
-                        .starCount(random.nextInt(200))
-                        .likeCount(random.nextInt(500))
-                        .commentCount(random.nextInt(100))
-                        .status(1)
-                        .createTime(generateRandomTime())
-                        .updateTime(generateRandomTime());
+                Post post = new Post();
+                post.setSchoolId(schoolId);
+                post.setAuthorId(generateRandomUserId());
+                post.setPostType(postType);
+                post.setTitle(title);
+                post.setContent(content);
+                post.setViewCount(random.nextInt(5000));
+                post.setStarCount(random.nextInt(200));
+                post.setLikeCount(random.nextInt(500));
+                post.setCommentCount(random.nextInt(100));
+                post.setStatus(1);
+                post.setCreateTime(randomTime);
+                post.setUpdateTime(randomTime);
 
                 if ("resource".equals(postType) && random.nextDouble() < 0.8) {
                     String fileType = getRandomFileType();
-                    long fileSize = generateFileSize(fileType);
                     String fileName = generateFileName(title, fileType);
-                    String fileUrl = generateFileAndGetUrl(fileName, fileType, fileSize);
-
-                    builder.fileUrl(fileUrl)
-                            .fileName(fileName)
-                            .fileType(fileType)
-                            .fileSize(fileSize);
-                    totalFiles++;
+                    String fileUrl = generateFileAndGetUrl(fileName, fileType);
+                    if (fileUrl != null) {
+                        post.setFileUrl(fileUrl);
+                        post.setFileName(fileName);
+                        post.setFileType(fileType);
+                        post.setFileSize((long) MAX_DUMMY_FILE_SIZE);
+                        totalFiles++;
+                    }
                 }
 
-                posts.add(builder.build());
+                posts.add(post);
                 totalPosts++;
 
                 if (posts.size() >= 100) {
-                    posts.forEach(postMapper::insert);
+                    for (Post p : posts) {
+                        try {
+                            postMapper.insert(p);
+                        } catch (Exception e) {
+                            log.error("插入帖子失败: title={}", p.getTitle(), e);
+                        }
+                    }
                     posts.clear();
+                    log.info("学校 {} 已插入 {} 条", schoolId, totalPosts);
                 }
             }
 
             if (!posts.isEmpty()) {
-                posts.forEach(postMapper::insert);
+                for (Post p : posts) {
+                    try {
+                        postMapper.insert(p);
+                    } catch (Exception e) {
+                        log.error("插入帖子失败: title={}", p.getTitle(), e);
+                    }
+                }
             }
             log.info("学校 {} 数据生成完成", schoolId);
         }
@@ -181,24 +197,14 @@ public class DataInitServiceImpl implements DataInitService {
         return now.minusDays(daysBack).minusHours(hoursBack).minusMinutes(minutesBack);
     }
 
-    private long generateFileSize(String fileType) {
-        return switch (fileType) {
-            case "pdf" -> 500 * 1024 + random.nextInt(5 * 1024 * 1024);
-            case "doc", "docx" -> 100 * 1024 + random.nextInt(2 * 1024 * 1024);
-            case "ppt", "pptx" -> 500 * 1024 + random.nextInt(10 * 1024 * 1024);
-            case "xls", "xlsx" -> 50 * 1024 + random.nextInt(1024 * 1024);
-            case "zip" -> 1024 * 1024 + random.nextInt(20 * 1024 * 1024);
-            case "jpg", "png" -> 100 * 1024 + random.nextInt(2 * 1024 * 1024);
-            default -> 10 * 1024 + random.nextInt(500 * 1024);
-        };
-    }
-
     private String generateFileName(String title, String fileType) {
-        String cleanTitle = title.replaceAll("[【】\\s]", "").substring(0, Math.min(20, title.length()));
+        String cleanTitle = title.replaceAll("[【】\\s]", "");
+        int maxLen = Math.min(20, cleanTitle.length());
+        cleanTitle = cleanTitle.substring(0, maxLen);
         return cleanTitle + "." + fileType;
     }
 
-    private String generateFileAndGetUrl(String fileName, String fileType, long fileSize) {
+    private String generateFileAndGetUrl(String fileName, String fileType) {
         try {
             String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
             Path dirPath = Paths.get(uploadPath, dateStr);
@@ -208,30 +214,29 @@ public class DataInitServiceImpl implements DataInitService {
             String storedName = uuid + "." + fileType;
             Path filePath = dirPath.resolve(storedName);
 
-            byte[] dummyContent = generateDummyFileContent(fileType, fileSize);
+            byte[] dummyContent = generateDummyFileContent(fileType);
             Files.write(filePath, dummyContent);
 
             return "/files/" + dateStr + "/" + storedName;
         } catch (IOException e) {
-            log.error("生成测试文件失败", e);
+            log.error("生成测试文件失败: fileName={}", fileName, e);
             return null;
         }
     }
 
-    private byte[] generateDummyFileContent(String fileType, long fileSize) {
-        int size = (int) Math.min(fileSize, 10 * 1024 * 1024);
-        byte[] data = new byte[size];
+    private byte[] generateDummyFileContent(String fileType) {
+        byte[] data = new byte[MAX_DUMMY_FILE_SIZE];
 
         switch (fileType) {
             case "pdf":
                 byte[] pdfHeader = "%PDF-1.4\n%dummy pdf\n".getBytes();
-                System.arraycopy(pdfHeader, 0, data, 0, Math.min(pdfHeader.length, size));
-                for (int i = pdfHeader.length; i < size; i++) {
+                System.arraycopy(pdfHeader, 0, data, 0, Math.min(pdfHeader.length, data.length));
+                for (int i = pdfHeader.length; i < data.length; i++) {
                     data[i] = (byte) (random.nextInt(26) + 'a');
                 }
                 break;
             case "txt":
-                for (int i = 0; i < size; i++) {
+                for (int i = 0; i < data.length; i++) {
                     data[i] = (byte) (random.nextInt(26) + 'a');
                     if (i % 80 == 0) data[i] = '\n';
                 }
