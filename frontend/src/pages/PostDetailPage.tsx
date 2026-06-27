@@ -21,7 +21,7 @@ const typeColors: Record<PostType, string> = {
 }
 
 function formatTime(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = new Date(dateStr.replace(' ', 'T'))
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const seconds = Math.floor(diff / 1000)

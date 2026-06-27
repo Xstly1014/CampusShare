@@ -26,6 +26,8 @@ interface BackendPost {
   id: string
   schoolId: string
   authorId: string
+  authorName?: string
+  authorAvatar?: string
   postType: string
   title: string
   content: string
@@ -75,7 +77,7 @@ const typeColors: Record<PostType, string> = {
 }
 
 function timeAgo(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = new Date(dateStr.replace(' ', 'T'))
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const seconds = Math.floor(diff / 1000)
@@ -227,8 +229,10 @@ export default function SchoolDetailPage() {
         title: p.title,
         author: {
           id: p.authorId,
-          username: p.authorId.slice(0, 8),
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
+          username: p.authorName || p.authorId.slice(0, 8),
+          avatar: p.authorAvatar
+            ? (p.authorAvatar.startsWith('/files/') ? `/api${p.authorAvatar}` : p.authorAvatar)
+            : `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
         },
         createdAt: p.createTime,
         stars: p.starCount || 0,

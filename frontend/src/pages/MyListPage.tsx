@@ -10,6 +10,8 @@ interface BackendPost {
   id: string
   schoolId: string
   authorId: string
+  authorName?: string
+  authorAvatar?: string
   postType: string
   title: string
   content: string
@@ -50,7 +52,7 @@ function formatNumber(n: number): string {
 }
 
 function formatTime(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = new Date(dateStr.replace(' ', 'T'))
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const seconds = Math.floor(diff / 1000)
@@ -178,8 +180,10 @@ export default function MyListPage() {
                 <div className="flex items-start gap-3">
                   {/* 头像 */}
                   <img
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`}
-                    alt={post.authorId}
+                    src={post.authorAvatar
+                      ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
+                      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`}
+                    alt={post.authorName || post.authorId}
                     className="w-10 h-10 rounded-full flex-shrink-0"
                   />
 
@@ -208,7 +212,7 @@ export default function MyListPage() {
 
                     {/* 作者信息 */}
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-gray-500">{post.authorId.slice(0, 8)}</span>
+                      <span className="text-xs text-gray-500">{post.authorName || post.authorId.slice(0, 8)}</span>
 
                       <div className="flex items-center gap-3 text-gray-400">
                         <span className="flex items-center gap-1 text-xs">
