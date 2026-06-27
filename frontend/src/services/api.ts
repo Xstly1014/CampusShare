@@ -134,4 +134,13 @@ export const postApi = {
   toggleStar: (postId: string) => api.post(`/posts/${postId}/star`),
 
   toggleLike: (postId: string) => api.post(`/posts/${postId}/like`),
+
+  getHistory: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/history?page=${page}&size=${size}`),
+
+  getStarred: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/starred?page=${page}&size=${size}`),
+
+  getLiked: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/liked?page=${page}&size=${size}`),
 }

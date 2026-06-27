@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import NavBar from '../components/common/NavBar'
+import { postApi } from '../services/api'
 import {
   User,
   Mail,
@@ -16,64 +18,44 @@ import {
   Settings,
   HelpCircle,
   Shield,
-  FileText,
-  Download,
 } from 'lucide-react'
-
-type TabType = 'browse' | 'starred' | 'liked'
-
-interface MockPost {
-  id: string
-  title: string
-  type: 'resource' | 'discussion'
-  school: string
-  author: string
-  time: string
-  stats: string
-}
-
-const mockBrowsePosts: MockPost[] = [
-  { id: '1', title: '高等数学期末复习重点整理', type: 'resource', school: '北京大学', author: '数学小王子', time: '2小时前', stats: '328收藏 · 2103浏览' },
-  { id: '2', title: '2025年春季学期选课交流', type: 'discussion', school: '北京大学', author: '校园生活家', time: '5小时前', stats: '89收藏 · 3560浏览' },
-  { id: '3', title: '线性代数知识点总结（思维导图版）', type: 'resource', school: '北京大学', author: '学霸小李', time: '昨天', stats: '256收藏 · 1820浏览' },
-]
-
-const mockStarredPosts: MockPost[] = [
-  { id: '2', title: '2025年春季学期选课交流', type: 'discussion', school: '北京大学', author: '校园生活家', time: '5小时前', stats: '89收藏 · 3560浏览' },
-  { id: '4', title: '英语四六级高频词汇表', type: 'resource', school: '北京大学', author: '英语达人', time: '3天前', stats: '892收藏 · 7800浏览' },
-]
-
-const mockLikedPosts: MockPost[] = [
-  { id: '5', title: '期末考试周图书馆占座攻略', type: 'discussion', school: '北京大学', author: '早起鸟', time: '1天前', stats: '445收藏 · 5200浏览' },
-  { id: '6', title: '校园美食推荐第二弹', type: 'discussion', school: '北京大学', author: '吃货小分队', time: '2天前', stats: '567收藏 · 8900浏览' },
-]
 
 export default function ProfilePage() {
   const { user, logout } = useAuth()
-  const [activeTab, setActiveTab] = useState<TabType>('browse')
+  const navigate = useNavigate()
   const [showEditModal, setShowEditModal] = useState(false)
   const [editUsername, setEditUsername] = useState(user?.username || '')
   const [editBio, setEditBio] = useState('这个人很懒，什么都没留下...')
   const [bio, setBio] = useState('这个人很懒，什么都没留下...')
   const [avatar, setAvatar] = useState<string | null>(null)
+  const [counts, setCounts] = useState({ browse: 0, starred: 0, liked: 0 })
 
-  const tabPosts: Record<TabType, MockPost[]> = {
-    browse: mockBrowsePosts,
-    starred: mockStarredPosts,
-    liked: mockLikedPosts,
-  }
+  // Fetch counts for the three lists
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const [historyRes, starredRes, likedRes] = await Promise.all([
+          postApi.getHistory(1, 1),
+          postApi.getStarred(1, 1),
+          postApi.getLiked(1, 1),
+        ])
+        setCounts({
+          browse: (historyRes.data || []).length,
+          starred: (starredRes.data || []).length,
+          liked: (likedRes.data || []).length,
+        })
+      } catch (err) {
+        // Silently ignore, counts stay 0
+      }
+    }
+    fetchCounts()
+  }, [])
 
-  const tabIcons: Record<TabType, React.ReactNode> = {
-    browse: <Clock className="w-4 h-4" />,
-    starred: <Star className="w-4 h-4" />,
-    liked: <ThumbsUp className="w-4 h-4" />,
-  }
-
-  const tabLabels: Record<TabType, string> = {
-    browse: '浏览历史',
-    starred: '我的收藏',
-    liked: '我的点赞',
-  }
+  const listEntries = [
+    { key: 'history', label: '浏览历史', icon: <Clock className="w-5 h-5" />, count: counts.browse, color: 'bg-blue-50 text-blue-600' },
+    { key: 'starred', label: '我的收藏', icon: <Star className="w-5 h-5" />, count: counts.starred, color: 'bg-orange-50 text-orange-600' },
+    { key: 'liked', label: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, count: counts.liked, color: 'bg-red-50 text-red-600' },
+  ]
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -141,20 +123,29 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 统计数据 */}
+          {/* 统计数据 - 可点击跳转 */}
           <div className="grid grid-cols-4 gap-2 mt-5">
-            <div className="text-center">
-              <p className="text-base font-bold text-gray-900">3</p>
+            <button
+              onClick={() => navigate('/profile/history')}
+              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
+            >
+              <p className="text-base font-bold text-gray-900">{counts.browse}</p>
               <p className="text-xs text-gray-400 mt-0.5">浏览</p>
-            </div>
-            <div className="text-center">
-              <p className="text-base font-bold text-gray-900">2</p>
+            </button>
+            <button
+              onClick={() => navigate('/profile/starred')}
+              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
+            >
+              <p className="text-base font-bold text-gray-900">{counts.starred}</p>
               <p className="text-xs text-gray-400 mt-0.5">收藏</p>
-            </div>
-            <div className="text-center">
-              <p className="text-base font-bold text-gray-900">2</p>
+            </button>
+            <button
+              onClick={() => navigate('/profile/liked')}
+              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
+            >
+              <p className="text-base font-bold text-gray-900">{counts.liked}</p>
               <p className="text-xs text-gray-400 mt-0.5">点赞</p>
-            </div>
+            </button>
             <div className="text-center">
               <p className="text-base font-bold text-gray-900">0</p>
               <p className="text-xs text-gray-400 mt-0.5">上传</p>
@@ -181,69 +172,28 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Tab 切换 */}
+      {/* 我的互动 - 入口按钮（类似抖音） */}
       <div className="max-w-5xl mx-auto px-4 mt-3">
-        <div className="bg-white rounded-2xl border border-gray-100 p-1 flex">
-          {(Object.keys(tabLabels) as TabType[]).map((tab) => (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {listEntries.map((entry, idx) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm rounded-xl transition-colors ${
-                activeTab === tab
-                  ? 'bg-gray-900 text-white font-medium'
-                  : 'text-gray-500 hover:bg-gray-50'
+              key={entry.key}
+              onClick={() => navigate(`/profile/${entry.key}`)}
+              className={`w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-50 transition-colors ${
+                idx < listEntries.length - 1 ? 'border-b border-gray-50' : ''
               }`}
             >
-              {tabIcons[tab]}
-              {tabLabels[tab]}
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${entry.color}`}>
+                {entry.icon}
+              </div>
+              <span className="flex-1 text-left text-sm text-gray-700 font-medium">{entry.label}</span>
+              {entry.count > 0 && (
+                <span className="text-xs text-gray-400">{entry.count}</span>
+              )}
+              <ChevronRight className="w-4 h-4 text-gray-300" />
             </button>
           ))}
         </div>
-      </div>
-
-      {/* 帖子列表 */}
-      <div className="max-w-5xl mx-auto px-4 mt-3">
-        {tabPosts[activeTab].length > 0 ? (
-          <div className="space-y-2">
-            {tabPosts[activeTab].map((post) => (
-              <div
-                key={post.id}
-                className="bg-white rounded-xl border border-gray-100 p-3 hover:border-gray-200 transition-colors cursor-pointer"
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    post.type === 'resource' ? 'bg-blue-50' : 'bg-orange-50'
-                  }`}>
-                    {post.type === 'resource' ? (
-                      <FileText className="w-4 h-4 text-blue-600" />
-                    ) : (
-                      <Download className="w-4 h-4 text-orange-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900 font-medium line-clamp-1">{post.title}</p>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
-                      <span>{post.school}</span>
-                      <span>·</span>
-                      <span>{post.author}</span>
-                      <span>·</span>
-                      <span>{post.time}</span>
-                    </div>
-                    <p className="text-xs text-gray-300 mt-1">{post.stats}</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-2" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 py-12 text-center">
-            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
-              {tabIcons[activeTab]}
-            </div>
-            <p className="text-gray-400 text-sm">暂无{tabLabels[activeTab]}记录</p>
-          </div>
-        )}
       </div>
 
       {/* 功能菜单 */}
