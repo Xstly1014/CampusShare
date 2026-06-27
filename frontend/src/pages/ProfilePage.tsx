@@ -129,36 +129,24 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 统计数据 - 我的帖子的总浏览量/获赞/被收藏/帖子数 */}
+          {/* 统计数据 - 纯展示，我的帖子的总浏览量/获赞/被收藏/帖子数 */}
           <div className="grid grid-cols-4 gap-2 mt-5">
-            <button
-              onClick={() => navigate('/profile/mine')}
-              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
-            >
+            <div className="text-center">
               <p className="text-base font-bold text-gray-900">{stats.totalViews}</p>
               <p className="text-xs text-gray-400 mt-0.5">总浏览</p>
-            </button>
-            <button
-              onClick={() => navigate('/profile/mine')}
-              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
-            >
+            </div>
+            <div className="text-center">
               <p className="text-base font-bold text-gray-900">{stats.totalLikes}</p>
               <p className="text-xs text-gray-400 mt-0.5">获赞</p>
-            </button>
-            <button
-              onClick={() => navigate('/profile/mine')}
-              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
-            >
+            </div>
+            <div className="text-center">
               <p className="text-base font-bold text-gray-900">{stats.totalStars}</p>
               <p className="text-xs text-gray-400 mt-0.5">被收藏</p>
-            </button>
-            <button
-              onClick={() => navigate('/profile/mine')}
-              className="text-center hover:bg-gray-50 rounded-lg py-1 transition-colors"
-            >
+            </div>
+            <div className="text-center">
               <p className="text-base font-bold text-gray-900">{stats.postCount}</p>
               <p className="text-xs text-gray-400 mt-0.5">帖子</p>
-            </button>
+            </div>
           </div>
         </div>
       </div>
