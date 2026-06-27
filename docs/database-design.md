@@ -51,6 +51,7 @@ resources (待完善)
 | `view_history` | 浏览历史表 | 亿级 |
 | `follows` | 用户关注表 | 亿级 |
 | `messages` | 私信消息表 | 亿级 |
+| `notifications` | 通知表 | 亿级 |
 | `resources` | 资源表(legacy) | 百万级 |
 
 ---
@@ -347,6 +348,36 @@ INDEX idx_create_time (create_time)
 - 消息为单向记录（sender → receiver）
 - `is_read` 用于未读消息统计
 - 会话查询通过 `sender_id + receiver_id` 双向匹配（A→B 或 B→A）
+
+---
+
+### 2.13 通知表 `notifications`
+
+**说明**：存储点赞、收藏、关注等通知记录
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | INT | PRIMARY KEY AUTO_INCREMENT | - | 主键 |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 接收者ID（帖子作者或被关注者） |
+| `sender_id` | VARCHAR(36) | NOT NULL | - | 触发者ID |
+| `type` | VARCHAR(20) | NOT NULL | - | 类型：LIKE-点赞，STAR-收藏，FOLLOW-关注 |
+| `target_id` | VARCHAR(36) | - | NULL | 目标ID（帖子ID，关注类为NULL） |
+| `target_title` | VARCHAR(200) | - | NULL | 目标标题（帖子标题） |
+| `is_read` | TINYINT | - | 0 | 是否已读：0-未读，1-已读 |
+| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 创建时间 |
+
+**索引**：
+```sql
+INDEX idx_user (user_id)
+INDEX idx_user_type (user_id, type)
+INDEX idx_create_time (create_time)
+```
+
+**设计说明**：
+- 每次点赞/收藏/关注都会创建一条通知记录
+- `user_id` 是通知的接收者（帖子作者或被关注者）
+- `sender_id` 是执行操作的用户
+- 私信通知不写入此表，直接从 `messages` 表查询
 
 ---
 

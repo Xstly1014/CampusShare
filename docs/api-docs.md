@@ -954,7 +954,138 @@ Authorization: Bearer {token}
 
 ---
 
-## 六、管理模块
+## 六、通知模块
+
+### 6.1 获取通知列表
+
+- **接口**: `GET /api/notifications/feed`
+- **说明**: 获取统一通知列表（点赞/收藏/关注收纳组 + 陌生人私信收纳组 + 已对话私信列表），按最新时间倒序
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "itemType": "LIKE",
+      "title": "赞",
+      "preview": "张三 等3人赞了你的帖子",
+      "unreadCount": 2,
+      "totalCount": 3,
+      "latestTime": "2026-06-27 18:00:00",
+      "isPinned": false
+    },
+    {
+      "itemType": "CONVERSATION",
+      "title": "张三",
+      "preview": "你好！",
+      "unreadCount": 1,
+      "totalCount": 5,
+      "latestTime": "2026-06-27 17:30:00",
+      "isPinned": false,
+      "otherUserId": "xxx",
+      "otherUserName": "张三",
+      "otherUserAvatar": "/files/xxx.png"
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `itemType` | string | 通知类型：LIKE/STAR/FOLLOW/STRANGER_MSG/CONVERSATION |
+| `title` | string | 显示标题 |
+| `preview` | string | 最新内容预览 |
+| `unreadCount` | int | 未读数 |
+| `totalCount` | int | 总数 |
+| `latestTime` | string | 最新时间 |
+| `isPinned` | boolean | 是否置顶 |
+| `otherUserId` | string | 仅 CONVERSATION：对方用户ID |
+| `otherUserName` | string | 仅 CONVERSATION：对方用户名 |
+| `otherUserAvatar` | string | 仅 CONVERSATION：对方头像 |
+
+---
+
+### 6.2 获取通知详情
+
+- **接口**: `GET /api/notifications/detail/{type}`
+- **说明**: 展开通知收纳组，获取具体通知列表
+- **是否需要登录**: 是
+
+**路径参数**:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | LIKE / STAR / FOLLOW |
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "id": "1",
+      "senderId": "xxx",
+      "senderName": "张三",
+      "senderAvatar": "/files/xxx.png",
+      "type": "LIKE",
+      "targetId": "post-uuid",
+      "targetTitle": "高等数学复习资料",
+      "isRead": 0,
+      "createTime": "2026-06-27 18:00:00"
+    }
+  ]
+}
+```
+
+---
+
+### 6.3 标记通知已读
+
+- **接口**: `POST /api/notifications/read/{type}`
+- **说明**: 标记指定类型的所有通知为已读
+- **是否需要登录**: 是
+
+---
+
+### 6.4 切换通知置顶
+
+- **接口**: `POST /api/notifications/pin`
+- **说明**: 切换通知项的置顶状态
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "itemType": "CONVERSATION",
+  "targetId": "user-uuid-xxx"
+}
+```
+
+---
+
+### 6.5 获取未读数
+
+- **接口**: `GET /api/notifications/unread-count`
+- **说明**: 获取通知+私信的总未读数（用于铃铛红点）
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": 5
+}
+```
+
+---
+
+## 七、管理模块
 
 ### 4.1 清空帖子数据
 
@@ -1002,9 +1133,9 @@ Authorization: Bearer {token}
 
 ---
 
-## 七、文件模块
+## 八、文件模块
 
-### 7.1 文件上传
+### 8.1 文件上传
 
 - **接口**: `POST /api/files/upload`
 - **说明**: 上传文件
@@ -1049,7 +1180,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 7.2 文件访问
+### 8.2 文件访问
 
 - **接口**: `GET /api/files/{date}/{filename}`
 - **说明**: 访问/下载上传的文件
@@ -1058,7 +1189,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 八、错误码汇总
+## 九、错误码汇总
 
 | 错误码 | 错误信息 | 可能原因 |
 |--------|---------|---------|
@@ -1081,7 +1212,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 九、版本历史
+## 十、版本历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
@@ -1092,3 +1223,4 @@ Authorization: Bearer {token}
 | v1.4 | 2026-06-27 | 新增帖子编辑/删除；评论点赞/删除/楼中楼回复；列表接口返回作者信息(PostListDTO)；时区修复(Docker TZ)；文档下载完善 |
 | v1.5 | 2026-06-27 | 新增用户社交：关注/取消关注、关注统计、关注/粉丝/互关列表、用户主页资料、用户帖子/收藏/点赞/历史；新增密码修改、账号绑定、实名认证、用户搜索 |
 | v1.6 | 2026-06-27 | 新增私信模块：发送消息、会话记录、会话列表、可发送检查；单向消息限制（未互关/未回复仅可发一条） |
+| v1.7 | 2026-06-27 | 新增通知模块：通知列表(feed)、通知详情、标记已读、置顶、未读数；点赞/收藏/关注自动创建通知 |
