@@ -191,4 +191,18 @@ export const userApi = {
 
   realNameVerify: (data: { realName: string; idCard: string }) =>
     api.post('/users/me/real-name-verify', data),
+
+  searchUsers: (keyword: string) => api.get(`/users/search?keyword=${encodeURIComponent(keyword)}`),
+
+  getUserProfile: (userId: string) => api.get(`/users/${userId}/profile`),
+
+  getUserPosts: (userId: string, page = 1, size = 50) => api.get(`/users/${userId}/posts?page=${page}&size=${size}`),
+
+  getUserStarred: (userId: string, page = 1, size = 50) => api.get(`/users/${userId}/starred?page=${page}&size=${size}`),
+
+  getUserLiked: (userId: string, page = 1, size = 50) => api.get(`/users/${userId}/liked?page=${page}&size=${size}`),
+
+  getUserHistory: (userId: string, page = 1, size = 50) => api.get(`/users/${userId}/history?page=${page}&size=${size}`),
+
+  toggleFollow: (userId: string) => api.post(`/users/${userId}/follow`),
 }

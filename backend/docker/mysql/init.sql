@@ -151,6 +151,17 @@ CREATE TABLE IF NOT EXISTS view_history (
     INDEX idx_view_time (view_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='浏览历史表';
 
+-- 创建用户关注表
+CREATE TABLE IF NOT EXISTS follows (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    follower_id VARCHAR(36) NOT NULL COMMENT '关注者ID',
+    following_id VARCHAR(36) NOT NULL COMMENT '被关注者ID',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_follower_following (follower_id, following_id),
+    INDEX idx_follower (follower_id),
+    INDEX idx_following (following_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户关注表';
+
 -- 创建资源表
 CREATE TABLE IF NOT EXISTS resources (
     id VARCHAR(36) PRIMARY KEY COMMENT '资源ID',

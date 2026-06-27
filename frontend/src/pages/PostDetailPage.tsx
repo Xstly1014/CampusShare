@@ -423,11 +423,12 @@ export default function PostDetailPage() {
           <div className="flex items-center justify-between mb-5 pb-5 border-b border-gray-100">
             <div className="flex items-center gap-3">
               <img
+                onClick={() => navigate(`/user/${post.authorId}`)}
                 src={post.authorAvatar
                   ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
                   : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`}
                 alt={post.authorName || post.authorId}
-                className="w-10 h-10 rounded-full"
+                className="w-10 h-10 rounded-full cursor-pointer"
               />
               <div>
                 <p className="text-sm font-medium text-gray-900">{post.authorName || post.authorId.slice(0, 8)}</p>
@@ -539,9 +540,10 @@ export default function PostDetailPage() {
                     <div key={reply.id} className="flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0">
                       <CornerDownRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
                       <img
+                        onClick={() => navigate(`/user/${reply.userId}`)}
                         src={reply.avatarUrl.startsWith('/files/') ? `/api${reply.avatarUrl}` : reply.avatarUrl}
                         alt={reply.username}
-                        className="w-7 h-7 rounded-full flex-shrink-0"
+                        className="w-7 h-7 rounded-full flex-shrink-0 cursor-pointer"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
@@ -710,12 +712,14 @@ function CommentRow({
   onDelete: (id: string) => void
   onReply: (comment: CommentItem) => void
 }) {
+  const navigate = useNavigate()
   return (
     <div className="flex gap-3 py-4 border-b border-gray-50 last:border-0">
       <img
+        onClick={() => navigate(`/user/${comment.userId}`)}
         src={comment.avatarUrl.startsWith('/files/') ? `/api${comment.avatarUrl}` : comment.avatarUrl}
         alt={comment.username}
-        className="w-9 h-9 rounded-full flex-shrink-0"
+        className="w-9 h-9 rounded-full flex-shrink-0 cursor-pointer"
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
