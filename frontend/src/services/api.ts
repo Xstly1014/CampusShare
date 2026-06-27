@@ -114,6 +114,17 @@ export const postApi = {
     fileSize?: number
   }) => api.post('/posts', data),
 
+  edit: (postId: string, data: {
+    title?: string
+    content?: string
+    fileUrl?: string
+    fileName?: string
+    fileType?: string
+    fileSize?: number
+  }) => api.put(`/posts/${postId}`, data),
+
+  delete: (postId: string) => api.delete(`/posts/${postId}`),
+
   getDetail: (postId: string) => api.get(`/posts/${postId}`),
 
   getStatus: (postId: string) => api.get<{ starred: boolean; liked: boolean }>(`/posts/${postId}/status`),
@@ -153,6 +164,10 @@ export const postApi = {
 
   createComment: (postId: string, content: string, parentId?: string, replyToUserId?: string) =>
     api.post(`/posts/${postId}/comments`, { content, parentId, replyToUserId }),
+
+  deleteComment: (commentId: string) => api.delete(`/posts/comments/${commentId}`),
+
+  toggleCommentLike: (commentId: string) => api.post(`/posts/comments/${commentId}/like`),
 
   getMyComments: () => api.get('/posts/my-comments'),
 

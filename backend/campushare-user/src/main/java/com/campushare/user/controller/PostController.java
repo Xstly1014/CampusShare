@@ -30,6 +30,25 @@ public class PostController {
         return Result.success(post);
     }
 
+    @PutMapping("/{postId}")
+    public Result<Post> editPost(
+            @RequestHeader("Authorization") String token,
+            @PathVariable String postId,
+            @RequestBody CreatePostRequest request) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        Post post = postService.editPost(userId, postId, request);
+        return Result.success(post);
+    }
+
+    @DeleteMapping("/{postId}")
+    public Result<Void> deletePost(
+            @RequestHeader("Authorization") String token,
+            @PathVariable String postId) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        postService.deletePost(userId, postId);
+        return Result.success(null);
+    }
+
     @GetMapping("/{postId}")
     public Result<Post> getPostDetail(
             @RequestHeader(value = "Authorization", required = false) String token,

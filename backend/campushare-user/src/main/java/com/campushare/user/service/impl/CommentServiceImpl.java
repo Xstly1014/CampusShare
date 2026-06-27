@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.user.dto.CommentDTO;
 import com.campushare.user.entity.Comment;
+import com.campushare.user.entity.CommentLike;
 import com.campushare.user.entity.Post;
 import com.campushare.user.entity.User;
+import com.campushare.user.mapper.CommentLikeMapper;
 import com.campushare.user.mapper.CommentMapper;
 import com.campushare.user.mapper.PostMapper;
 import com.campushare.user.mapper.UserMapper;
@@ -17,7 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -27,6 +31,7 @@ public class CommentServiceImpl implements CommentService {
     private final CommentMapper commentMapper;
     private final PostMapper postMapper;
     private final UserMapper userMapper;
+    private final CommentLikeMapper commentLikeMapper;
 
     @Override
     @Transactional
@@ -35,13 +40,11 @@ public class CommentServiceImpl implements CommentService {
             throw new BusinessException(40001, "评论内容不能为空");
         }
 
-        // Verify post exists
         Post post = postMapper.selectById(postId);
         if (post == null || post.getDeleted()) {
             throw new BusinessException(40004, "帖子不存在");
         }
 
-        // Create comment
         Comment comment = Comment.builder()
                 .postId(postId)
                 .userId(userId)
@@ -53,14 +56,11 @@ public class CommentServiceImpl implements CommentService {
                 .build();
         commentMapper.insert(comment);
 
-        // Increment post comment_count atomically
         postMapper.update(null, new LambdaUpdateWrapper<Post>()
                 .eq(Post::getId, postId)
                 .setSql("comment_count = comment_count + 1"));
 
         log.info("用户 {} 评论帖子 {}", userId, postId);
-
-        // Build DTO with user info
         return buildCommentDTO(comment);
     }
 
@@ -96,8 +96,106 @@ public class CommentServiceImpl implements CommentService {
         return result;
     }
 
+    @Override
+    @Transactional
+    public void deleteComment(String userId, String commentId) {
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null || comment.getDeleted()) {
+            throw new BusinessException(40004, "评论不存在");
+        }
+        if (!comment.getUserId().equals(userId)) {
+            throw new BusinessException(4030, "无权删除他人的评论");
+        }
+
+        commentMapper.deleteById(commentId);
+
+        // Decrement post comment_count
+        postMapper.update(null, new LambdaUpdateWrapper<Post>()
+                .eq(Post::getId, comment.getPostId())
+                .setSql("comment_count = GREATEST(0, comment_count - 1)"));
+
+        // Delete all likes for this comment
+        commentLikeMapper.delete(new LambdaQueryWrapper<CommentLike>()
+                .eq(CommentLike::getCommentId, commentId));
+
+        log.info("用户 {} 删除评论 {}", userId, commentId);
+    }
+
+    @Override
+    @Transactional
+    public boolean toggleCommentLike(String userId, String commentId) {
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null || comment.getDeleted()) {
+            throw new BusinessException(40004, "评论不存在");
+        }
+
+        CommentLike existing = commentLikeMapper.selectOne(
+                new LambdaQueryWrapper<CommentLike>()
+                        .eq(CommentLike::getCommentId, commentId)
+                        .eq(CommentLike::getUserId, userId));
+
+        if (existing != null) {
+            commentLikeMapper.deleteById(existing.getId());
+            commentMapper.update(null, new LambdaUpdateWrapper<Comment>()
+                    .eq(Comment::getId, commentId)
+                    .setSql("like_count = GREATEST(0, like_count - 1)"));
+            return false;
+        } else {
+            CommentLike like = CommentLike.builder()
+                    .commentId(commentId)
+                    .userId(userId)
+                    .build();
+            commentLikeMapper.insert(like);
+            commentMapper.update(null, new LambdaUpdateWrapper<Comment>()
+                    .eq(Comment::getId, commentId)
+                    .setSql("like_count = like_count + 1"));
+            return true;
+        }
+    }
+
+    @Override
+    public boolean isCommentLikedBy(String userId, String commentId) {
+        if (userId == null || userId.isEmpty()) {
+            return false;
+        }
+        Long count = commentLikeMapper.selectCount(
+                new LambdaQueryWrapper<CommentLike>()
+                        .eq(CommentLike::getCommentId, commentId)
+                        .eq(CommentLike::getUserId, userId));
+        return count != null && count > 0;
+    }
+
+    @Override
+    public Map<String, Boolean> getCommentLikeStatuses(String userId, List<String> commentIds) {
+        Map<String, Boolean> result = new HashMap<>();
+        if (userId == null || userId.isEmpty() || commentIds.isEmpty()) {
+            for (String id : commentIds) {
+                result.put(id, false);
+            }
+            return result;
+        }
+        List<CommentLike> likes = commentLikeMapper.selectList(
+                new LambdaQueryWrapper<CommentLike>()
+                        .eq(CommentLike::getUserId, userId)
+                        .in(CommentLike::getCommentId, commentIds));
+        for (String id : commentIds) {
+            result.put(id, false);
+        }
+        for (CommentLike like : likes) {
+            result.put(like.getCommentId(), true);
+        }
+        return result;
+    }
+
     private CommentDTO buildCommentDTO(Comment comment) {
         User user = userMapper.selectById(comment.getUserId());
+        String replyToUsername = null;
+        if (comment.getReplyToUserId() != null && !comment.getReplyToUserId().isEmpty()) {
+            User replyToUser = userMapper.selectById(comment.getReplyToUserId());
+            if (replyToUser != null) {
+                replyToUsername = replyToUser.getUsername();
+            }
+        }
         return CommentDTO.builder()
                 .id(comment.getId())
                 .postId(comment.getPostId())
@@ -107,6 +205,7 @@ public class CommentServiceImpl implements CommentService {
                         : "https://api.dicebear.com/7.x/avataaars/svg?seed=" + comment.getUserId())
                 .parentId(comment.getParentId())
                 .replyToUserId(comment.getReplyToUserId())
+                .replyToUsername(replyToUsername)
                 .content(comment.getContent())
                 .likeCount(comment.getLikeCount())
                 .createTime(comment.getCreateTime())

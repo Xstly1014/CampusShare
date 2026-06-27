@@ -129,6 +129,17 @@ CREATE TABLE IF NOT EXISTS post_likes (
     INDEX idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='帖子点赞表';
 
+-- 创建评论点赞表
+CREATE TABLE IF NOT EXISTS comment_likes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    comment_id VARCHAR(36) NOT NULL COMMENT '评论ID',
+    user_id VARCHAR(36) NOT NULL COMMENT '用户ID',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_comment_user (comment_id, user_id),
+    INDEX idx_user (user_id),
+    INDEX idx_comment (comment_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评论点赞表';
+
 -- 创建浏览历史表
 CREATE TABLE IF NOT EXISTS view_history (
     id INT PRIMARY KEY AUTO_INCREMENT,

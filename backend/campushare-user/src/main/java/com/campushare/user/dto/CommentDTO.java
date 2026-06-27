@@ -19,7 +19,10 @@ public class CommentDTO {
     private String avatarUrl;
     private String parentId;
     private String replyToUserId;
+    private String replyToUsername;
     private String content;
     private Integer likeCount;
+    private Boolean liked;
+    private Boolean isAuthor;
     private LocalDateTime createTime;
 }

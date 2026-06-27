@@ -19,8 +19,25 @@ public class CommentController {
     private final JwtUtils jwtUtils;
 
     @GetMapping("/{postId}/comments")
-    public Result<List<CommentDTO>> getComments(@PathVariable String postId) {
+    public Result<List<CommentDTO>> getComments(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @PathVariable String postId) {
         List<CommentDTO> comments = commentService.getCommentsByPostId(postId);
+        // Attach like statuses if logged in
+        String userId = extractUserId(token);
+        if (userId != null && !comments.isEmpty()) {
+            List<String> commentIds = comments.stream().map(CommentDTO::getId).toList();
+            Map<String, Boolean> statuses = commentService.getCommentLikeStatuses(userId, commentIds);
+            for (CommentDTO c : comments) {
+                c.setLiked(statuses.getOrDefault(c.getId(), false));
+                c.setIsAuthor(c.getUserId().equals(userId));
+            }
+        } else {
+            for (CommentDTO c : comments) {
+                c.setLiked(false);
+                c.setIsAuthor(false);
+            }
+        }
         return Result.success(comments);
     }
 
@@ -41,6 +58,37 @@ public class CommentController {
         String parentId = body.get("parentId");
         String replyToUserId = body.get("replyToUserId");
         CommentDTO comment = commentService.createComment(userId, postId, content, parentId, replyToUserId);
+        comment.setIsAuthor(true);
+        comment.setLiked(false);
         return Result.success(comment);
+    }
+
+    @DeleteMapping("/comments/{commentId}")
+    public Result<Void> deleteComment(
+            @RequestHeader("Authorization") String token,
+            @PathVariable String commentId) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        commentService.deleteComment(userId, commentId);
+        return Result.success(null);
+    }
+
+    @PostMapping("/comments/{commentId}/like")
+    public Result<Boolean> toggleCommentLike(
+            @RequestHeader("Authorization") String token,
+            @PathVariable String commentId) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        boolean isLiked = commentService.toggleCommentLike(userId, commentId);
+        return Result.success(isLiked);
+    }
+
+    private String extractUserId(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return jwtUtils.getUserId(token.replace("Bearer ", ""));
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

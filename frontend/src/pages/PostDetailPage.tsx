@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2 } from 'lucide-react'
+import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight } from 'lucide-react'
 import schoolsData from '../data/schools.json'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
@@ -60,15 +60,20 @@ interface CommentItem {
   userId: string
   username: string
   avatarUrl: string
+  parentId?: string
+  replyToUserId?: string
+  replyToUsername?: string
   content: string
   likeCount: number
+  liked?: boolean
+  isAuthor?: boolean
   createTime: string
 }
 
 export default function PostDetailPage() {
   const { postId, schoolId } = useParams<{ postId: string; schoolId: string }>()
   const navigate = useNavigate()
-  const { isAuthenticated } = useAuth()
+  const { user, isAuthenticated } = useAuth()
 
   const school = schoolsData.find((s) => s.id === schoolId)
 
@@ -82,31 +87,32 @@ export default function PostDetailPage() {
   const [comments, setComments] = useState<CommentItem[]>([])
   const [newComment, setNewComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
+  const [replyTo, setReplyTo] = useState<CommentItem | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
 
   const fetchPost = useCallback(async () => {
     if (!postId) return
     setLoading(true)
     try {
-      // 1. Get post detail (increments view count + records history)
       const res = await postApi.getDetail(postId)
       const p: BackendPost = res.data
       setPost(p)
       setStarCount(p.starCount || 0)
       setLikeCount(p.likeCount || 0)
 
-      // 2. Get current user's star/like status (if logged in)
       if (isAuthenticated) {
         try {
           const statusRes = await postApi.getStatus(postId)
           setIsStarred(statusRes.data.starred)
           setIsLiked(statusRes.data.liked)
-        } catch (err) {
-          // Status query failed, default to false
+        } catch {
           setIsStarred(false)
           setIsLiked(false)
         }
       }
-    } catch (err) {
+    } catch {
       toast.error('加载帖子失败')
     } finally {
       setLoading(false)
@@ -122,8 +128,8 @@ export default function PostDetailPage() {
     try {
       const res = await postApi.getComments(postId)
       setComments(res.data || [])
-    } catch (err) {
-      // ignore comment fetch errors
+    } catch {
+      // ignore
     }
   }, [postId])
 
@@ -131,6 +137,9 @@ export default function PostDetailPage() {
     fetchComments()
   }, [fetchComments])
 
+  // ================================================================
+  // Comment actions
+  // ================================================================
   const handleSubmitComment = async () => {
     if (!newComment.trim() || !postId || submittingComment) return
     if (!isAuthenticated) {
@@ -139,10 +148,15 @@ export default function PostDetailPage() {
     }
     setSubmittingComment(true)
     try {
-      const res = await postApi.createComment(postId, newComment.trim())
+      const res = await postApi.createComment(
+        postId,
+        newComment.trim(),
+        replyTo?.id,
+        replyTo?.userId,
+      )
       setComments((prev) => [...prev, res.data])
       setNewComment('')
-      // Update comment count in post
+      setReplyTo(null)
       if (post) {
         setPost({ ...post, commentCount: post.commentCount + 1 })
       }
@@ -153,6 +167,59 @@ export default function PostDetailPage() {
     }
   }
 
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm('确定删除这条评论吗？')) return
+    try {
+      await postApi.deleteComment(commentId)
+      setComments((prev) => prev.filter((c) => c.id !== commentId))
+      if (post) {
+        setPost({ ...post, commentCount: Math.max(0, post.commentCount - 1) })
+      }
+      toast.success('删除成功')
+    } catch (err) {
+      toast.error((err as Error).message || '删除失败')
+    }
+  }
+
+  const handleCommentLike = async (commentId: string) => {
+    if (!isAuthenticated) {
+      toast.warning('请先登录')
+      return
+    }
+    // Optimistic update
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              liked: !c.liked,
+              likeCount: c.liked ? c.likeCount - 1 : c.likeCount + 1,
+            }
+          : c,
+      ),
+    )
+    try {
+      await postApi.toggleCommentLike(commentId)
+    } catch {
+      // Rollback
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === commentId
+            ? {
+                ...c,
+                liked: !c.liked,
+                likeCount: c.liked ? c.likeCount - 1 : c.likeCount + 1,
+              }
+            : c,
+        ),
+      )
+      toast.error('操作失败')
+    }
+  }
+
+  // ================================================================
+  // Post actions
+  // ================================================================
   const handleStar = async () => {
     if (!isAuthenticated) {
       toast.warning('请先登录')
@@ -160,21 +227,17 @@ export default function PostDetailPage() {
     }
     if (!postId || toggling) return
     setToggling(true)
-    // Optimistic UI update
     const prevStarred = isStarred
     setIsStarred(!prevStarred)
     setStarCount(prevStarred ? starCount - 1 : starCount + 1)
     try {
       const res = await postApi.toggleStar(postId)
-      // Sync with server response
-      const serverStarred = res.data
-      setIsStarred(serverStarred)
-      setStarCount(serverStarred ? starCount + 1 : starCount - 1)
-    } catch (err) {
-      // Rollback on failure
+      setIsStarred(res.data)
+      setStarCount(res.data ? starCount + 1 : starCount - 1)
+    } catch {
       setIsStarred(prevStarred)
       setStarCount(prevStarred ? starCount + 1 : starCount - 1)
-      toast.error((err as Error).message || '操作失败')
+      toast.error('操作失败')
     } finally {
       setToggling(false)
     }
@@ -192,17 +255,56 @@ export default function PostDetailPage() {
     setLikeCount(prevLiked ? likeCount - 1 : likeCount + 1)
     try {
       const res = await postApi.toggleLike(postId)
-      const serverLiked = res.data
-      setIsLiked(serverLiked)
-      setLikeCount(serverLiked ? likeCount + 1 : likeCount - 1)
-    } catch (err) {
+      setIsLiked(res.data)
+      setLikeCount(res.data ? likeCount + 1 : likeCount - 1)
+    } catch {
       setIsLiked(prevLiked)
       setLikeCount(prevLiked ? likeCount + 1 : likeCount - 1)
-      toast.error((err as Error).message || '操作失败')
+      toast.error('操作失败')
     } finally {
       setToggling(false)
     }
   }
+
+  const handleDeletePost = async () => {
+    if (!postId) return
+    if (!confirm('确定删除这个帖子吗？删除后不可恢复。')) return
+    try {
+      await postApi.delete(postId)
+      toast.success('删除成功')
+      navigate(-1)
+    } catch (err) {
+      toast.error((err as Error).message || '删除失败')
+    }
+  }
+
+  const handleEditPost = () => {
+    if (!post) return
+    setEditTitle(post.title)
+    setEditContent(post.content || '')
+    setShowEditModal(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!postId || !editTitle.trim()) return
+    try {
+      await postApi.edit(postId, { title: editTitle.trim(), content: editContent })
+      setPost((prev) => prev ? { ...prev, title: editTitle.trim(), content: editContent } : prev)
+      setShowEditModal(false)
+      toast.success('修改成功')
+    } catch (err) {
+      toast.error((err as Error).message || '修改失败')
+    }
+  }
+
+  // ================================================================
+  // Render helpers
+  // ================================================================
+  const isPostAuthor = user?.id === post?.authorId
+
+  // Separate top-level comments and replies
+  const topLevelComments = comments.filter((c) => !c.parentId)
+  const getReplies = (parentId: string) => comments.filter((c) => c.parentId === parentId)
 
   if (loading) {
     return (
@@ -241,24 +343,39 @@ export default function PostDetailPage() {
           <span className="text-sm font-medium text-gray-900">
             {school ? school.name : '帖子详情'}
           </span>
-          <button className="p-1.5 -mr-1.5 hover:bg-gray-100 rounded-full transition-colors">
-            <Share2 className="w-5 h-5 text-gray-600" />
-          </button>
+          <div className="flex items-center gap-1">
+            {isPostAuthor && (
+              <>
+                <button
+                  onClick={handleEditPost}
+                  className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <Edit3 className="w-4 h-4 text-gray-500" />
+                </button>
+                <button
+                  onClick={handleDeletePost}
+                  className="p-1.5 hover:bg-red-50 rounded-full transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </button>
+              </>
+            )}
+            <button className="p-1.5 hover:bg-gray-100 rounded-full transition-colors">
+              <Share2 className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 帖子内容 */}
       <div className="max-w-5xl mx-auto px-4 py-4">
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          {/* 标签 */}
           <span className={`text-xs px-2.5 py-1 rounded-full font-medium mb-4 inline-block ${typeColors[postType]}`}>
             {typeLabels[postType]}
           </span>
 
-          {/* 标题 */}
           <h1 className="text-lg font-bold text-gray-900 mb-4 leading-snug">{post.title}</h1>
 
-          {/* 作者信息 */}
           <div className="flex items-center justify-between mb-5 pb-5 border-b border-gray-100">
             <div className="flex items-center gap-3">
               <img
@@ -271,23 +388,15 @@ export default function PostDetailPage() {
                 <p className="text-xs text-gray-400">{formatTime(post.createTime)}</p>
               </div>
             </div>
-            <button className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-full hover:bg-blue-100 transition-colors">
-              + 关注
-            </button>
           </div>
 
-          {/* 资源贴：描述 + 文件信息 */}
           {postType === 'resource' && (
             <>
               {post.content && (
                 <div className="mb-5">
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                    {post.content}
-                  </p>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
                 </div>
               )}
-
-              {/* 文件卡片 */}
               {post.fileUrl && (
                 <div className="bg-gray-50 rounded-xl p-4 flex items-center gap-4 mb-5">
                   <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-gray-200">
@@ -313,16 +422,12 @@ export default function PostDetailPage() {
             </>
           )}
 
-          {/* 讨论帖：正文内容 */}
           {postType === 'discussion' && post.content && (
             <div className="mb-5">
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                {post.content}
-              </p>
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
             </div>
           )}
 
-          {/* 统计数据 */}
           <div className="flex items-center gap-6 text-gray-400 pt-4 border-t border-gray-100">
             <span className="flex items-center gap-1.5 text-xs">
               <Eye className="w-4 h-4" />
@@ -331,9 +436,7 @@ export default function PostDetailPage() {
             <button
               onClick={handleStar}
               disabled={toggling}
-              className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${
-                isStarred ? 'text-orange-500' : 'hover:text-orange-500'
-              }`}
+              className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${isStarred ? 'text-orange-500' : 'hover:text-orange-500'}`}
             >
               <Star className={`w-4 h-4 ${isStarred ? 'fill-current' : ''}`} />
               {formatNumber(starCount)} 收藏
@@ -341,9 +444,7 @@ export default function PostDetailPage() {
             <button
               onClick={handleLike}
               disabled={toggling}
-              className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${
-                isLiked ? 'text-red-500' : 'hover:text-red-500'
-              }`}
+              className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
             >
               <ThumbsUp className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
               {formatNumber(likeCount)} 点赞
@@ -361,21 +462,62 @@ export default function PostDetailPage() {
             全部评论 <span className="text-gray-400 font-normal">({comments.length})</span>
           </h2>
           <div className="bg-white rounded-2xl border border-gray-100 px-4">
-            {comments.length > 0 ? (
-              comments.map((comment) => (
-                <div key={comment.id} className="flex gap-3 py-4 border-b border-gray-50 last:border-0">
-                  <img
-                    src={comment.avatarUrl}
-                    alt={comment.username}
-                    className="w-9 h-9 rounded-full flex-shrink-0"
+            {topLevelComments.length > 0 ? (
+              topLevelComments.map((comment) => (
+                <div key={comment.id}>
+                  {/* Top-level comment */}
+                  <CommentRow
+                    comment={comment}
+                    onLike={handleCommentLike}
+                    onDelete={handleDeleteComment}
+                    onReply={setReplyTo}
                   />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-900">{comment.username}</span>
-                      <span className="text-xs text-gray-400">{formatTime(comment.createTime)}</span>
+                  {/* Replies (楼中楼) */}
+                  {getReplies(comment.id).map((reply) => (
+                    <div key={reply.id} className="flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0">
+                      <CornerDownRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
+                      <img
+                        src={reply.avatarUrl.startsWith('/files/') ? `/api${reply.avatarUrl}` : reply.avatarUrl}
+                        alt={reply.username}
+                        className="w-7 h-7 rounded-full flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-gray-900">{reply.username}</span>
+                            {reply.replyToUsername && reply.replyToUsername !== comment.username && (
+                              <span className="text-xs text-gray-400">回复 @{reply.replyToUsername}</span>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-400">{formatTime(reply.createTime)}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 leading-relaxed mb-1">{reply.content}</p>
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => handleCommentLike(reply.id)}
+                            className={`flex items-center gap-1 text-xs transition-colors ${reply.liked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'}`}
+                          >
+                            <ThumbsUp className={`w-3 h-3 ${reply.liked ? 'fill-current' : ''}`} />
+                            {reply.likeCount > 0 && reply.likeCount}
+                          </button>
+                          <button
+                            onClick={() => setReplyTo(reply)}
+                            className="text-xs text-gray-400 hover:text-blue-600"
+                          >
+                            回复
+                          </button>
+                          {reply.isAuthor && (
+                            <button
+                              onClick={() => handleDeleteComment(reply.id)}
+                              className="text-xs text-gray-400 hover:text-red-500"
+                            >
+                              删除
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-700 leading-relaxed">{comment.content}</p>
-                  </div>
+                  ))}
                 </div>
               ))
             ) : (
@@ -390,24 +532,136 @@ export default function PostDetailPage() {
 
       {/* 底部评论输入框 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-20">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="flex-1 relative">
+        <div className="max-w-5xl mx-auto px-4 py-3">
+          {replyTo && (
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-xs text-gray-500">
+                回复 @{replyTo.username}
+              </span>
+              <button
+                onClick={() => setReplyTo(null)}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                取消回复
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
             <input
               type="text"
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSubmitComment()}
-              placeholder="说点什么..."
-              className="w-full px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all pr-10"
+              placeholder={replyTo ? `回复 @${replyTo.username}...` : '说点什么...'}
+              className="flex-1 px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
             />
+            <button
+              onClick={handleSubmitComment}
+              disabled={!newComment.trim() || submittingComment}
+              className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Send className="w-4 h-4" />
+            </button>
           </div>
+        </div>
+      </div>
+
+      {/* 编辑帖子弹窗 */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowEditModal(false)}>
+          <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-5">编辑帖子</h2>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">标题</label>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                maxLength={100}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-transparent transition-all"
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">内容</label>
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                rows={5}
+                maxLength={2000}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-transparent transition-all resize-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={!editTitle.trim()}
+                className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ================================================================
+// Comment row component
+// ================================================================
+function CommentRow({
+  comment,
+  onLike,
+  onDelete,
+  onReply,
+}: {
+  comment: CommentItem
+  onLike: (id: string) => void
+  onDelete: (id: string) => void
+  onReply: (comment: CommentItem) => void
+}) {
+  return (
+    <div className="flex gap-3 py-4 border-b border-gray-50 last:border-0">
+      <img
+        src={comment.avatarUrl.startsWith('/files/') ? `/api${comment.avatarUrl}` : comment.avatarUrl}
+        alt={comment.username}
+        className="w-9 h-9 rounded-full flex-shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm font-medium text-gray-900">{comment.username}</span>
+          <span className="text-xs text-gray-400">{formatTime(comment.createTime)}</span>
+        </div>
+        <p className="text-sm text-gray-700 leading-relaxed mb-2">{comment.content}</p>
+        <div className="flex items-center gap-4">
           <button
-            onClick={handleSubmitComment}
-            disabled={!newComment.trim() || submittingComment}
-            className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => onLike(comment.id)}
+            className={`flex items-center gap-1 text-xs transition-colors ${comment.liked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'}`}
           >
-            <Send className="w-4 h-4" />
+            <ThumbsUp className={`w-3.5 h-3.5 ${comment.liked ? 'fill-current' : ''}`} />
+            {comment.likeCount > 0 && comment.likeCount}
           </button>
+          <button
+            onClick={() => onReply(comment)}
+            className="text-xs text-gray-400 hover:text-blue-600"
+          >
+            回复
+          </button>
+          {comment.isAuthor && (
+            <button
+              onClick={() => onDelete(comment.id)}
+              className="text-xs text-gray-400 hover:text-red-500"
+            >
+              删除
+            </button>
+          )}
         </div>
       </div>
     </div>

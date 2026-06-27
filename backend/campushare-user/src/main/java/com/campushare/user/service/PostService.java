@@ -10,6 +10,12 @@ public interface PostService {
 
     Post createPost(String userId, CreatePostRequest request);
 
+    /** Edit an existing post (only by author) */
+    Post editPost(String userId, String postId, CreatePostRequest request);
+
+    /** Delete a post (logical delete, only by author) */
+    void deletePost(String userId, String postId);
+
     Post getPostById(String postId);
 
     List<Post> getPostsBySchool(String schoolId, String postType, String sortType, int page, int size);

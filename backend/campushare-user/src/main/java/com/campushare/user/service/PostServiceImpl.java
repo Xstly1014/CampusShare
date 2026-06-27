@@ -89,6 +89,44 @@ public class PostServiceImpl implements PostService {
     }
 
     // ================================================================
+    // Edit / Delete post
+    // ================================================================
+    @Override
+    @Transactional
+    public Post editPost(String userId, String postId, CreatePostRequest request) {
+        Post post = getPostById(postId);
+        if (!post.getAuthorId().equals(userId)) {
+            throw new BusinessException(4030, "无权编辑他人的帖子");
+        }
+        if (request.getTitle() != null && !request.getTitle().trim().isEmpty()) {
+            post.setTitle(request.getTitle().trim());
+        }
+        if (request.getContent() != null) {
+            post.setContent(request.getContent());
+        }
+        if (request.getFileUrl() != null) {
+            post.setFileUrl(request.getFileUrl());
+            post.setFileName(request.getFileName());
+            post.setFileType(request.getFileType());
+            post.setFileSize(request.getFileSize());
+        }
+        postMapper.updateById(post);
+        return post;
+    }
+
+    @Override
+    @Transactional
+    public void deletePost(String userId, String postId) {
+        Post post = getPostById(postId);
+        if (!post.getAuthorId().equals(userId)) {
+            throw new BusinessException(4030, "无权删除他人的帖子");
+        }
+        // Logical delete
+        postMapper.deleteById(postId);
+        log.info("用户 {} 删除帖子 {}", userId, postId);
+    }
+
+    // ================================================================
     // Get post
     // ================================================================
     @Override
