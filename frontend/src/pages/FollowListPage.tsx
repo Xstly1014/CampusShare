@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { ChevronLeft, UserPlus, Users, UserCheck, MessageSquare } from 'lucide-react'
 import { userApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import { toast } from '../stores/toastStore'
 
 type ListType = 'following' | 'followers' | 'mutual'
@@ -20,10 +21,13 @@ const configMap: Record<ListType, { title: string; icon: React.ReactNode; fetche
 }
 
 export default function FollowListPage() {
-  const { type } = useParams<{ type: string }>()
+  const location = useLocation()
   const navigate = useNavigate()
+  const { user: currentUser } = useAuth()
 
-  const listType = (type as ListType) || 'following'
+  // Extract list type from URL path (e.g. /profile/following -> 'following')
+  const pathSegment = location.pathname.split('/').pop() as ListType
+  const listType: ListType = ['following', 'followers', 'mutual'].includes(pathSegment) ? pathSegment : 'following'
   const config = configMap[listType]
 
   const [users, setUsers] = useState<UserItem[]>([])
@@ -65,7 +69,7 @@ export default function FollowListPage() {
         ) : users.length > 0 ? (
           <div className="space-y-2">
             {users.map((u) => (
-              <div key={u.id} onClick={() => navigate(`/user/${u.id}`)} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors">
+              <div key={u.id} onClick={() => navigate(u.id === currentUser?.id ? '/profile' : `/user/${u.id}`)} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {u.avatarUrl ? <img src={u.avatarUrl.startsWith('/files/') ? `/api${u.avatarUrl}` : u.avatarUrl} alt={u.username} className="w-full h-full object-cover" /> : <span className="text-white font-bold">{u.username?.substring(0, 1).toUpperCase()}</span>}
                 </div>

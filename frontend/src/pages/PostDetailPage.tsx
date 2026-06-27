@@ -423,7 +423,7 @@ export default function PostDetailPage() {
           <div className="flex items-center justify-between mb-5 pb-5 border-b border-gray-100">
             <div className="flex items-center gap-3">
               <img
-                onClick={() => navigate(`/user/${post.authorId}`)}
+                onClick={() => navigate(post.authorId === user?.id ? '/profile' : `/user/${post.authorId}`)}
                 src={post.authorAvatar
                   ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
                   : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`}
@@ -540,7 +540,7 @@ export default function PostDetailPage() {
                     <div key={reply.id} className="flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0">
                       <CornerDownRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
                       <img
-                        onClick={() => navigate(`/user/${reply.userId}`)}
+                        onClick={() => navigate(reply.userId === user?.id ? '/profile' : `/user/${reply.userId}`)}
                         src={reply.avatarUrl.startsWith('/files/') ? `/api${reply.avatarUrl}` : reply.avatarUrl}
                         alt={reply.username}
                         className="w-7 h-7 rounded-full flex-shrink-0 cursor-pointer"
@@ -716,7 +716,7 @@ function CommentRow({
   return (
     <div className="flex gap-3 py-4 border-b border-gray-50 last:border-0">
       <img
-        onClick={() => navigate(`/user/${comment.userId}`)}
+        onClick={() => navigate(comment.userId === user?.id ? '/profile' : `/user/${comment.userId}`)}
         src={comment.avatarUrl.startsWith('/files/') ? `/api${comment.avatarUrl}` : comment.avatarUrl}
         alt={comment.username}
         className="w-9 h-9 rounded-full flex-shrink-0 cursor-pointer"

@@ -5,6 +5,7 @@ import SchoolCard from '../components/home/SchoolCard'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
 import { postApi, userApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 interface School {
   id: string
@@ -24,6 +25,7 @@ export default function HomePage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [schools, setSchools] = useState<School[]>(schoolsData)
   const [userResults, setUserResults] = useState<UserResult[]>([])
+  const { user } = useAuth()
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -73,7 +75,7 @@ export default function HomePage() {
             <h2 className="text-sm font-semibold text-gray-900 mb-3">用户</h2>
             <div className="space-y-2">
               {userResults.map((u) => (
-                <div key={u.id} onClick={() => navigate(`/user/${u.id}`)} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors">
+                <div key={u.id} onClick={() => navigate(u.id === user?.id ? '/profile' : `/user/${u.id}`)} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
                     {u.avatarUrl ? <img src={u.avatarUrl.startsWith('/files/') ? `/api${u.avatarUrl}` : u.avatarUrl} alt={u.username} className="w-full h-full object-cover" /> : <span className="text-white font-bold">{u.username?.substring(0, 1).toUpperCase()}</span>}
                   </div>

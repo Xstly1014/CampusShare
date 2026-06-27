@@ -1,5 +1,6 @@
 package com.campushare.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,8 @@ public class UserProfileDTO {
     private long totalStars;
     private long followerCount;
     private long followingCount;
+    @JsonProperty("isFollowing")
     private boolean isFollowing;
+    @JsonProperty("isSelf")
     private boolean isSelf;
 }
