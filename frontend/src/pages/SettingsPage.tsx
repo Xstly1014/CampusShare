@@ -1,8 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, User, Mail, Phone, Lock, Eye, Bell, Globe, Send } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../stores/toastStore'
+import { userApi, authApi } from '../services/api'
 
 type SettingsType = 'account' | 'privacy' | 'general' | 'help'
 
@@ -40,6 +41,111 @@ export default function SettingsPage() {
   const [feedback, setFeedback] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+
+  // Account security state
+  const [currentUser, setCurrentUser] = useState(user)
+  const [modal, setModal] = useState<'password' | 'email' | 'phone' | null>(null)
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [bindAccount, setBindAccount] = useState('')
+  const [verifyCode, setVerifyCode] = useState('')
+  const [sendingCode, setSendingCode] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await userApi.getMe()
+        setCurrentUser(res.data)
+      } catch { /* ignore */ }
+    }
+    if (settingsType === 'account') fetchUser()
+  }, [settingsType])
+
+  const handleSendCode = async (account: string, type: 'phone' | 'email') => {
+    if (!account.trim()) {
+      toast.warning('请输入' + (type === 'phone' ? '手机号' : '邮箱'))
+      return
+    }
+    setSendingCode(true)
+    try {
+      await authApi.sendCode(account, type)
+      toast.success('验证码已发送')
+    } catch (err) {
+      toast.error((err as Error).message || '发送失败')
+    } finally {
+      setSendingCode(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!oldPassword || !newPassword) {
+      toast.warning('请填写完整')
+      return
+    }
+    setSaving(true)
+    try {
+      await userApi.changePassword({ oldPassword, newPassword })
+      toast.success('密码修改成功')
+      setModal(null)
+      setOldPassword('')
+      setNewPassword('')
+    } catch (err) {
+      toast.error((err as Error).message || '修改失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleBindEmail = async () => {
+    if (!bindAccount || !verifyCode) {
+      toast.warning('请填写完整')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await userApi.bindEmail({ account: bindAccount, verifyCode })
+      setCurrentUser(res.data)
+      updateLocalStorageUser(res.data)
+      toast.success('邮箱绑定成功')
+      setModal(null)
+      setBindAccount('')
+      setVerifyCode('')
+    } catch (err) {
+      toast.error((err as Error).message || '绑定失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleBindPhone = async () => {
+    if (!bindAccount || !verifyCode) {
+      toast.warning('请填写完整')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await userApi.bindPhone({ account: bindAccount, verifyCode })
+      setCurrentUser(res.data)
+      updateLocalStorageUser(res.data)
+      toast.success('手机号绑定成功')
+      setModal(null)
+      setBindAccount('')
+      setVerifyCode('')
+    } catch (err) {
+      toast.error((err as Error).message || '绑定失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const updateLocalStorageUser = (userData: any) => {
+    const saved = localStorage.getItem('campusshare_user')
+    if (saved) {
+      const old = JSON.parse(saved)
+      localStorage.setItem('campusshare_user', JSON.stringify({ ...old, ...userData }))
+    }
+  }
 
   const handleFeedback = () => {
     if (!feedback.trim() || submitting) return
@@ -81,22 +187,24 @@ export default function SettingsPage() {
               <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-50">
                 <User className="w-4 h-4 text-gray-400" />
                 <span className="flex-1 text-sm text-gray-700">用户名</span>
-                <span className="text-sm text-gray-400">{user?.username}</span>
+                <span className="text-sm text-gray-400">{currentUser?.username}</span>
               </div>
-              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-50">
+              <button onClick={() => { setBindAccount(currentUser?.email || ''); setVerifyCode(''); setModal('email') }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
                 <Mail className="w-4 h-4 text-gray-400" />
-                <span className="flex-1 text-sm text-gray-700">邮箱</span>
-                <span className="text-sm text-gray-400">{user?.email || '未绑定'}</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-3.5">
+                <span className="flex-1 text-left text-sm text-gray-700">邮箱</span>
+                <span className="text-sm text-gray-400">{currentUser?.email || '未绑定'}</span>
+                <ChevronRight className="w-4 h-4 text-gray-300" />
+              </button>
+              <button onClick={() => { setBindAccount(currentUser?.phone || ''); setVerifyCode(''); setModal('phone') }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
                 <Phone className="w-4 h-4 text-gray-400" />
-                <span className="flex-1 text-sm text-gray-700">手机号</span>
-                <span className="text-sm text-gray-400">{user?.phone || '未绑定'}</span>
-              </div>
+                <span className="flex-1 text-left text-sm text-gray-700">手机号</span>
+                <span className="text-sm text-gray-400">{currentUser?.phone || '未绑定'}</span>
+                <ChevronRight className="w-4 h-4 text-gray-300" />
+              </button>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-medium text-gray-400">安全设置</p></div>
-              <button className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+              <button onClick={() => { setOldPassword(''); setNewPassword(''); setModal('password') }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
                 <Lock className="w-4 h-4 text-gray-400" />
                 <span className="flex-1 text-left text-sm text-gray-700">修改密码</span>
                 <ChevronRight className="w-4 h-4 text-gray-300" />
@@ -106,6 +214,57 @@ export default function SettingsPage() {
                 <span className="flex-1 text-left text-sm text-red-500">退出登录</span>
                 <ChevronRight className="w-4 h-4 text-gray-300" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* 修改密码弹窗 */}
+        {modal === 'password' && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setModal(null)}>
+            <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-bold text-gray-900 mb-4">修改密码</h3>
+              <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="旧密码" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="新密码（6-20位，含字母数字）" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-4" />
+              <div className="flex gap-3">
+                <button onClick={() => setModal(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
+                <button onClick={handleChangePassword} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 绑定邮箱弹窗 */}
+        {modal === 'email' && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setModal(null)}>
+            <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-bold text-gray-900 mb-4">{currentUser?.email ? '换绑邮箱' : '绑定邮箱'}</h3>
+              <input type="text" value={bindAccount} onChange={(e) => setBindAccount(e.target.value)} placeholder="邮箱地址" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
+              <div className="flex gap-2 mb-4">
+                <input type="text" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
+                <button onClick={() => handleSendCode(bindAccount, 'email')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setModal(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
+                <button onClick={handleBindEmail} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 绑定手机号弹窗 */}
+        {modal === 'phone' && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setModal(null)}>
+            <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-bold text-gray-900 mb-4">{currentUser?.phone ? '换绑手机号' : '绑定手机号'}</h3>
+              <input type="text" value={bindAccount} onChange={(e) => setBindAccount(e.target.value)} placeholder="手机号" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
+              <div className="flex gap-2 mb-4">
+                <input type="text" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
+                <button onClick={() => handleSendCode(bindAccount, 'phone')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setModal(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
+                <button onClick={handleBindPhone} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
+              </div>
             </div>
           </div>
         )}

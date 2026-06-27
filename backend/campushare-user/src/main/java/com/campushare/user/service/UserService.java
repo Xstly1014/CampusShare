@@ -37,7 +37,22 @@ public interface UserService {
      * 更新用户资料（昵称、简介、头像）
      */
     UserDTO updateProfile(String userId, UpdateProfileRequest request);
-    
+
+    /**
+     * 修改密码（需验证旧密码）
+     */
+    void changePassword(String userId, ChangePasswordRequest request);
+
+    /**
+     * 绑定或换绑邮箱
+     */
+    UserDTO bindEmail(String userId, BindAccountRequest request);
+
+    /**
+     * 绑定或换绑手机号
+     */
+    UserDTO bindPhone(String userId, BindAccountRequest request);
+
     /**
      * 重置密码（忘记密码）
      */

@@ -202,7 +202,68 @@ public class UserServiceImpl implements UserService {
         log.info("用户 {} 更新资料成功", userId);
         return convertToUserDTO(user);
     }
-    
+
+    @Override
+    @Transactional
+    public void changePassword(String userId, ChangePasswordRequest request) {
+        User user = getUserById(userId);
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
+            throw new BusinessException(ResultCode.USER_OLD_PASSWORD_ERROR);
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userMapper.updateById(user);
+        log.info("用户 {} 修改密码成功", userId);
+    }
+
+    @Override
+    @Transactional
+    public UserDTO bindEmail(String userId, BindAccountRequest request) {
+        // Verify code
+        verifyCode(request.getAccount(), request.getVerifyCode());
+
+        User user = getUserById(userId);
+        // Check if email already used by another user
+        boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
+                .eq(User::getEmail, request.getAccount())
+                .ne(User::getId, userId));
+        if (exists) {
+            throw new BusinessException(ResultCode.USER_ACCOUNT_ALREADY_EXIST);
+        }
+        user.setEmail(request.getAccount());
+        userMapper.updateById(user);
+        log.info("用户 {} 绑定邮箱 {}", userId, request.getAccount());
+        return convertToUserDTO(user);
+    }
+
+    @Override
+    @Transactional
+    public UserDTO bindPhone(String userId, BindAccountRequest request) {
+        // Verify code
+        verifyCode(request.getAccount(), request.getVerifyCode());
+
+        User user = getUserById(userId);
+        // Check if phone already used by another user
+        boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
+                .eq(User::getPhone, request.getAccount())
+                .ne(User::getId, userId));
+        if (exists) {
+            throw new BusinessException(ResultCode.USER_ACCOUNT_ALREADY_EXIST);
+        }
+        user.setPhone(request.getAccount());
+        userMapper.updateById(user);
+        log.info("用户 {} 绑定手机号 {}", userId, request.getAccount());
+        return convertToUserDTO(user);
+    }
+
+    private void verifyCode(String account, String code) {
+        String key = RedisConstants.VERIFY_CODE_PREFIX + account;
+        String cachedCode = redisTemplate.opsForValue().get(key);
+        if (StrUtil.isBlank(cachedCode) || !cachedCode.equals(code)) {
+            throw new BusinessException(ResultCode.VERIFY_CODE_ERROR);
+        }
+        redisTemplate.delete(key);
+    }
+
     @Override
     public void resetPassword(ResetPasswordRequest request) {
         // 1. 验证验证码

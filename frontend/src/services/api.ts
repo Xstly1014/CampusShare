@@ -179,4 +179,13 @@ export const userApi = {
 
   updateProfile: (data: { username?: string; bio?: string; avatarUrl?: string }) =>
     api.put('/users/me', data),
+
+  changePassword: (data: { oldPassword: string; newPassword: string }) =>
+    api.put('/users/me/password', data),
+
+  bindEmail: (data: { account: string; verifyCode: string }) =>
+    api.put('/users/me/email', data),
+
+  bindPhone: (data: { account: string; verifyCode: string }) =>
+    api.put('/users/me/phone', data),
 }

@@ -2,6 +2,8 @@ package com.campushare.user.controller;
 
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
+import com.campushare.user.dto.BindAccountRequest;
+import com.campushare.user.dto.ChangePasswordRequest;
 import com.campushare.user.dto.UpdateProfileRequest;
 import com.campushare.user.dto.UserDTO;
 import com.campushare.user.service.UserService;
@@ -38,6 +40,33 @@ public class UserController {
             @RequestBody UpdateProfileRequest request) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         UserDTO user = userService.updateProfile(userId, request);
+        return Result.success(user);
+    }
+
+    @PutMapping("/me/password")
+    public Result<Void> changePassword(
+            @RequestHeader("Authorization") String token,
+            @RequestBody ChangePasswordRequest request) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        userService.changePassword(userId, request);
+        return Result.success("密码修改成功", null);
+    }
+
+    @PutMapping("/me/email")
+    public Result<UserDTO> bindEmail(
+            @RequestHeader("Authorization") String token,
+            @RequestBody BindAccountRequest request) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        UserDTO user = userService.bindEmail(userId, request);
+        return Result.success(user);
+    }
+
+    @PutMapping("/me/phone")
+    public Result<UserDTO> bindPhone(
+            @RequestHeader("Authorization") String token,
+            @RequestBody BindAccountRequest request) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        UserDTO user = userService.bindPhone(userId, request);
         return Result.success(user);
     }
 }
