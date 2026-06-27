@@ -17,8 +17,14 @@ public class DataInitController {
 
     @PostMapping("/init-test-data")
     public Result<String> initTestData(
-            @RequestParam(defaultValue = "500") int postsPerSchool) {
+            @RequestParam(defaultValue = "10") int postsPerSchool) {
         String result = dataInitService.initTestData(postsPerSchool);
+        return Result.success(result);
+    }
+
+    @PostMapping("/clear-posts")
+    public Result<String> clearAllPosts() {
+        String result = dataInitService.clearAllPosts();
         return Result.success(result);
     }
 }

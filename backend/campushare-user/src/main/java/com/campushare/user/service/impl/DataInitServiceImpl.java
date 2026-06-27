@@ -1,11 +1,15 @@
 package com.campushare.user.service.impl;
 
 import com.campushare.user.entity.Post;
+import com.campushare.user.mapper.PostLikeMapper;
 import com.campushare.user.mapper.PostMapper;
+import com.campushare.user.mapper.PostStarMapper;
+import com.campushare.user.mapper.ViewHistoryMapper;
 import com.campushare.user.service.DataInitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -17,6 +21,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -25,15 +30,21 @@ import java.util.UUID;
 public class DataInitServiceImpl implements DataInitService {
 
     private final PostMapper postMapper;
+    private final PostStarMapper postStarMapper;
+    private final PostLikeMapper postLikeMapper;
+    private final ViewHistoryMapper viewHistoryMapper;
+    private final RedisTemplate<String, String> redisTemplate;
 
     @Value("${file.upload-path}")
     private String uploadPath;
 
+    /** Schools 1-8 matching init.sql */
     private static final String[] SCHOOL_IDS = {
-            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
+            "1", "2", "3", "4", "5", "6", "7", "8"
     };
 
-    private static final String[] POST_TYPES = {"resource", "discussion", "note"};
+    /** Only resource and discussion per PRD */
+    private static final String[] POST_TYPES = {"resource", "discussion"};
 
     private static final String[] FILE_TYPES = {"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "zip", "txt", "jpg", "png"};
 
@@ -73,9 +84,53 @@ public class DataInitServiceImpl implements DataInitService {
 
     private static final Random random = new Random();
 
-    /** Maximum size for dummy test files: 1KB (avoids OOM when generating 6000+ files) */
+    /** Maximum size for dummy test files: 1KB (avoids OOM when generating many files) */
     private static final int MAX_DUMMY_FILE_SIZE = 1024;
 
+    // ================================================================
+    // Clear all posts and related data
+    // ================================================================
+    @Override
+    public String clearAllPosts() {
+        log.info("开始清空所有帖子及相关数据...");
+
+        postStarMapper.deleteAllPhysical();
+        log.info("post_stars 表已清空");
+
+        postLikeMapper.deleteAllPhysical();
+        log.info("post_likes 表已清空");
+
+        viewHistoryMapper.deleteAllPhysical();
+        log.info("view_history 表已清空");
+
+        postMapper.deleteAllPhysical();
+        log.info("posts 表已清空");
+
+        // Clear Redis keys related to posts
+        clearRedisKeys("post:view:*");
+        clearRedisKeys("post:star:*");
+        clearRedisKeys("post:like:*");
+
+        String result = "所有帖子及相关数据已清空（posts, post_stars, post_likes, view_history, Redis缓存）";
+        log.info(result);
+        return result;
+    }
+
+    private void clearRedisKeys(String pattern) {
+        try {
+            Set<String> keys = redisTemplate.keys(pattern);
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+                log.info("已清除 Redis 键: pattern={}, count={}", pattern, keys.size());
+            }
+        } catch (Exception e) {
+            log.warn("清除 Redis 键失败: pattern={}", pattern, e);
+        }
+    }
+
+    // ================================================================
+    // Generate test data
+    // ================================================================
     @Override
     public String initTestData(int postsPerSchool) {
         int totalPosts = 0;
@@ -89,7 +144,6 @@ public class DataInitServiceImpl implements DataInitService {
                 String postType = getRandomPostType();
                 String title = generateTitle();
                 String content = generateContent();
-                LocalDateTime now = LocalDateTime.now();
                 LocalDateTime randomTime = generateRandomTime();
 
                 Post post = new Post();
@@ -98,10 +152,11 @@ public class DataInitServiceImpl implements DataInitService {
                 post.setPostType(postType);
                 post.setTitle(title);
                 post.setContent(content);
-                post.setViewCount(random.nextInt(5000));
-                post.setStarCount(random.nextInt(200));
-                post.setLikeCount(random.nextInt(500));
-                post.setCommentCount(random.nextInt(100));
+                // All counts set to 0 for debugging
+                post.setViewCount(0);
+                post.setStarCount(0);
+                post.setLikeCount(0);
+                post.setCommentCount(0);
                 post.setStatus(1);
                 post.setCreateTime(randomTime);
                 post.setUpdateTime(randomTime);
@@ -155,8 +210,7 @@ public class DataInitServiceImpl implements DataInitService {
     private String getRandomPostType() {
         double r = random.nextDouble();
         if (r < 0.5) return "resource";
-        if (r < 0.85) return "discussion";
-        return "note";
+        return "discussion";
     }
 
     private String getRandomFileType() {

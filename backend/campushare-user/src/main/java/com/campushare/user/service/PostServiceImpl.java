@@ -1,33 +1,54 @@
 package com.campushare.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.user.dto.CreatePostRequest;
 import com.campushare.user.entity.Post;
+import com.campushare.user.entity.PostLike;
+import com.campushare.user.entity.PostStar;
+import com.campushare.user.entity.ViewHistory;
+import com.campushare.user.mapper.PostLikeMapper;
 import com.campushare.user.mapper.PostMapper;
+import com.campushare.user.mapper.PostStarMapper;
+import com.campushare.user.mapper.ViewHistoryMapper;
 import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PostServiceImpl implements PostService {
 
     private final PostMapper postMapper;
+    private final PostStarMapper postStarMapper;
+    private final PostLikeMapper postLikeMapper;
+    private final ViewHistoryMapper viewHistoryMapper;
     private final RedisTemplate<String, String> redisTemplate;
     private final MeterRegistry meterRegistry;
 
+    // Redis key patterns
+    private static final String REDIS_KEY_STAR = "post:star:";
+    private static final String REDIS_KEY_LIKE = "post:like:";
+    private static final int REDIS_CACHE_TTL_DAYS = 30;
+
+    // ================================================================
+    // Create post
+    // ================================================================
     @Override
     @Transactional
     @Timed(value = "campushare.post.create.duration", description = "Time taken to create a post")
@@ -66,6 +87,9 @@ public class PostServiceImpl implements PostService {
         return post;
     }
 
+    // ================================================================
+    // Get post
+    // ================================================================
     @Override
     public Post getPostById(String postId) {
         Post post = postMapper.selectById(postId);
@@ -98,6 +122,9 @@ public class PostServiceImpl implements PostService {
         return pageResult.getRecords();
     }
 
+    // ================================================================
+    // View count + view history
+    // ================================================================
     @Override
     @Retryable(
             retryFor = {RuntimeException.class},
@@ -105,62 +132,262 @@ public class PostServiceImpl implements PostService {
             backoff = @Backoff(delay = 100, multiplier = 2)
     )
     @Transactional
-    public void incrementViewCount(String postId) {
-        String key = "post:view:" + postId;
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count % 10 == 0) {
-            Post post = postMapper.selectById(postId);
-            if (post != null) {
-                post.setViewCount(post.getViewCount() + count.intValue());
-                postMapper.updateById(post);
+    public void incrementViewCount(String userId, String postId) {
+        // 1. Atomic increment view_count in DB
+        postMapper.update(null, new LambdaUpdateWrapper<Post>()
+                .eq(Post::getId, postId)
+                .setSql("view_count = view_count + 1"));
+
+        // 2. Record view history (upsert: update view_time if exists, else insert)
+        if (userId != null && !userId.isEmpty()) {
+            ViewHistory existing = viewHistoryMapper.selectOne(
+                    new LambdaQueryWrapper<ViewHistory>()
+                            .eq(ViewHistory::getPostId, postId)
+                            .eq(ViewHistory::getUserId, userId));
+
+            if (existing != null) {
+                existing.setViewTime(LocalDateTime.now());
+                viewHistoryMapper.updateById(existing);
+            } else {
+                ViewHistory vh = ViewHistory.builder()
+                        .postId(postId)
+                        .userId(userId)
+                        .viewTime(LocalDateTime.now())
+                        .build();
+                viewHistoryMapper.insert(vh);
             }
-            redisTemplate.delete(key);
-        } else {
-            redisTemplate.expire(key, 1, TimeUnit.HOURS);
         }
     }
 
+    // ================================================================
+    // Star (favorite) toggle - DB is source of truth, Redis as cache
+    // ================================================================
     @Override
     @Transactional
     public boolean toggleStar(String userId, String postId) {
-        String key = "post:star:" + postId + ":" + userId;
-        Boolean hasKey = redisTemplate.hasKey(key);
+        // Verify post exists
+        getPostById(postId);
 
-        Post post = getPostById(postId);
-        boolean isStarred = false;
+        String redisKey = REDIS_KEY_STAR + postId + ":" + userId;
 
-        if (Boolean.TRUE.equals(hasKey)) {
-            redisTemplate.delete(key);
-            post.setStarCount(Math.max(0, post.getStarCount() - 1));
+        // Check DB for existing star record
+        PostStar existing = postStarMapper.selectOne(
+                new LambdaQueryWrapper<PostStar>()
+                        .eq(PostStar::getPostId, postId)
+                        .eq(PostStar::getUserId, userId));
+
+        if (existing != null) {
+            // Unstar: delete from DB, decrement count, remove Redis cache
+            postStarMapper.deleteById(existing.getId());
+            postMapper.update(null, new LambdaUpdateWrapper<Post>()
+                    .eq(Post::getId, postId)
+                    .setSql("star_count = GREATEST(0, star_count - 1)"));
+            redisTemplate.delete(redisKey);
+            log.info("用户 {} 取消收藏帖子 {}", userId, postId);
+            return false;
         } else {
-            redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
-            post.setStarCount(post.getStarCount() + 1);
-            isStarred = true;
+            // Star: insert into DB, increment count, set Redis cache
+            PostStar star = PostStar.builder()
+                    .postId(postId)
+                    .userId(userId)
+                    .createTime(LocalDateTime.now())
+                    .build();
+            postStarMapper.insert(star);
+            postMapper.update(null, new LambdaUpdateWrapper<Post>()
+                    .eq(Post::getId, postId)
+                    .setSql("star_count = star_count + 1"));
+            redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
+            log.info("用户 {} 收藏帖子 {}", userId, postId);
+            return true;
         }
-
-        postMapper.updateById(post);
-        return isStarred;
     }
 
+    // ================================================================
+    // Like toggle - DB is source of truth, Redis as cache
+    // ================================================================
     @Override
     @Transactional
     public boolean toggleLike(String userId, String postId) {
-        String key = "post:like:" + postId + ":" + userId;
-        Boolean hasKey = redisTemplate.hasKey(key);
+        // Verify post exists
+        getPostById(postId);
 
-        Post post = getPostById(postId);
-        boolean isLiked = false;
+        String redisKey = REDIS_KEY_LIKE + postId + ":" + userId;
 
-        if (Boolean.TRUE.equals(hasKey)) {
-            redisTemplate.delete(key);
-            post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
+        // Check DB for existing like record
+        PostLike existing = postLikeMapper.selectOne(
+                new LambdaQueryWrapper<PostLike>()
+                        .eq(PostLike::getPostId, postId)
+                        .eq(PostLike::getUserId, userId));
+
+        if (existing != null) {
+            // Unlike: delete from DB, decrement count, remove Redis cache
+            postLikeMapper.deleteById(existing.getId());
+            postMapper.update(null, new LambdaUpdateWrapper<Post>()
+                    .eq(Post::getId, postId)
+                    .setSql("like_count = GREATEST(0, like_count - 1)"));
+            redisTemplate.delete(redisKey);
+            log.info("用户 {} 取消点赞帖子 {}", userId, postId);
+            return false;
         } else {
-            redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
-            post.setLikeCount(post.getLikeCount() + 1);
-            isLiked = true;
+            // Like: insert into DB, increment count, set Redis cache
+            PostLike like = PostLike.builder()
+                    .postId(postId)
+                    .userId(userId)
+                    .createTime(LocalDateTime.now())
+                    .build();
+            postLikeMapper.insert(like);
+            postMapper.update(null, new LambdaUpdateWrapper<Post>()
+                    .eq(Post::getId, postId)
+                    .setSql("like_count = like_count + 1"));
+            redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
+            log.info("用户 {} 点赞帖子 {}", userId, postId);
+            return true;
+        }
+    }
+
+    // ================================================================
+    // State check (for display)
+    // ================================================================
+    @Override
+    public boolean isStarredBy(String userId, String postId) {
+        if (userId == null || userId.isEmpty()) {
+            return false;
+        }
+        String redisKey = REDIS_KEY_STAR + postId + ":" + userId;
+        Boolean cached = redisTemplate.hasKey(redisKey);
+        if (Boolean.TRUE.equals(cached)) {
+            return true;
+        }
+        // Fallback to DB
+        Long count = postStarMapper.selectCount(
+                new LambdaQueryWrapper<PostStar>()
+                        .eq(PostStar::getPostId, postId)
+                        .eq(PostStar::getUserId, userId));
+        if (count != null && count > 0) {
+            redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isLikedBy(String userId, String postId) {
+        if (userId == null || userId.isEmpty()) {
+            return false;
+        }
+        String redisKey = REDIS_KEY_LIKE + postId + ":" + userId;
+        Boolean cached = redisTemplate.hasKey(redisKey);
+        if (Boolean.TRUE.equals(cached)) {
+            return true;
+        }
+        // Fallback to DB
+        Long count = postLikeMapper.selectCount(
+                new LambdaQueryWrapper<PostLike>()
+                        .eq(PostLike::getPostId, postId)
+                        .eq(PostLike::getUserId, userId));
+        if (count != null && count > 0) {
+            redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
+            return true;
+        }
+        return false;
+    }
+
+    // ================================================================
+    // Personal homepage queries
+    // ================================================================
+    @Override
+    public List<Post> getViewHistory(String userId, int page, int size) {
+        // 1. Query view_history ordered by view_time desc
+        Page<ViewHistory> historyPage = viewHistoryMapper.selectPage(
+                new Page<>(page, size),
+                new LambdaQueryWrapper<ViewHistory>()
+                        .eq(ViewHistory::getUserId, userId)
+                        .orderByDesc(ViewHistory::getViewTime));
+
+        if (historyPage.getRecords().isEmpty()) {
+            return new ArrayList<>();
         }
 
-        postMapper.updateById(post);
-        return isLiked;
+        // 2. Get post IDs in order
+        List<String> postIds = new ArrayList<>();
+        for (ViewHistory vh : historyPage.getRecords()) {
+            postIds.add(vh.getPostId());
+        }
+
+        // 3. Query posts and preserve order
+        List<Post> posts = postMapper.selectBatchIds(postIds);
+        // Reorder to match history order (filter out deleted posts)
+        List<Post> result = new ArrayList<>();
+        for (String pid : postIds) {
+            for (Post p : posts) {
+                if (p.getId().equals(pid) && !p.getDeleted()) {
+                    result.add(p);
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<Post> getStarredPosts(String userId, int page, int size) {
+        // 1. Query post_stars ordered by create_time desc
+        Page<PostStar> starPage = postStarMapper.selectPage(
+                new Page<>(page, size),
+                new LambdaQueryWrapper<PostStar>()
+                        .eq(PostStar::getUserId, userId)
+                        .orderByDesc(PostStar::getCreateTime));
+
+        if (starPage.getRecords().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<String> postIds = new ArrayList<>();
+        for (PostStar ps : starPage.getRecords()) {
+            postIds.add(ps.getPostId());
+        }
+
+        List<Post> posts = postMapper.selectBatchIds(postIds);
+        List<Post> result = new ArrayList<>();
+        for (String pid : postIds) {
+            for (Post p : posts) {
+                if (p.getId().equals(pid) && !p.getDeleted()) {
+                    result.add(p);
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<Post> getLikedPosts(String userId, int page, int size) {
+        // 1. Query post_likes ordered by create_time desc
+        Page<PostLike> likePage = postLikeMapper.selectPage(
+                new Page<>(page, size),
+                new LambdaQueryWrapper<PostLike>()
+                        .eq(PostLike::getUserId, userId)
+                        .orderByDesc(PostLike::getCreateTime));
+
+        if (likePage.getRecords().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<String> postIds = new ArrayList<>();
+        for (PostLike pl : likePage.getRecords()) {
+            postIds.add(pl.getPostId());
+        }
+
+        List<Post> posts = postMapper.selectBatchIds(postIds);
+        List<Post> result = new ArrayList<>();
+        for (String pid : postIds) {
+            for (Post p : posts) {
+                if (p.getId().equals(pid) && !p.getDeleted()) {
+                    result.add(p);
+                    break;
+                }
+            }
+        }
+        return result;
     }
 }

@@ -28,9 +28,15 @@ public class PostController {
     }
 
     @GetMapping("/{postId}")
-    public Result<Post> getPostDetail(@PathVariable String postId) {
+    public Result<Post> getPostDetail(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @PathVariable String postId) {
         Post post = postService.getPostById(postId);
-        postService.incrementViewCount(postId);
+        // Extract userId if token present, record view count + history
+        String userId = extractUserId(token);
+        postService.incrementViewCount(userId, postId);
+        // Return post with updated view count
+        post.setViewCount(post.getViewCount() + 1);
         return Result.success(post);
     }
 
@@ -61,5 +67,54 @@ public class PostController {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         boolean isLiked = postService.toggleLike(userId, postId);
         return Result.success(isLiked);
+    }
+
+    // ================================================================
+    // Personal homepage endpoints (require auth)
+    // ================================================================
+
+    @GetMapping("/history")
+    public Result<List<Post>> getViewHistory(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<Post> posts = postService.getViewHistory(userId, page, size);
+        return Result.success(posts);
+    }
+
+    @GetMapping("/starred")
+    public Result<List<Post>> getStarredPosts(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<Post> posts = postService.getStarredPosts(userId, page, size);
+        return Result.success(posts);
+    }
+
+    @GetMapping("/liked")
+    public Result<List<Post>> getLikedPosts(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<Post> posts = postService.getLikedPosts(userId, page, size);
+        return Result.success(posts);
+    }
+
+    // ================================================================
+    // Helper
+    // ================================================================
+
+    private String extractUserId(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return jwtUtils.getUserId(token.replace("Bearer ", ""));
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
