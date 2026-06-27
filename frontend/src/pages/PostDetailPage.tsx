@@ -91,6 +91,7 @@ export default function PostDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
+  const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null)
 
   const fetchPost = useCallback(async () => {
     if (!postId) return
@@ -148,11 +149,19 @@ export default function PostDetailPage() {
     }
     setSubmittingComment(true)
     try {
+      // For nested replies: parentId is always the root comment's id
+      // replyToUserId is the actual user being replied to
+      let parentId = replyTo?.id
+      let replyToUserId = replyTo?.userId
+      // If replying to a reply (not a root comment), use the root comment's parentId
+      if (replyTo?.parentId) {
+        parentId = replyTo.parentId
+      }
       const res = await postApi.createComment(
         postId,
         newComment.trim(),
-        replyTo?.id,
-        replyTo?.userId,
+        parentId,
+        replyToUserId,
       )
       setComments((prev) => [...prev, res.data])
       setNewComment('')
@@ -168,17 +177,23 @@ export default function PostDetailPage() {
   }
 
   const handleDeleteComment = async (commentId: string) => {
-    if (!confirm('确定删除这条评论吗？')) return
-    try {
-      await postApi.deleteComment(commentId)
-      setComments((prev) => prev.filter((c) => c.id !== commentId))
-      if (post) {
-        setPost({ ...post, commentCount: Math.max(0, post.commentCount - 1) })
-      }
-      toast.success('删除成功')
-    } catch (err) {
-      toast.error((err as Error).message || '删除失败')
-    }
+    setConfirmDialog({
+      title: '删除评论',
+      message: '确定删除这条评论吗？',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        try {
+          await postApi.deleteComment(commentId)
+          setComments((prev) => prev.filter((c) => c.id !== commentId))
+          if (post) {
+            setPost({ ...post, commentCount: Math.max(0, post.commentCount - 1) })
+          }
+          toast.success('删除成功')
+        } catch (err) {
+          toast.error((err as Error).message || '删除失败')
+        }
+      },
+    })
   }
 
   const handleCommentLike = async (commentId: string) => {
@@ -268,14 +283,20 @@ export default function PostDetailPage() {
 
   const handleDeletePost = async () => {
     if (!postId) return
-    if (!confirm('确定删除这个帖子吗？删除后不可恢复。')) return
-    try {
-      await postApi.delete(postId)
-      toast.success('删除成功')
-      navigate(-1)
-    } catch (err) {
-      toast.error((err as Error).message || '删除失败')
-    }
+    setConfirmDialog({
+      title: '删除帖子',
+      message: '确定删除这个帖子吗？删除后不可恢复。',
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        try {
+          await postApi.delete(postId)
+          toast.success('删除成功')
+          navigate(-1)
+        } catch (err) {
+          toast.error((err as Error).message || '删除失败')
+        }
+      },
+    })
   }
 
   const handleEditPost = () => {
@@ -472,7 +493,7 @@ export default function PostDetailPage() {
                     onDelete={handleDeleteComment}
                     onReply={setReplyTo}
                   />
-                  {/* Replies (楼中楼) */}
+                  {/* Replies (楼中楼) - all replies under root comment, ordered by time */}
                   {getReplies(comment.id).map((reply) => (
                     <div key={reply.id} className="flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0">
                       <CornerDownRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
@@ -483,10 +504,10 @@ export default function PostDetailPage() {
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1 flex-wrap">
                             <span className="text-xs font-medium text-gray-900">{reply.username}</span>
-                            {reply.replyToUsername && reply.replyToUsername !== comment.username && (
-                              <span className="text-xs text-gray-400">回复 @{reply.replyToUsername}</span>
+                            {reply.replyToUsername && (
+                              <span className="text-xs text-gray-400">回复 <span className="text-blue-500">@{reply.replyToUsername}</span></span>
                             )}
                           </div>
                           <span className="text-xs text-gray-400">{formatTime(reply.createTime)}</span>
@@ -609,12 +630,33 @@ export default function PostDetailPage() {
           </div>
         </div>
       )}
+
+      {/* 自定义确认弹窗 */}
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setConfirmDialog(null)}>
+          <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-gray-900 mb-2">{confirmDialog.title}</h3>
+            <p className="text-sm text-gray-500 mb-5">{confirmDialog.message}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-
-// ================================================================
-// Comment row component
 // ================================================================
 function CommentRow({
   comment,
