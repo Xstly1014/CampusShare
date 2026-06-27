@@ -39,19 +39,24 @@ public interface UserService {
     UserDTO updateProfile(String userId, UpdateProfileRequest request);
 
     /**
-     * 修改密码（需验证旧密码）
+     * 修改密码（需验证旧密码，确认两次新密码）
      */
     void changePassword(String userId, ChangePasswordRequest request);
 
     /**
      * 绑定或换绑邮箱
      */
-    UserDTO bindEmail(String userId, BindAccountRequest request);
+    UserDTO bindEmail(String userId, ChangeAccountRequest request);
 
     /**
      * 绑定或换绑手机号
      */
-    UserDTO bindPhone(String userId, BindAccountRequest request);
+    UserDTO bindPhone(String userId, ChangeAccountRequest request);
+
+    /**
+     * 实名认证（预留接口，暂不实现具体逻辑）
+     */
+    void realNameVerify(String userId, String realName, String idCard);
 
     /**
      * 重置密码（忘记密码）

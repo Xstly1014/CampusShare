@@ -210,6 +210,9 @@ public class UserServiceImpl implements UserService {
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
             throw new BusinessException(ResultCode.USER_OLD_PASSWORD_ERROR);
         }
+        if (request.getNewPassword() == null || !request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new BusinessException(4001, "两次输入的密码不一致");
+        }
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userMapper.updateById(user);
         log.info("用户 {} 修改密码成功", userId);
@@ -217,42 +220,78 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserDTO bindEmail(String userId, BindAccountRequest request) {
-        // Verify code
-        verifyCode(request.getAccount(), request.getVerifyCode());
-
+    public UserDTO bindEmail(String userId, ChangeAccountRequest request) {
         User user = getUserById(userId);
+
+        // If already bound, must verify original email first (unless realName verified)
+        if (user.getEmail() != null && !user.getEmail().isEmpty()) {
+            if (!Boolean.TRUE.equals(request.getRealNameVerify())) {
+                // Must verify original email
+                if (request.getOriginalAccount() == null || request.getOriginalVerifyCode() == null) {
+                    throw new BusinessException(4001, "换绑邮箱需先验证原邮箱");
+                }
+                if (!request.getOriginalAccount().equals(user.getEmail())) {
+                    throw new BusinessException(4001, "原邮箱不匹配");
+                }
+                verifyCode(request.getOriginalAccount(), request.getOriginalVerifyCode());
+            }
+        }
+
+        // Verify new email code
+        verifyCode(request.getNewAccount(), request.getNewVerifyCode());
+
         // Check if email already used by another user
         boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
-                .eq(User::getEmail, request.getAccount())
+                .eq(User::getEmail, request.getNewAccount())
                 .ne(User::getId, userId));
         if (exists) {
             throw new BusinessException(ResultCode.USER_ACCOUNT_ALREADY_EXIST);
         }
-        user.setEmail(request.getAccount());
+        user.setEmail(request.getNewAccount());
         userMapper.updateById(user);
-        log.info("用户 {} 绑定邮箱 {}", userId, request.getAccount());
+        log.info("用户 {} 绑定/换绑邮箱 {}", userId, request.getNewAccount());
         return convertToUserDTO(user);
     }
 
     @Override
     @Transactional
-    public UserDTO bindPhone(String userId, BindAccountRequest request) {
-        // Verify code
-        verifyCode(request.getAccount(), request.getVerifyCode());
-
+    public UserDTO bindPhone(String userId, ChangeAccountRequest request) {
         User user = getUserById(userId);
+
+        // If already bound, must verify original phone first (unless realName verified)
+        if (user.getPhone() != null && !user.getPhone().isEmpty()) {
+            if (!Boolean.TRUE.equals(request.getRealNameVerify())) {
+                if (request.getOriginalAccount() == null || request.getOriginalVerifyCode() == null) {
+                    throw new BusinessException(4001, "换绑手机号需先验证原手机号");
+                }
+                if (!request.getOriginalAccount().equals(user.getPhone())) {
+                    throw new BusinessException(4001, "原手机号不匹配");
+                }
+                verifyCode(request.getOriginalAccount(), request.getOriginalVerifyCode());
+            }
+        }
+
+        // Verify new phone code
+        verifyCode(request.getNewAccount(), request.getNewVerifyCode());
+
         // Check if phone already used by another user
         boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
-                .eq(User::getPhone, request.getAccount())
+                .eq(User::getPhone, request.getNewAccount())
                 .ne(User::getId, userId));
         if (exists) {
             throw new BusinessException(ResultCode.USER_ACCOUNT_ALREADY_EXIST);
         }
-        user.setPhone(request.getAccount());
+        user.setPhone(request.getNewAccount());
         userMapper.updateById(user);
-        log.info("用户 {} 绑定手机号 {}", userId, request.getAccount());
+        log.info("用户 {} 绑定/换绑手机号 {}", userId, request.getNewAccount());
         return convertToUserDTO(user);
+    }
+
+    @Override
+    public void realNameVerify(String userId, String realName, String idCard) {
+        // 预留接口：实名认证逻辑暂不实现
+        // 未来可对接第三方实名认证服务，认证通过后在 Redis 中标记该用户可跳过原绑定验证
+        throw new BusinessException(4001, "实名认证功能暂未开放");
     }
 
     private void verifyCode(String account, String code) {

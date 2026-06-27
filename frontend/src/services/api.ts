@@ -180,12 +180,15 @@ export const userApi = {
   updateProfile: (data: { username?: string; bio?: string; avatarUrl?: string }) =>
     api.put('/users/me', data),
 
-  changePassword: (data: { oldPassword: string; newPassword: string }) =>
+  changePassword: (data: { oldPassword: string; newPassword: string; confirmPassword: string }) =>
     api.put('/users/me/password', data),
 
-  bindEmail: (data: { account: string; verifyCode: string }) =>
+  bindEmail: (data: { originalAccount?: string; originalVerifyCode?: string; newAccount: string; newVerifyCode: string; realNameVerify?: boolean }) =>
     api.put('/users/me/email', data),
 
-  bindPhone: (data: { account: string; verifyCode: string }) =>
+  bindPhone: (data: { originalAccount?: string; originalVerifyCode?: string; newAccount: string; newVerifyCode: string; realNameVerify?: boolean }) =>
     api.put('/users/me/phone', data),
+
+  realNameVerify: (data: { realName: string; idCard: string }) =>
+    api.post('/users/me/real-name-verify', data),
 }

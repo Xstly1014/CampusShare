@@ -47,8 +47,13 @@ export default function SettingsPage() {
   const [modal, setModal] = useState<'password' | 'email' | 'phone' | null>(null)
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
-  const [bindAccount, setBindAccount] = useState('')
-  const [verifyCode, setVerifyCode] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  // Bind/rebind state
+  const [rebindStep, setRebindStep] = useState<1 | 2>(1) // 1=verify original, 2=set new
+  const [originalAccount, setOriginalAccount] = useState('')
+  const [originalVerifyCode, setOriginalVerifyCode] = useState('')
+  const [newAccount, setNewAccount] = useState('')
+  const [newVerifyCode, setNewVerifyCode] = useState('')
   const [sendingCode, setSendingCode] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -79,17 +84,22 @@ export default function SettingsPage() {
   }
 
   const handleChangePassword = async () => {
-    if (!oldPassword || !newPassword) {
+    if (!oldPassword || !newPassword || !confirmPassword) {
       toast.warning('请填写完整')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast.warning('两次输入的密码不一致')
       return
     }
     setSaving(true)
     try {
-      await userApi.changePassword({ oldPassword, newPassword })
+      await userApi.changePassword({ oldPassword, newPassword, confirmPassword })
       toast.success('密码修改成功')
       setModal(null)
       setOldPassword('')
       setNewPassword('')
+      setConfirmPassword('')
     } catch (err) {
       toast.error((err as Error).message || '修改失败')
     } finally {
@@ -98,19 +108,23 @@ export default function SettingsPage() {
   }
 
   const handleBindEmail = async () => {
-    if (!bindAccount || !verifyCode) {
+    if (!newAccount || !newVerifyCode) {
       toast.warning('请填写完整')
       return
     }
     setSaving(true)
     try {
-      const res = await userApi.bindEmail({ account: bindAccount, verifyCode })
+      const isRebind = currentUser?.email && rebindStep === 2
+      const res = await userApi.bindEmail({
+        originalAccount: isRebind ? originalAccount : undefined,
+        originalVerifyCode: isRebind ? originalVerifyCode : undefined,
+        newAccount,
+        newVerifyCode,
+      })
       setCurrentUser(res.data)
       updateLocalStorageUser(res.data)
-      toast.success('邮箱绑定成功')
-      setModal(null)
-      setBindAccount('')
-      setVerifyCode('')
+      toast.success('邮箱' + (isRebind ? '换绑' : '绑定') + '成功')
+      closeModal()
     } catch (err) {
       toast.error((err as Error).message || '绑定失败')
     } finally {
@@ -119,24 +133,40 @@ export default function SettingsPage() {
   }
 
   const handleBindPhone = async () => {
-    if (!bindAccount || !verifyCode) {
+    if (!newAccount || !newVerifyCode) {
       toast.warning('请填写完整')
       return
     }
     setSaving(true)
     try {
-      const res = await userApi.bindPhone({ account: bindAccount, verifyCode })
+      const isRebind = currentUser?.phone && rebindStep === 2
+      const res = await userApi.bindPhone({
+        originalAccount: isRebind ? originalAccount : undefined,
+        originalVerifyCode: isRebind ? originalVerifyCode : undefined,
+        newAccount,
+        newVerifyCode,
+      })
       setCurrentUser(res.data)
       updateLocalStorageUser(res.data)
-      toast.success('手机号绑定成功')
-      setModal(null)
-      setBindAccount('')
-      setVerifyCode('')
+      toast.success('手机号' + (isRebind ? '换绑' : '绑定') + '成功')
+      closeModal()
     } catch (err) {
       toast.error((err as Error).message || '绑定失败')
     } finally {
       setSaving(false)
     }
+  }
+
+  const closeModal = () => {
+    setModal(null)
+    setRebindStep(1)
+    setOriginalAccount('')
+    setOriginalVerifyCode('')
+    setNewAccount('')
+    setNewVerifyCode('')
+    setOldPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
   }
 
   const updateLocalStorageUser = (userData: any) => {
@@ -189,13 +219,13 @@ export default function SettingsPage() {
                 <span className="flex-1 text-sm text-gray-700">用户名</span>
                 <span className="text-sm text-gray-400">{currentUser?.username}</span>
               </div>
-              <button onClick={() => { setBindAccount(currentUser?.email || ''); setVerifyCode(''); setModal('email') }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+              <button onClick={() => { setOriginalAccount(currentUser?.email || ''); setOriginalVerifyCode(''); setNewAccount(''); setNewVerifyCode(''); setRebindStep(currentUser?.email ? 1 : 2); setModal('email') }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
                 <Mail className="w-4 h-4 text-gray-400" />
                 <span className="flex-1 text-left text-sm text-gray-700">邮箱</span>
                 <span className="text-sm text-gray-400">{currentUser?.email || '未绑定'}</span>
                 <ChevronRight className="w-4 h-4 text-gray-300" />
               </button>
-              <button onClick={() => { setBindAccount(currentUser?.phone || ''); setVerifyCode(''); setModal('phone') }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
+              <button onClick={() => { setOriginalAccount(currentUser?.phone || ''); setOriginalVerifyCode(''); setNewAccount(''); setNewVerifyCode(''); setRebindStep(currentUser?.phone ? 1 : 2); setModal('phone') }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
                 <Phone className="w-4 h-4 text-gray-400" />
                 <span className="flex-1 text-left text-sm text-gray-700">手机号</span>
                 <span className="text-sm text-gray-400">{currentUser?.phone || '未绑定'}</span>
@@ -220,51 +250,88 @@ export default function SettingsPage() {
 
         {/* 修改密码弹窗 */}
         {modal === 'password' && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setModal(null)}>
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={closeModal}>
             <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-base font-bold text-gray-900 mb-4">修改密码</h3>
               <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="旧密码" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
-              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="新密码（6-20位，含字母数字）" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-4" />
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="新密码（6-20位，含字母数字）" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="确认新密码" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-4" />
               <div className="flex gap-3">
-                <button onClick={() => setModal(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
+                <button onClick={closeModal} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
                 <button onClick={handleChangePassword} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 绑定邮箱弹窗 */}
+        {/* 绑定/换绑邮箱弹窗 */}
         {modal === 'email' && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setModal(null)}>
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={closeModal}>
             <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-base font-bold text-gray-900 mb-4">{currentUser?.email ? '换绑邮箱' : '绑定邮箱'}</h3>
-              <input type="text" value={bindAccount} onChange={(e) => setBindAccount(e.target.value)} placeholder="邮箱地址" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
-              <div className="flex gap-2 mb-4">
-                <input type="text" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
-                <button onClick={() => handleSendCode(bindAccount, 'email')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setModal(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
-                <button onClick={handleBindEmail} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
-              </div>
+              {rebindStep === 1 ? (
+                <>
+                  <h3 className="text-base font-bold text-gray-900 mb-1">验证原邮箱</h3>
+                  <p className="text-xs text-gray-400 mb-4">换绑邮箱需先验证原绑定邮箱</p>
+                  <p className="text-sm text-gray-500 mb-3 px-1">原邮箱：{originalAccount}</p>
+                  <div className="flex gap-2 mb-4">
+                    <input type="text" value={originalVerifyCode} onChange={(e) => setOriginalVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
+                    <button onClick={() => handleSendCode(originalAccount, 'email')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={closeModal} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
+                    <button onClick={() => { if (originalVerifyCode) setRebindStep(2); else toast.warning('请输入验证码') }} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">下一步</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-base font-bold text-gray-900 mb-4">{currentUser?.email ? '绑定新邮箱' : '绑定邮箱'}</h3>
+                  <input type="text" value={newAccount} onChange={(e) => setNewAccount(e.target.value)} placeholder="新邮箱地址" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
+                  <div className="flex gap-2 mb-4">
+                    <input type="text" value={newVerifyCode} onChange={(e) => setNewVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
+                    <button onClick={() => handleSendCode(newAccount, 'email')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
+                  </div>
+                  <div className="flex gap-3">
+                    {currentUser?.email ? <button onClick={() => setRebindStep(1)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">上一步</button> : <button onClick={closeModal} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>}
+                    <button onClick={handleBindEmail} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
 
-        {/* 绑定手机号弹窗 */}
+        {/* 绑定/换绑手机号弹窗 */}
         {modal === 'phone' && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setModal(null)}>
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={closeModal}>
             <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-base font-bold text-gray-900 mb-4">{currentUser?.phone ? '换绑手机号' : '绑定手机号'}</h3>
-              <input type="text" value={bindAccount} onChange={(e) => setBindAccount(e.target.value)} placeholder="手机号" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
-              <div className="flex gap-2 mb-4">
-                <input type="text" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
-                <button onClick={() => handleSendCode(bindAccount, 'phone')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setModal(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
-                <button onClick={handleBindPhone} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
-              </div>
+              {rebindStep === 1 ? (
+                <>
+                  <h3 className="text-base font-bold text-gray-900 mb-1">验证原手机号</h3>
+                  <p className="text-xs text-gray-400 mb-4">换绑手机号需先验证原绑定手机号</p>
+                  <p className="text-sm text-gray-500 mb-3 px-1">原手机号：{originalAccount}</p>
+                  <div className="flex gap-2 mb-4">
+                    <input type="text" value={originalVerifyCode} onChange={(e) => setOriginalVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
+                    <button onClick={() => handleSendCode(originalAccount, 'phone')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={closeModal} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
+                    <button onClick={() => { if (originalVerifyCode) setRebindStep(2); else toast.warning('请输入验证码') }} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">下一步</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-base font-bold text-gray-900 mb-4">{currentUser?.phone ? '绑定新手机号' : '绑定手机号'}</h3>
+                  <input type="text" value={newAccount} onChange={(e) => setNewAccount(e.target.value)} placeholder="新手机号" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white mb-3" />
+                  <div className="flex gap-2 mb-4">
+                    <input type="text" value={newVerifyCode} onChange={(e) => setNewVerifyCode(e.target.value)} placeholder="验证码" className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white" />
+                    <button onClick={() => handleSendCode(newAccount, 'phone')} disabled={sendingCode} className="px-3 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-40 whitespace-nowrap">{sendingCode ? '发送中' : '发送'}</button>
+                  </div>
+                  <div className="flex gap-3">
+                    {currentUser?.phone ? <button onClick={() => setRebindStep(1)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">上一步</button> : <button onClick={closeModal} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>}
+                    <button onClick={handleBindPhone} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{saving ? '保存中...' : '确认'}</button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

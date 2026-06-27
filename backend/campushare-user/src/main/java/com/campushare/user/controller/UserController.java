@@ -2,13 +2,15 @@ package com.campushare.user.controller;
 
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
-import com.campushare.user.dto.BindAccountRequest;
+import com.campushare.user.dto.ChangeAccountRequest;
 import com.campushare.user.dto.ChangePasswordRequest;
 import com.campushare.user.dto.UpdateProfileRequest;
 import com.campushare.user.dto.UserDTO;
 import com.campushare.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 /**
  * 用户控制器
@@ -55,7 +57,7 @@ public class UserController {
     @PutMapping("/me/email")
     public Result<UserDTO> bindEmail(
             @RequestHeader("Authorization") String token,
-            @RequestBody BindAccountRequest request) {
+            @RequestBody ChangeAccountRequest request) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         UserDTO user = userService.bindEmail(userId, request);
         return Result.success(user);
@@ -64,9 +66,18 @@ public class UserController {
     @PutMapping("/me/phone")
     public Result<UserDTO> bindPhone(
             @RequestHeader("Authorization") String token,
-            @RequestBody BindAccountRequest request) {
+            @RequestBody ChangeAccountRequest request) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         UserDTO user = userService.bindPhone(userId, request);
         return Result.success(user);
+    }
+
+    @PostMapping("/me/real-name-verify")
+    public Result<Void> realNameVerify(
+            @RequestHeader("Authorization") String token,
+            @RequestBody Map<String, String> body) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        userService.realNameVerify(userId, body.get("realName"), body.get("idCard"));
+        return Result.success(null);
     }
 }
