@@ -303,30 +303,40 @@ Value: 6位验证码
 TTL: 300秒（5分钟）
 ```
 
-### 3.2 浏览计数（异步落库）
+### 3.2 浏览计数（直接落库）
 
 ```
-Key: post:view:{postId}
-Value: 自增计数
-TTL: 1小时
-策略: 每累计10次或过期时同步到MySQL
+策略: 直接在 MySQL 中原子递增 view_count（SET view_count = view_count + 1）
+Redis: 不再使用（便于调试观察，保证强一致）
 ```
 
-### 3.3 收藏状态缓存
+> 变更说明：原方案为 Redis 计数 + 每10次异步落库，现已改为直接 DB 原子操作，避免计数丢失和调试困难。
+
+### 3.3 收藏状态缓存（DB为源 + Redis缓存）
 
 ```
 Key: post:star:{postId}:{userId}
 Value: 1
-TTL: 7天
+TTL: 30天
+策略: DB (post_stars 表) 为数据源，Redis 仅作状态查询缓存
+      - 收藏时：先写 DB，再设 Redis
+      - 取消时：先删 DB，再删 Redis
+      - 查询时：先查 Redis，未命中回源 DB
 ```
 
-### 3.4 点赞状态缓存
+### 3.4 点赞状态缓存（DB为源 + Redis缓存）
 
 ```
 Key: post:like:{postId}:{userId}
 Value: 1
-TTL: 7天
+TTL: 30天
+策略: DB (post_likes 表) 为数据源，Redis 仅作状态查询缓存
+      - 点赞时：先写 DB，再设 Redis
+      - 取消时：先删 DB，再删 Redis
+      - 查询时：先查 Redis，未命中回源 DB
 ```
+
+> 变更说明：原方案 Redis 为唯一数据源（7天TTL），数据会丢失且无法查询"我的收藏/点赞"。现已改为 DB 持久化 + Redis 缓存加速。
 
 ### 3.5 JWT Token 黑名单
 

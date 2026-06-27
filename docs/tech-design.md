@@ -187,7 +187,8 @@ L1: 浏览器本地缓存 (localStorage/sessionStorage)
 L2: Redis 分布式缓存
     ├── 验证码（5分钟）
     ├── Token 黑名单
-    ├── 浏览计数（异步落库）
+    ├── 收藏状态缓存（30天，DB为源）
+    ├── 点赞状态缓存（30天，DB为源）
     └── 热点帖子详情（30分钟）
 
 L3: MySQL 持久化存储
@@ -201,8 +202,8 @@ L3: MySQL 持久化存储
 | 验证码 | Cache Aside（Redis 唯一数据源） | 强一致 |
 | 用户信息 | Cache Aside，先更 DB 再删缓存 | 最终一致 |
 | 帖子详情 | Cache Aside，热点数据缓存 | 最终一致 |
-| 浏览计数 | Write Back（Redis 计数，异步落 DB） | 最终一致 |
-| 收藏/点赞 | Double Write（DB + Redis 双写） | 最终一致 |
+| 浏览计数 | 直接 DB 原子递增（无缓存） | 强一致 |
+| 收藏/点赞 | DB 为源 + Redis 缓存（Cache Aside） | 最终一致 |
 
 ### 3.3 文件存储方案
 
