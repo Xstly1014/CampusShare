@@ -113,8 +113,8 @@ export default function PostDetailPage() {
           setIsLiked(false)
         }
       }
-    } catch {
-      toast.error('加载帖子失败')
+    } catch (err) {
+      toast.error((err as Error).message || '加载帖子失败')
     } finally {
       setLoading(false)
     }

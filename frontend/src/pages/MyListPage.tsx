@@ -27,6 +27,7 @@ interface BackendPost {
 interface CommentItem {
   id: string
   postId: string
+  schoolId?: string
   userId: string
   username: string
   avatarUrl: string
@@ -129,7 +130,7 @@ export default function MyListPage() {
             {comments.map((comment) => (
               <div
                 key={comment.id}
-                onClick={() => navigate(`/school/1/post/${comment.postId}`)}
+                onClick={() => navigate(`/school/${comment.schoolId || '1'}/post/${comment.postId}`)}
                 className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
               >
                 <div className="flex items-start gap-3">

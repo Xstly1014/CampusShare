@@ -103,8 +103,12 @@ public class CommentServiceImpl implements CommentService {
         if (comment == null || comment.getDeleted()) {
             throw new BusinessException(40004, "评论不存在");
         }
+        // Allow deletion by comment author OR post author
         if (!comment.getUserId().equals(userId)) {
-            throw new BusinessException(4030, "无权删除他人的评论");
+            Post post = postMapper.selectById(comment.getPostId());
+            if (post == null || !post.getAuthorId().equals(userId)) {
+                throw new BusinessException(4030, "无权删除他人的评论");
+            }
         }
 
         commentMapper.deleteById(commentId);
@@ -196,9 +200,13 @@ public class CommentServiceImpl implements CommentService {
                 replyToUsername = replyToUser.getUsername();
             }
         }
+        // Get schoolId from post
+        Post post = postMapper.selectById(comment.getPostId());
+        String schoolId = post != null ? post.getSchoolId() : null;
         return CommentDTO.builder()
                 .id(comment.getId())
                 .postId(comment.getPostId())
+                .schoolId(schoolId)
                 .userId(comment.getUserId())
                 .username(user != null ? user.getUsername() : "未知用户")
                 .avatarUrl(user != null && user.getAvatarUrl() != null ? user.getAvatarUrl()
