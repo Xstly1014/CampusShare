@@ -68,23 +68,7 @@ export default function Router() {
           }
         />
         <Route
-          path="/profile/history"
-          element={
-            <PrivateRoute>
-              <MyListPage />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/profile/starred"
-          element={
-            <PrivateRoute>
-              <MyListPage />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/profile/liked"
+          path="/profile/:type"
           element={
             <PrivateRoute>
               <MyListPage />

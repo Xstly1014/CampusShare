@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare } from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
@@ -50,6 +50,7 @@ function formatTime(dateStr: string): string {
 export default function MyListPage() {
   const { type } = useParams<{ type: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const listType = (type as ListType) || 'history'
   const config = listConfig[listType]
@@ -60,18 +61,20 @@ export default function MyListPage() {
   const fetchPosts = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await config.fetcher(1, 50)
+      const res = await listConfig[listType].fetcher(1, 50)
       setPosts(res.data || [])
     } catch (err) {
       toast.error('加载失败')
     } finally {
       setLoading(false)
     }
-  }, [config])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listType])
 
+  // Fetch on mount, on type change, and on navigation back to this page
   useEffect(() => {
     fetchPosts()
-  }, [fetchPosts])
+  }, [fetchPosts, location.key])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
