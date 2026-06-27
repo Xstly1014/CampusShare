@@ -48,8 +48,8 @@ export default function ProfilePage() {
           setEditBio(u.bio)
         }
         if (u.username) setEditUsername(u.username)
-        // Update localStorage
-        localStorage.setItem('campusshare_user', JSON.stringify(u))
+        // Update sessionStorage
+        sessionStorage.setItem('campusshare_user', JSON.stringify(u))
       } catch {
         // ignore
       }
@@ -106,12 +106,12 @@ export default function ProfilePage() {
       const uploadRes = await fileApi.upload(file)
       const avatarUrl = uploadRes.url
       const res = await userApi.updateProfile({ avatarUrl })
-      // Update auth context user data in localStorage
-      const savedUser = localStorage.getItem('campusshare_user')
+      // Update auth context user data in sessionStorage
+      const savedUser = sessionStorage.getItem('campusshare_user')
       if (savedUser) {
         const userData = JSON.parse(savedUser)
         userData.avatarUrl = avatarUrl
-        localStorage.setItem('campusshare_user', JSON.stringify(userData))
+        sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
       }
       setAvatar(avatarUrl)
       toast.success('头像修改成功')
@@ -126,13 +126,13 @@ export default function ProfilePage() {
         username: editUsername.trim() || undefined,
         bio: editBio,
       })
-      // Update auth context user data in localStorage
-      const savedUser = localStorage.getItem('campusshare_user')
+      // Update auth context user data in sessionStorage
+      const savedUser = sessionStorage.getItem('campusshare_user')
       if (savedUser) {
         const userData = JSON.parse(savedUser)
         userData.username = editUsername.trim() || userData.username
         userData.bio = editBio
-        localStorage.setItem('campusshare_user', JSON.stringify(userData))
+        sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
       }
       setBio(editBio)
       setShowEditModal(false)

@@ -11,7 +11,7 @@ async function request<T = any>(
   url: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
-  const token = localStorage.getItem('campusshare_token')
+  const token = sessionStorage.getItem('campusshare_token')
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -82,7 +82,7 @@ export const authApi = {
 
 export const fileApi = {
   upload: async (file: File) => {
-    const token = localStorage.getItem('campusshare_token')
+    const token = sessionStorage.getItem('campusshare_token')
     const formData = new FormData()
     formData.append('file', file)
 

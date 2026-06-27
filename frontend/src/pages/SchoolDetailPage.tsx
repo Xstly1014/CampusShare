@@ -249,7 +249,7 @@ export default function SchoolDetailPage() {
       setPosts(viewPosts)
 
       // Fetch star status for each post (if logged in)
-      const token = localStorage.getItem('campusshare_token')
+      const token = sessionStorage.getItem('campusshare_token')
       if (token && postList.length > 0) {
         try {
           const starredSet = new Set<string>()

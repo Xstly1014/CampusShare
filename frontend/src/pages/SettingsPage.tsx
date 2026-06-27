@@ -170,10 +170,10 @@ export default function SettingsPage() {
   }
 
   const updateLocalStorageUser = (userData: any) => {
-    const saved = localStorage.getItem('campusshare_user')
+    const saved = sessionStorage.getItem('campusshare_user')
     if (saved) {
       const old = JSON.parse(saved)
-      localStorage.setItem('campusshare_user', JSON.stringify({ ...old, ...userData }))
+      sessionStorage.setItem('campusshare_user', JSON.stringify({ ...old, ...userData }))
     }
   }
 
@@ -361,7 +361,7 @@ export default function SettingsPage() {
             <div className="flex items-center gap-3 px-4 py-3.5">
               <Settings className="w-4 h-4 text-gray-400" />
               <span className="flex-1 text-sm text-gray-700">清除缓存</span>
-              <button onClick={() => { localStorage.removeItem('campusshare_user'); toast.success('缓存已清除') }} className="text-sm text-blue-600">清除</button>
+              <button onClick={() => { sessionStorage.removeItem('campusshare_user'); toast.success('缓存已清除') }} className="text-sm text-blue-600">清除</button>
             </div>
           </div>
         )}

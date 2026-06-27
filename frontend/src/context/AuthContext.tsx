@@ -30,9 +30,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    const savedUser = localStorage.getItem('campusshare_user')
+    const savedUser = sessionStorage.getItem('campusshare_user')
     return savedUser ? JSON.parse(savedUser) : null
   })
   const [loading, setLoading] = useState(false)
@@ -44,8 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await authApi.login(account, password)
       const { token, user: userData } = res.data
-      localStorage.setItem('campusshare_token', token)
-      localStorage.setItem('campusshare_user', JSON.stringify(userData))
+      sessionStorage.setItem('campusshare_token', token)
+      sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
       setUser(userData)
     } finally {
       setLoading(false)
@@ -63,8 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await authApi.register(data)
       const { token, user: userData } = res.data
-      localStorage.setItem('campusshare_token', token)
-      localStorage.setItem('campusshare_user', JSON.stringify(userData))
+      sessionStorage.setItem('campusshare_token', token)
+      sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
       setUser(userData)
     } finally {
       setLoading(false)
@@ -73,8 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setUser(null)
-    localStorage.removeItem('campusshare_token')
-    localStorage.removeItem('campusshare_user')
+    sessionStorage.removeItem('campusshare_token')
+    sessionStorage.removeItem('campusshare_user')
   }, [])
 
   const sendCode = useCallback(async (account: string, type: string = 'phone') => {

@@ -341,8 +341,8 @@ public class UserServiceImpl implements UserService {
             // 手机号登录
             wrapper.eq(User::getPhone, account);
         } else {
-            // 用户名登录
-            wrapper.eq(User::getUsername, account);
+            // 不支持用户名登录（昵称可修改，不适合作为登录账号）
+            throw new BusinessException(ResultCode.USER_ACCOUNT_NOT_EXIST);
         }
         return userMapper.selectOne(wrapper);
     }
