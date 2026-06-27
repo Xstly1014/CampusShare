@@ -77,6 +77,12 @@ tmp/
 # 变更记录（本地记录，不提交）
 changelog/
 
+# Agent 工作流文档（本地记录，不提交）
+AGENT-WORKFLOW.md
+
+# Docker ignore（本地使用，不提交）
+.dockerignore
+
 # ===== 操作系统 =====
 # macOS
 .DS_Store
