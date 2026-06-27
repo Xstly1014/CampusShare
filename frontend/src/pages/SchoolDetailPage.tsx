@@ -205,6 +205,7 @@ export default function SchoolDetailPage() {
 
   const [posts, setPosts] = useState<PostView[]>([])
   const [loading, setLoading] = useState(true)
+  const [realResourceCount, setRealResourceCount] = useState<number | null>(null)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [sortType, setSortType] = useState<SortType>('latest')
   const [filterType, setFilterType] = useState<PostType | 'all'>('all')
@@ -279,6 +280,20 @@ export default function SchoolDetailPage() {
   useEffect(() => {
     fetchPosts()
   }, [fetchPosts])
+
+  // Fetch real post count for this school
+  useEffect(() => {
+    const fetchCount = async () => {
+      if (!schoolId) return
+      try {
+        const res = await postApi.getSchoolPostCounts()
+        setRealResourceCount(res.data?.[schoolId] ?? 0)
+      } catch {
+        // keep null on error
+      }
+    }
+    fetchCount()
+  }, [schoolId])
 
   // 发布弹窗
   const [showPostModal, setShowPostModal] = useState(false)
@@ -444,7 +459,7 @@ export default function SchoolDetailPage() {
             <img src={school.logo} alt={school.name} className="w-8 h-8" />
             <div>
               <h1 className="text-base font-semibold text-gray-900">{school.name}</h1>
-              <p className="text-xs text-gray-400">{school.resourceCount} 份资料</p>
+              <p className="text-xs text-gray-400">{realResourceCount !== null ? realResourceCount : school.resourceCount} 份资料</p>
             </div>
           </div>
         </div>

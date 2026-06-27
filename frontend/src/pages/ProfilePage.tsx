@@ -265,28 +265,28 @@ export default function ProfilePage() {
       {/* 功能菜单 */}
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <button className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <button onClick={() => navigate('/settings/account')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
             <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
               <User className="w-4 h-4 text-blue-600" />
             </div>
             <span className="flex-1 text-left text-sm text-gray-700">账号与安全</span>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <button onClick={() => navigate('/settings/privacy')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
             <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
               <Shield className="w-4 h-4 text-green-600" />
             </div>
             <span className="flex-1 text-left text-sm text-gray-700">隐私设置</span>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <button onClick={() => navigate('/settings/general')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
             <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
               <Settings className="w-4 h-4 text-purple-600" />
             </div>
             <span className="flex-1 text-left text-sm text-gray-700">通用设置</span>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
+          <button onClick={() => navigate('/settings/help')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
             <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center">
               <HelpCircle className="w-4 h-4 text-gray-600" />
             </div>

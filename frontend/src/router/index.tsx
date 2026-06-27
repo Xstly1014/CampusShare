@@ -7,6 +7,7 @@ import ProfilePage from '../pages/ProfilePage'
 import SchoolDetailPage from '../pages/SchoolDetailPage'
 import PostDetailPage from '../pages/PostDetailPage'
 import MyListPage from '../pages/MyListPage'
+import SettingsPage from '../pages/SettingsPage'
 
 // 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -72,6 +73,14 @@ export default function Router() {
           element={
             <PrivateRoute>
               <MyListPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/settings/:type"
+          element={
+            <PrivateRoute>
+              <SettingsPage />
             </PrivateRoute>
           }
         />
