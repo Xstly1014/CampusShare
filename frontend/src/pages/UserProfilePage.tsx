@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy } from 'lucide-react'
+import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare } from 'lucide-react'
 import { userApi, postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
@@ -177,12 +177,20 @@ export default function UserProfilePage() {
                 <span>粉丝 {profile.followerCount}</span>
               </div>
             </div>
-            <button
-              onClick={handleFollow}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors ${profile.isFollowing ? 'bg-gray-100 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-            >
-              {profile.isFollowing ? <><UserCheck className="w-4 h-4" />已关注</> : <><UserPlus className="w-4 h-4" />关注</>}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate(`/messages/${userId}`)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                <MessageSquare className="w-4 h-4" />私信
+              </button>
+              <button
+                onClick={handleFollow}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors ${profile.isFollowing ? 'bg-gray-100 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+              >
+                {profile.isFollowing ? <><UserCheck className="w-4 h-4" />已关注</> : <><UserPlus className="w-4 h-4" />关注</>}
+              </button>
+            </div>
           </div>
 
           {/* 统计数据 */}

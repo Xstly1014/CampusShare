@@ -47,7 +47,10 @@ resources (待完善)
 | `comments` | 评论表 | 亿级 |
 | `post_stars` | 帖子收藏表 | 千万级 |
 | `post_likes` | 帖子点赞表 | 千万级 |
+| `comment_likes` | 评论点赞表 | 千万级 |
 | `view_history` | 浏览历史表 | 亿级 |
+| `follows` | 用户关注表 | 亿级 |
+| `messages` | 私信消息表 | 亿级 |
 | `resources` | 资源表(legacy) | 百万级 |
 
 ---
@@ -290,6 +293,60 @@ INDEX idx_view_time (view_time)
 ### 2.10 资源表 `resources` (Legacy)
 
 > 此表为早期设计，后续将逐步迁移到 `posts` 表统一管理
+
+---
+
+### 2.11 用户关注表 `follows`
+
+**说明**：记录用户间的关注关系
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | INT | PRIMARY KEY AUTO_INCREMENT | - | 主键 |
+| `follower_id` | VARCHAR(36) | NOT NULL | - | 关注者ID |
+| `following_id` | VARCHAR(36) | NOT NULL | - | 被关注者ID |
+| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 关注时间 |
+
+**约束**：
+- UNIQUE KEY `uk_follower_following` (`follower_id`, `following_id`)
+
+**索引**：
+```sql
+INDEX idx_follower (follower_id)
+INDEX idx_following (following_id)
+```
+
+**设计说明**：
+- `follower_id` 关注 `following_id`，单向关系
+- 互相关注 = 两条记录（A→B 和 B→A）
+- 唯一约束防止重复关注
+
+---
+
+### 2.12 私信消息表 `messages`
+
+**说明**：存储用户间一对一私信内容
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | VARCHAR(36) | PRIMARY KEY | - | 消息ID（UUID） |
+| `sender_id` | VARCHAR(36) | NOT NULL | - | 发送者ID |
+| `receiver_id` | VARCHAR(36) | NOT NULL | - | 接收者ID |
+| `content` | TEXT | NOT NULL | - | 消息内容 |
+| `is_read` | TINYINT | - | 0 | 是否已读：0-未读，1-已读 |
+| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 发送时间 |
+
+**索引**：
+```sql
+INDEX idx_sender (sender_id)
+INDEX idx_receiver (receiver_id)
+INDEX idx_create_time (create_time)
+```
+
+**设计说明**：
+- 消息为单向记录（sender → receiver）
+- `is_read` 用于未读消息统计
+- 会话查询通过 `sender_id + receiver_id` 双向匹配（A→B 或 B→A）
 
 ---
 

@@ -655,7 +655,306 @@ Authorization: Bearer {token}
 
 ---
 
-## 五、管理模块
+### 4.2 修改密码
+
+- **接口**: `PUT /api/users/me/password`
+- **说明**: 修改当前用户密码
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "oldPassword": "OldPass123",
+  "newPassword": "NewPass123",
+  "confirmPassword": "NewPass123"
+}
+```
+
+---
+
+### 4.3 绑定/更换邮箱
+
+- **接口**: `PUT /api/users/me/email`
+- **说明**: 绑定或更换邮箱（需验证码）
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "originalAccount": "原账号",
+  "originalVerifyCode": "原验证码",
+  "newAccount": "new@example.com",
+  "newVerifyCode": "123456",
+  "realNameVerify": false
+}
+```
+
+---
+
+### 4.4 绑定/更换手机号
+
+- **接口**: `PUT /api/users/me/phone`
+- **说明**: 绑定或更换手机号（需验证码）
+- **是否需要登录**: 是
+
+**请求体**: 同 4.3 结构
+
+---
+
+### 4.5 实名认证
+
+- **接口**: `POST /api/users/me/real-name-verify`
+- **说明**: 提交实名认证信息
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "realName": "张三",
+  "idCard": "110101199001011234"
+}
+```
+
+---
+
+### 4.6 搜索用户
+
+- **接口**: `GET /api/users/search`
+- **说明**: 按用户名模糊搜索用户（排除自己，最多20条）
+- **是否需要登录**: 是
+
+**查询参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `keyword` | string | 是 | 搜索关键词（匹配用户名） |
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": [
+    { "id": "xxx", "username": "testuser", "avatarUrl": null, "bio": "..." }
+  ]
+}
+```
+
+---
+
+### 4.7 获取用户主页资料
+
+- **接口**: `GET /api/users/{userId}/profile`
+- **说明**: 获取指定用户的公开资料（含统计、关注状态）
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "id": "xxx",
+    "username": "testuser",
+    "avatarUrl": null,
+    "bio": "...",
+    "postCount": 12,
+    "totalViews": 1256,
+    "totalLikes": 89,
+    "totalStars": 45,
+    "followerCount": 30,
+    "followingCount": 15,
+    "isFollowing": false,
+    "isSelf": false
+  }
+}
+```
+
+---
+
+### 4.8 获取用户的帖子/收藏/点赞/浏览历史
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `GET /api/users/{userId}/posts` | GET | 用户发布的帖子 |
+| `GET /api/users/{userId}/starred` | GET | 用户收藏的帖子 |
+| `GET /api/users/{userId}/liked` | GET | 用户点赞的帖子 |
+| `GET /api/users/{userId}/history` | GET | 用户浏览历史 |
+
+**查询参数**: `page`（默认1）、`size`（默认20）
+
+---
+
+### 4.9 关注/取消关注用户
+
+- **接口**: `POST /api/users/{userId}/follow`
+- **说明**: 切换关注状态（已关注则取消，未关注则关注）。不能关注自己。
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": true
+}
+```
+
+> `data` 为 true 表示已关注，false 表示已取消关注
+
+---
+
+### 4.10 获取关注统计
+
+- **接口**: `GET /api/users/me/follow-stats`
+- **说明**: 获取当前用户的关注/粉丝/互关数量
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "following": 15,
+    "followers": 30,
+    "mutual": 8
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `following` | long | 我关注的用户数 |
+| `followers` | long | 关注我的用户数 |
+| `mutual` | long | 互相关注的用户数 |
+
+---
+
+### 4.11 获取关注/粉丝/互关列表
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `GET /api/users/me/following` | GET | 我关注的用户列表 |
+| `GET /api/users/me/followers` | GET | 我的粉丝列表 |
+| `GET /api/users/me/mutual` | GET | 互相关注的用户列表 |
+
+- **是否需要登录**: 是
+
+**响应示例**（三个接口结构相同）:
+
+```json
+{
+  "code": 200,
+  "data": [
+    { "id": "xxx", "username": "testuser", "avatarUrl": null, "bio": "..." }
+  ]
+}
+```
+
+---
+
+## 五、私信模块
+
+### 5.1 发送私信
+
+- **接口**: `POST /api/messages/send`
+- **说明**: 向指定用户发送私信。受单向消息限制：若对方未关注你且未回复过你，只能发送一条。
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "receiverId": "user-uuid-xxx",
+  "content": "你好！"
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `receiverId` | string | 是 | 接收者用户ID |
+| `content` | string | 是 | 消息内容（不能为空） |
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "id": "msg-uuid-xxx",
+    "senderId": "my-user-id",
+    "senderName": "我的昵称",
+    "senderAvatar": "/files/xxx.png",
+    "receiverId": "user-uuid-xxx",
+    "content": "你好！",
+    "isRead": 0,
+    "createTime": "2026-06-27 18:00:00"
+  }
+}
+```
+
+**错误情况**：
+- 不能给自己发私信（4001）
+- 超出单向消息限制（4001）：对方未关注你且未回复你，只能发一条
+
+---
+
+### 5.2 获取会话消息
+
+- **接口**: `GET /api/messages/conversation/{otherUserId}`
+- **说明**: 获取与指定用户的完整对话记录（按时间正序），同时将对方发来的消息标记为已读
+- **是否需要登录**: 是
+
+**路径参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `otherUserId` | string | 是 | 对方用户ID |
+
+**响应示例**: 同 5.1 响应 data 为数组
+
+---
+
+### 5.3 获取会话列表
+
+- **接口**: `GET /api/messages/list`
+- **说明**: 获取当前用户的所有私信会话，每个会话返回最近一条消息，按时间倒序
+- **是否需要登录**: 是
+
+**响应示例**: 同 5.1 响应 data 为数组（每项为各会话的最近消息）
+
+---
+
+### 5.4 检查是否可发送消息
+
+- **接口**: `GET /api/messages/can-send/{otherUserId}`
+- **说明**: 检查当前用户是否可以向指定用户发送消息（用于前端控制输入框禁用状态）
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": true
+}
+```
+
+> `data` 为 true 表示可发送，false 表示受单向限制（已发过一条且对方未关注未回复）
+
+**发送限制规则**：
+- 对方关注了你 → 可自由发送
+- 对方回复过你（至少一条）→ 可自由发送
+- 否则 → 你只能发送一条消息（已发送过则不可再发）
+- 互相关注不是必要条件，互相回复一条即可
+
+---
+
+## 六、管理模块
 
 ### 4.1 清空帖子数据
 
@@ -703,9 +1002,9 @@ Authorization: Bearer {token}
 
 ---
 
-## 六、文件模块
+## 七、文件模块
 
-### 6.1 文件上传
+### 7.1 文件上传
 
 - **接口**: `POST /api/files/upload`
 - **说明**: 上传文件
@@ -750,7 +1049,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 6.2 文件访问
+### 7.2 文件访问
 
 - **接口**: `GET /api/files/{date}/{filename}`
 - **说明**: 访问/下载上传的文件
@@ -759,7 +1058,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 七、错误码汇总
+## 八、错误码汇总
 
 | 错误码 | 错误信息 | 可能原因 |
 |--------|---------|---------|
@@ -782,7 +1081,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 八、版本历史
+## 九、版本历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
@@ -791,3 +1090,5 @@ Authorization: Bearer {token}
 | v1.2 | 2026-06-27 | 新增帖子状态查询接口(status)；新增个人主页接口(history/starred/liked/mine/my-stats)；列表页收藏按钮对接后端；个人主页改为入口按钮+独立列表页 |
 | v1.3 | 2026-06-27 | 新增评论功能(发表/列表)；新增用户资料更新(头像/昵称/简介)；新增我的回复；新增学校帖子数统计；修复nginx /api/代理优先级 |
 | v1.4 | 2026-06-27 | 新增帖子编辑/删除；评论点赞/删除/楼中楼回复；列表接口返回作者信息(PostListDTO)；时区修复(Docker TZ)；文档下载完善 |
+| v1.5 | 2026-06-27 | 新增用户社交：关注/取消关注、关注统计、关注/粉丝/互关列表、用户主页资料、用户帖子/收藏/点赞/历史；新增密码修改、账号绑定、实名认证、用户搜索 |
+| v1.6 | 2026-06-27 | 新增私信模块：发送消息、会话记录、会话列表、可发送检查；单向消息限制（未互关/未回复仅可发一条） |

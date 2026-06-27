@@ -162,6 +162,19 @@ CREATE TABLE IF NOT EXISTS follows (
     INDEX idx_following (following_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户关注表';
 
+-- 创建私信消息表
+CREATE TABLE IF NOT EXISTS messages (
+    id VARCHAR(36) PRIMARY KEY COMMENT '消息ID',
+    sender_id VARCHAR(36) NOT NULL COMMENT '发送者ID',
+    receiver_id VARCHAR(36) NOT NULL COMMENT '接收者ID',
+    content TEXT NOT NULL COMMENT '消息内容',
+    is_read TINYINT DEFAULT 0 COMMENT '是否已读：0-未读，1-已读',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    INDEX idx_sender (sender_id),
+    INDEX idx_receiver (receiver_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私信消息表';
+
 -- 创建资源表
 CREATE TABLE IF NOT EXISTS resources (
     id VARCHAR(36) PRIMARY KEY COMMENT '资源ID',

@@ -21,7 +21,6 @@ import {
   HelpCircle,
   Shield,
   FileText,
-  Eye,
 } from 'lucide-react'
 
 export default function ProfilePage() {
@@ -35,6 +34,8 @@ export default function ProfilePage() {
   const [counts, setCounts] = useState({ browse: 0, starred: 0, liked: 0 })
   const [stats, setStats] = useState({ totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
   const [commentCount, setCommentCount] = useState(0)
+  const [followStats, setFollowStats] = useState({ following: 0, followers: 0, mutual: 0 })
+  const [statsModal, setStatsModal] = useState<{ title: string; value: number; suffix: string } | null>(null)
 
   // Fetch latest user profile from backend
   useEffect(() => {
@@ -61,12 +62,13 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [historyRes, starredRes, likedRes, statsRes, commentsRes] = await Promise.all([
+        const [historyRes, starredRes, likedRes, statsRes, commentsRes, followRes] = await Promise.all([
           postApi.getHistory(1, 1),
           postApi.getStarred(1, 1),
           postApi.getLiked(1, 1),
           postApi.getMyPostStats(),
           postApi.getMyComments(),
+          userApi.getFollowStats(),
         ])
         setCounts({
           browse: (historyRes.data || []).length,
@@ -75,6 +77,7 @@ export default function ProfilePage() {
         })
         setStats(statsRes.data || { totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
         setCommentCount((commentsRes.data || []).length)
+        setFollowStats(followRes.data || { following: 0, followers: 0, mutual: 0 })
       } catch (err) {
         // Silently ignore, counts stay 0
       }
@@ -198,24 +201,32 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 统计数据 - 纯展示，我的帖子的总浏览量/获赞/被收藏/帖子数 */}
-          <div className="grid grid-cols-4 gap-2 mt-5">
-            <div className="text-center">
+          {/* 统计数据 - 6个：总浏览/获赞/被收藏(弹窗) + 关注/粉丝/互关(跳转列表) */}
+          <div className="grid grid-cols-3 gap-2 mt-5">
+            <button onClick={() => setStatsModal({ title: '总浏览', value: stats.totalViews, suffix: '个总浏览' })} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
               <p className="text-base font-bold text-gray-900">{stats.totalViews}</p>
               <p className="text-xs text-gray-400 mt-0.5">总浏览</p>
-            </div>
-            <div className="text-center">
+            </button>
+            <button onClick={() => setStatsModal({ title: '获赞', value: stats.totalLikes, suffix: '个赞' })} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
               <p className="text-base font-bold text-gray-900">{stats.totalLikes}</p>
               <p className="text-xs text-gray-400 mt-0.5">获赞</p>
-            </div>
-            <div className="text-center">
+            </button>
+            <button onClick={() => setStatsModal({ title: '被收藏', value: stats.totalStars, suffix: '次收藏' })} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
               <p className="text-base font-bold text-gray-900">{stats.totalStars}</p>
               <p className="text-xs text-gray-400 mt-0.5">被收藏</p>
-            </div>
-            <div className="text-center">
-              <p className="text-base font-bold text-gray-900">{stats.postCount}</p>
-              <p className="text-xs text-gray-400 mt-0.5">帖子</p>
-            </div>
+            </button>
+            <button onClick={() => navigate('/profile/following')} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+              <p className="text-base font-bold text-gray-900">{followStats.following}</p>
+              <p className="text-xs text-gray-400 mt-0.5">关注</p>
+            </button>
+            <button onClick={() => navigate('/profile/followers')} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+              <p className="text-base font-bold text-gray-900">{followStats.followers}</p>
+              <p className="text-xs text-gray-400 mt-0.5">粉丝</p>
+            </button>
+            <button onClick={() => navigate('/profile/mutual')} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+              <p className="text-base font-bold text-gray-900">{followStats.mutual}</p>
+              <p className="text-xs text-gray-400 mt-0.5">互关</p>
+            </button>
           </div>
         </div>
       </div>
@@ -265,6 +276,13 @@ export default function ProfilePage() {
       {/* 功能菜单 */}
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <button onClick={() => navigate('/messages')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+            <div className="w-8 h-8 bg-cyan-50 rounded-lg flex items-center justify-center">
+              <MessageSquare className="w-4 h-4 text-cyan-600" />
+            </div>
+            <span className="flex-1 text-left text-sm text-gray-700">私信</span>
+            <ChevronRight className="w-4 h-4 text-gray-300" />
+          </button>
           <button onClick={() => navigate('/settings/account')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
             <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
               <User className="w-4 h-4 text-blue-600" />
@@ -306,6 +324,18 @@ export default function ProfilePage() {
           退出登录
         </button>
       </div>
+
+      {/* 统计弹窗 */}
+      {statsModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setStatsModal(null)}>
+          <div className="bg-gradient-to-br from-blue-500 to-purple-600 w-64 rounded-3xl p-8 text-center" onClick={(e) => e.stopPropagation()}>
+            <p className="text-white/80 text-sm mb-2">{statsModal.title}</p>
+            <p className="text-white text-5xl font-bold mb-3">{statsModal.value}</p>
+            <p className="text-white/70 text-sm">你迄今为止获得了{statsModal.value}{statsModal.suffix}哦~</p>
+            <button onClick={() => setStatsModal(null)} className="mt-5 px-6 py-2 bg-white/20 text-white rounded-full text-sm font-medium hover:bg-white/30 transition-colors">关闭</button>
+          </div>
+        </div>
+      )}
 
       {/* 编辑资料弹窗 */}
       {showEditModal && (

@@ -205,4 +205,24 @@ export const userApi = {
   getUserHistory: (userId: string, page = 1, size = 50) => api.get(`/users/${userId}/history?page=${page}&size=${size}`),
 
   toggleFollow: (userId: string) => api.post(`/users/${userId}/follow`),
+
+  getFollowStats: () => api.get<Record<string, number>>('/users/me/follow-stats'),
+
+  getFollowingList: () => api.get('/users/me/following'),
+
+  getFollowerList: () => api.get('/users/me/followers'),
+
+  getMutualList: () => api.get('/users/me/mutual'),
+}
+
+export const messageApi = {
+  send: (receiverId: string, content: string) =>
+    api.post('/messages/send', { receiverId, content }),
+
+  getConversation: (otherUserId: string) =>
+    api.get(`/messages/conversation/${otherUserId}`),
+
+  getList: () => api.get('/messages/list'),
+
+  canSend: (otherUserId: string) => api.get(`/messages/can-send/${otherUserId}`),
 }

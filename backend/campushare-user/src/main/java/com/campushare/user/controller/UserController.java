@@ -215,15 +215,107 @@ public class UserController {
                         .eq(Follow::getFollowingId, userId));
         if (existing != null) {
             followMapper.deleteById(existing.getId());
-            return Result.success(false); // unfollowed
+            return Result.success(false);
         } else {
             Follow follow = Follow.builder()
                     .followerId(currentUserId)
                     .followingId(userId)
                     .build();
             followMapper.insert(follow);
-            return Result.success(true); // followed
+            return Result.success(true);
         }
+    }
+
+    // ================================================================
+    // Follow stats & lists (followers / following / mutual)
+    // ================================================================
+
+    @GetMapping("/me/follow-stats")
+    public Result<Map<String, Long>> getFollowStats(@RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        long followingCount = followMapper.selectCount(
+                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
+        long followerCount = followMapper.selectCount(
+                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowingId, userId));
+
+        // Mutual: users I follow who also follow me
+        List<Follow> myFollowings = followMapper.selectList(
+                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
+        long mutualCount = 0;
+        for (Follow f : myFollowings) {
+            boolean mutual = followMapper.exists(
+                    new LambdaQueryWrapper<Follow>()
+                            .eq(Follow::getFollowerId, f.getFollowingId())
+                            .eq(Follow::getFollowingId, userId));
+            if (mutual) mutualCount++;
+        }
+
+        Map<String, Long> stats = new java.util.HashMap<>();
+        stats.put("following", followingCount);
+        stats.put("followers", followerCount);
+        stats.put("mutual", mutualCount);
+        return Result.success(stats);
+    }
+
+    @GetMapping("/me/following")
+    public Result<List<UserDTO>> getFollowingList(@RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<Follow> follows = followMapper.selectList(
+                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
+        List<UserDTO> result = buildUserDTOsFromFollows(follows, true);
+        return Result.success(result);
+    }
+
+    @GetMapping("/me/followers")
+    public Result<List<UserDTO>> getFollowerList(@RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<Follow> follows = followMapper.selectList(
+                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowingId, userId));
+        List<UserDTO> result = buildUserDTOsFromFollows(follows, false);
+        return Result.success(result);
+    }
+
+    @GetMapping("/me/mutual")
+    public Result<List<UserDTO>> getMutualList(@RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<Follow> myFollowings = followMapper.selectList(
+                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
+        List<UserDTO> result = new ArrayList<>();
+        for (Follow f : myFollowings) {
+            boolean mutual = followMapper.exists(
+                    new LambdaQueryWrapper<Follow>()
+                            .eq(Follow::getFollowerId, f.getFollowingId())
+                            .eq(Follow::getFollowingId, userId));
+            if (mutual) {
+                User u = userMapper.selectById(f.getFollowingId());
+                if (u != null && !u.getDeleted()) {
+                    UserDTO dto = new UserDTO();
+                    dto.setId(u.getId());
+                    dto.setUsername(u.getUsername());
+                    dto.setAvatarUrl(u.getAvatarUrl());
+                    dto.setBio(u.getBio());
+                    result.add(dto);
+                }
+            }
+        }
+        return Result.success(result);
+    }
+
+    private List<UserDTO> buildUserDTOsFromFollows(List<Follow> follows, boolean isFollowing) {
+        List<UserDTO> result = new ArrayList<>();
+        for (Follow f : follows) {
+            String targetId = isFollowing ? f.getFollowingId() : f.getFollowerId();
+            User u = userMapper.selectById(targetId);
+            if (u != null && !u.getDeleted()) {
+                UserDTO dto = new UserDTO();
+                dto.setId(u.getId());
+                dto.setUsername(u.getUsername());
+                dto.setAvatarUrl(u.getAvatarUrl());
+                dto.setBio(u.getBio());
+                result.add(dto);
+            }
+        }
+        return result;
     }
 
     // ================================================================
