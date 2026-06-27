@@ -713,6 +713,7 @@ function CommentRow({
   onReply: (comment: CommentItem) => void
 }) {
   const navigate = useNavigate()
+  const { user } = useAuth()
   return (
     <div className="flex gap-3 py-4 border-b border-gray-50 last:border-0">
       <img
