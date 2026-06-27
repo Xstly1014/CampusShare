@@ -24,11 +24,32 @@ function formatTime(dateStr: string): string {
   const date = new Date(dateStr)
   const now = new Date()
   const diff = now.getTime() - date.getTime()
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  if (days === 0) return '今天'
-  if (days === 1) return '昨天'
-  if (days < 7) return `${days}天前`
-  return dateStr
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(diff / (1000 * 60))
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+
+  // Same day: relative time
+  const isSameDay = date.toDateString() === now.toDateString()
+  if (isSameDay) {
+    if (seconds < 60) return '刚刚'
+    if (minutes < 60) return `${minutes}分钟前`
+    if (hours < 24) return `${hours}小时前`
+  }
+
+  // Yesterday
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) {
+    return '昨天'
+  }
+
+  // Same year: M月D日
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`
+  }
+
+  // Different year: XXXX年M月D日
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
 
 function formatNumber(n: number): string {
@@ -40,6 +61,8 @@ interface BackendPost {
   id: string
   schoolId: string
   authorId: string
+  authorName?: string
+  authorAvatar?: string
   postType: string
   title: string
   content: string
@@ -400,12 +423,14 @@ export default function PostDetailPage() {
           <div className="flex items-center justify-between mb-5 pb-5 border-b border-gray-100">
             <div className="flex items-center gap-3">
               <img
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`}
-                alt={post.authorId}
+                src={post.authorAvatar
+                  ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
+                  : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`}
+                alt={post.authorName || post.authorId}
                 className="w-10 h-10 rounded-full"
               />
               <div>
-                <p className="text-sm font-medium text-gray-900">{post.authorId.slice(0, 8)}</p>
+                <p className="text-sm font-medium text-gray-900">{post.authorName || post.authorId.slice(0, 8)}</p>
                 <p className="text-xs text-gray-400">{formatTime(post.createTime)}</p>
               </div>
             </div>

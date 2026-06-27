@@ -1,0 +1,30 @@
+package com.campushare.user.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class PostDetailDTO {
+    private String id;
+    private String schoolId;
+    private String authorId;
+    private String authorName;
+    private String authorAvatar;
+    private String postType;
+    private String title;
+    private String content;
+    private String fileUrl;
+    private String fileName;
+    private String fileType;
+    private Long fileSize;
+    private Integer viewCount;
+    private Integer starCount;
+    private Integer likeCount;
+    private Integer commentCount;
+    private Integer status;
+    private String createTime;
+    private String updateTime;
+}

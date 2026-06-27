@@ -3,10 +3,13 @@ package com.campushare.user.controller;
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.CreatePostRequest;
+import com.campushare.user.dto.PostDetailDTO;
 import com.campushare.user.dto.PostStatus;
 import com.campushare.user.dto.UserPostStats;
 import com.campushare.user.entity.Post;
+import com.campushare.user.entity.User;
 import com.campushare.user.service.PostService;
+import com.campushare.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +23,7 @@ public class PostController {
 
     private final PostService postService;
     private final JwtUtils jwtUtils;
+    private final UserMapper userMapper;
 
     @PostMapping
     public Result<Post> createPost(
@@ -50,16 +54,37 @@ public class PostController {
     }
 
     @GetMapping("/{postId}")
-    public Result<Post> getPostDetail(
+    public Result<PostDetailDTO> getPostDetail(
             @RequestHeader(value = "Authorization", required = false) String token,
             @PathVariable String postId) {
         Post post = postService.getPostById(postId);
         // Extract userId if token present, record view count + history
         String userId = extractUserId(token);
         postService.incrementViewCount(userId, postId);
-        // Return post with updated view count
+        // Return post with updated view count + author info
         post.setViewCount(post.getViewCount() + 1);
-        return Result.success(post);
+        User author = userMapper.selectById(post.getAuthorId());
+        PostDetailDTO dto = new PostDetailDTO();
+        dto.setId(post.getId());
+        dto.setSchoolId(post.getSchoolId());
+        dto.setAuthorId(post.getAuthorId());
+        dto.setAuthorName(author != null ? author.getUsername() : "未知用户");
+        dto.setAuthorAvatar(author != null && author.getAvatarUrl() != null ? author.getAvatarUrl() : null);
+        dto.setPostType(post.getPostType());
+        dto.setTitle(post.getTitle());
+        dto.setContent(post.getContent());
+        dto.setFileUrl(post.getFileUrl());
+        dto.setFileName(post.getFileName());
+        dto.setFileType(post.getFileType());
+        dto.setFileSize(post.getFileSize());
+        dto.setViewCount(post.getViewCount());
+        dto.setStarCount(post.getStarCount());
+        dto.setLikeCount(post.getLikeCount());
+        dto.setCommentCount(post.getCommentCount());
+        dto.setStatus(post.getStatus());
+        dto.setCreateTime(post.getCreateTime() != null ? post.getCreateTime().toString() : null);
+        dto.setUpdateTime(post.getUpdateTime() != null ? post.getUpdateTime().toString() : null);
+        return Result.success(dto);
     }
 
     @GetMapping("/school-counts")
