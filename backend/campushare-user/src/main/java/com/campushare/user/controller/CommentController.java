@@ -24,6 +24,13 @@ public class CommentController {
         return Result.success(comments);
     }
 
+    @GetMapping("/my-comments")
+    public Result<List<CommentDTO>> getMyComments(@RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        List<CommentDTO> comments = commentService.getCommentsByUserId(userId);
+        return Result.success(comments);
+    }
+
     @PostMapping("/{postId}/comments")
     public Result<CommentDTO> createComment(
             @RequestHeader("Authorization") String token,

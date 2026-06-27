@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText } from 'lucide-react'
+import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText, ArrowTurnDownLeft } from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
-type ListType = 'history' | 'starred' | 'liked' | 'mine'
+type ListType = 'history' | 'starred' | 'liked' | 'mine' | 'comments'
 
 interface BackendPost {
   id: string
@@ -24,11 +24,23 @@ interface BackendPost {
   createTime: string
 }
 
+interface CommentItem {
+  id: string
+  postId: string
+  userId: string
+  username: string
+  avatarUrl: string
+  content: string
+  likeCount: number
+  createTime: string
+}
+
 const listConfig: Record<ListType, { title: string; icon: React.ReactNode; fetcher: (page: number, size: number) => Promise<any> }> = {
   history: { title: '浏览历史', icon: <Clock className="w-5 h-5" />, fetcher: postApi.getHistory },
   starred: { title: '我的收藏', icon: <Star className="w-5 h-5" />, fetcher: postApi.getStarred },
   liked: { title: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, fetcher: postApi.getLiked },
   mine: { title: '我的帖子', icon: <FileText className="w-5 h-5" />, fetcher: postApi.getMyPosts },
+  comments: { title: '我的回复', icon: <MessageSquare className="w-5 h-5" />, fetcher: async () => postApi.getMyComments() },
 }
 
 function formatNumber(n: number): string {
@@ -57,13 +69,20 @@ export default function MyListPage() {
   const config = listConfig[listType]
 
   const [posts, setPosts] = useState<BackendPost[]>([])
+  const [comments, setComments] = useState<CommentItem[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
     try {
       const res = await listConfig[listType].fetcher(1, 50)
-      setPosts(res.data || [])
+      if (listType === 'comments') {
+        setComments(res.data || [])
+        setPosts([])
+      } else {
+        setPosts(res.data || [])
+        setComments([])
+      }
     } catch (err) {
       toast.error('加载失败')
     } finally {
@@ -91,8 +110,8 @@ export default function MyListPage() {
           <div className="flex items-center gap-2">
             <span className="text-gray-700">{config.icon}</span>
             <span className="text-sm font-medium text-gray-900">{config.title}</span>
-            {posts.length > 0 && (
-              <span className="text-xs text-gray-400">({posts.length})</span>
+            {((listType === 'comments' ? comments.length : posts.length) > 0) && (
+              <span className="text-xs text-gray-400">({listType === 'comments' ? comments.length : posts.length})</span>
             )}
           </div>
         </div>
@@ -105,7 +124,36 @@ export default function MyListPage() {
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
             <p className="text-gray-400 text-sm">加载中...</p>
           </div>
-        ) : posts.length > 0 ? (
+        ) : listType === 'comments' && comments.length > 0 ? (
+          <div className="space-y-3">
+            {comments.map((comment) => (
+              <div
+                key={comment.id}
+                onClick={() => navigate(`/school/1/post/${comment.postId}`)}
+                className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
+              >
+                <div className="flex items-start gap-3">
+                  <img
+                    src={comment.avatarUrl.startsWith('/files/') ? `/api${comment.avatarUrl}` : comment.avatarUrl}
+                    alt={comment.username}
+                    className="w-10 h-10 rounded-full flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-900">{comment.username}</span>
+                      <span className="text-xs text-gray-400">{formatTime(comment.createTime)}</span>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed mb-1 line-clamp-3">{comment.content}</p>
+                    <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>回复的帖子</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : listType !== 'comments' && posts.length > 0 ? (
           <div className="space-y-3">
             {posts.map((post) => (
               <div

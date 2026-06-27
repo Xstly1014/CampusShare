@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/posts")
@@ -40,6 +41,12 @@ public class PostController {
         // Return post with updated view count
         post.setViewCount(post.getViewCount() + 1);
         return Result.success(post);
+    }
+
+    @GetMapping("/school-counts")
+    public Result<Map<String, Long>> getSchoolPostCounts() {
+        Map<String, Long> counts = postService.getSchoolPostCounts();
+        return Result.success(counts);
     }
 
     @GetMapping("/school/{schoolId}")

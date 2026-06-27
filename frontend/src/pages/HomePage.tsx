@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SearchBar from '../components/home/SearchBar'
 import SchoolCard from '../components/home/SchoolCard'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
+import { postApi } from '../services/api'
 
 interface School {
   id: string
@@ -14,15 +15,33 @@ interface School {
 
 export default function HomePage() {
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [schools, setSchools] = useState<School[]>(schoolsData)
+
+  // Fetch real post counts from backend
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const res = await postApi.getSchoolPostCounts()
+        const counts = res.data || {}
+        setSchools(schoolsData.map((s: School) => ({
+          ...s,
+          resourceCount: counts[s.id] || 0,
+        })))
+      } catch {
+        // keep default data on error
+      }
+    }
+    fetchCounts()
+  }, [])
 
   const filteredSchools = useMemo(() => {
     if (!searchKeyword) {
-      return schoolsData
+      return schools
     }
-    return schoolsData.filter((school: School) =>
+    return schools.filter((school: School) =>
       school.name.toLowerCase().includes(searchKeyword.toLowerCase())
     )
-  }, [searchKeyword])
+  }, [searchKeyword, schools])
 
   const navigate = useNavigate()
 

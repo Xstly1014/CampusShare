@@ -40,4 +40,7 @@ public interface PostService {
 
     /** Get aggregate stats of a user's posts: total views, total likes, total stars */
     UserPostStats getMyPostStats(String userId);
+
+    /** Get post count for each school */
+    java.util.Map<String, Long> getSchoolPostCounts();
 }

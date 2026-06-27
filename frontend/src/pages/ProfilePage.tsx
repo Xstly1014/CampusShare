@@ -16,6 +16,7 @@ import {
   Clock,
   Star,
   ThumbsUp,
+  MessageSquare,
   Settings,
   HelpCircle,
   Shield,
@@ -33,6 +34,7 @@ export default function ProfilePage() {
   const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl || null)
   const [counts, setCounts] = useState({ browse: 0, starred: 0, liked: 0 })
   const [stats, setStats] = useState({ totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
+  const [commentCount, setCommentCount] = useState(0)
 
   // Fetch latest user profile from backend
   useEffect(() => {
@@ -59,11 +61,12 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [historyRes, starredRes, likedRes, statsRes] = await Promise.all([
+        const [historyRes, starredRes, likedRes, statsRes, commentsRes] = await Promise.all([
           postApi.getHistory(1, 1),
           postApi.getStarred(1, 1),
           postApi.getLiked(1, 1),
           postApi.getMyPostStats(),
+          postApi.getMyComments(),
         ])
         setCounts({
           browse: (historyRes.data || []).length,
@@ -71,6 +74,7 @@ export default function ProfilePage() {
           liked: (likedRes.data || []).length,
         })
         setStats(statsRes.data || { totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
+        setCommentCount((commentsRes.data || []).length)
       } catch (err) {
         // Silently ignore, counts stay 0
       }
@@ -80,6 +84,7 @@ export default function ProfilePage() {
 
   const listEntries = [
     { key: 'mine', label: '我的帖子', icon: <FileText className="w-5 h-5" />, count: stats.postCount, color: 'bg-indigo-50 text-indigo-600' },
+    { key: 'comments', label: '我的回复', icon: <MessageSquare className="w-5 h-5" />, count: commentCount, color: 'bg-teal-50 text-teal-600' },
     { key: 'history', label: '浏览历史', icon: <Clock className="w-5 h-5" />, count: counts.browse, color: 'bg-blue-50 text-blue-600' },
     { key: 'starred', label: '我的收藏', icon: <Star className="w-5 h-5" />, count: counts.starred, color: 'bg-orange-50 text-orange-600' },
     { key: 'liked', label: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, count: counts.liked, color: 'bg-red-50 text-red-600' },
@@ -149,7 +154,11 @@ export default function ProfilePage() {
             <div className="relative group">
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden">
                 {avatar ? (
-                  <img src={avatar} alt="头像" className="w-full h-full object-cover" />
+                  <img
+                    src={avatar.startsWith('/files/') ? `/api${avatar}` : avatar}
+                    alt="头像"
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <span className="text-white text-xl font-bold">
                     {user?.username?.substring(0, 1).toUpperCase() || 'U'}
@@ -312,7 +321,11 @@ export default function ProfilePage() {
               <div className="relative group">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden">
                   {avatar ? (
-                    <img src={avatar} alt="头像" className="w-full h-full object-cover" />
+                    <img
+                      src={avatar.startsWith('/files/') ? `/api${avatar}` : avatar}
+                      alt="头像"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <span className="text-white text-2xl font-bold">
                       {user?.username?.substring(0, 1).toUpperCase() || 'U'}

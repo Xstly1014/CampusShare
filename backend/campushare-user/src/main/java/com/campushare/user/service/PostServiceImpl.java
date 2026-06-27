@@ -423,4 +423,17 @@ public class PostServiceImpl implements PostService {
         }
         return new UserPostStats(totalViews, totalLikes, totalStars, myPosts.size());
     }
+
+    @Override
+    public java.util.Map<String, Long> getSchoolPostCounts() {
+        List<Post> allPosts = postMapper.selectList(
+                new LambdaQueryWrapper<Post>()
+                        .eq(Post::getDeleted, false)
+                        .eq(Post::getStatus, 1));
+        java.util.Map<String, Long> counts = new java.util.HashMap<>();
+        for (Post p : allPosts) {
+            counts.merge(p.getSchoolId(), 1L, Long::sum);
+        }
+        return counts;
+    }
 }

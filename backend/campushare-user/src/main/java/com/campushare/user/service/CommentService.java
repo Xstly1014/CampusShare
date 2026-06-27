@@ -11,4 +11,7 @@ public interface CommentService {
 
     /** Get comments for a post, ordered by create_time asc */
     List<CommentDTO> getCommentsByPostId(String postId);
+
+    /** Get all comments by a user, ordered by create_time desc */
+    List<CommentDTO> getCommentsByUserId(String userId);
 }

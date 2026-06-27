@@ -80,6 +80,22 @@ public class CommentServiceImpl implements CommentService {
         return result;
     }
 
+    @Override
+    public List<CommentDTO> getCommentsByUserId(String userId) {
+        List<Comment> comments = commentMapper.selectList(
+                new LambdaQueryWrapper<Comment>()
+                        .eq(Comment::getUserId, userId)
+                        .eq(Comment::getStatus, 1)
+                        .eq(Comment::getDeleted, false)
+                        .orderByDesc(Comment::getCreateTime));
+
+        List<CommentDTO> result = new ArrayList<>();
+        for (Comment c : comments) {
+            result.add(buildCommentDTO(c));
+        }
+        return result;
+    }
+
     private CommentDTO buildCommentDTO(Comment comment) {
         User user = userMapper.selectById(comment.getUserId());
         return CommentDTO.builder()

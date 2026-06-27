@@ -153,6 +153,10 @@ export const postApi = {
 
   createComment: (postId: string, content: string, parentId?: string, replyToUserId?: string) =>
     api.post(`/posts/${postId}/comments`, { content, parentId, replyToUserId }),
+
+  getMyComments: () => api.get('/posts/my-comments'),
+
+  getSchoolPostCounts: () => api.get<Record<string, number>>('/posts/school-counts'),
 }
 
 export const userApi = {
