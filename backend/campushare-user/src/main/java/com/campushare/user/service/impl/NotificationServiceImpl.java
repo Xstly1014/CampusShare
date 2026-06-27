@@ -35,15 +35,20 @@ public class NotificationServiceImpl implements NotificationService {
         // Don't notify self
         if (userId.equals(senderId)) return;
 
-        Notification notif = Notification.builder()
-                .userId(userId)
-                .senderId(senderId)
-                .type(type)
-                .targetId(targetId)
-                .targetTitle(targetTitle)
-                .isRead(0)
-                .build();
-        notificationMapper.insert(notif);
+        try {
+            Notification notif = Notification.builder()
+                    .userId(userId)
+                    .senderId(senderId)
+                    .type(type)
+                    .targetId(targetId)
+                    .targetTitle(targetTitle)
+                    .isRead(0)
+                    .build();
+            notificationMapper.insert(notif);
+        } catch (Exception e) {
+            // Notification creation should never break the main operation (like/star/follow)
+            log.warn("Failed to create notification: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -51,34 +56,39 @@ public class NotificationServiceImpl implements NotificationService {
         List<NotificationItemDTO> items = new ArrayList<>();
 
         // 1. Notification groups (LIKE, STAR, FOLLOW)
-        for (String type : Arrays.asList("LIKE", "STAR", "FOLLOW")) {
-            List<Notification> notifs = notificationMapper.selectList(
-                    new LambdaQueryWrapper<Notification>()
-                            .eq(Notification::getUserId, userId)
-                            .eq(Notification::getType, type)
-                            .orderByDesc(Notification::getCreateTime));
+        try {
+            for (String type : Arrays.asList("LIKE", "STAR", "FOLLOW")) {
+                List<Notification> notifs = notificationMapper.selectList(
+                        new LambdaQueryWrapper<Notification>()
+                                .eq(Notification::getUserId, userId)
+                                .eq(Notification::getType, type)
+                                .orderByDesc(Notification::getCreateTime));
 
-            if (!notifs.isEmpty()) {
-                Notification latest = notifs.get(0);
-                int unread = (int) notifs.stream().filter(n -> n.getIsRead() == 0).count();
+                if (!notifs.isEmpty()) {
+                    Notification latest = notifs.get(0);
+                    int unread = (int) notifs.stream().filter(n -> n.getIsRead() == 0).count();
 
-                String title = type.equals("LIKE") ? "赞" : type.equals("STAR") ? "收藏" : "新增粉丝";
-                String preview = buildPreview(notifs, type);
+                    String title = type.equals("LIKE") ? "赞" : type.equals("STAR") ? "收藏" : "新增粉丝";
+                    String preview = buildPreview(notifs, type);
 
-                items.add(NotificationItemDTO.builder()
-                        .itemType(type)
-                        .title(title)
-                        .preview(preview)
-                        .unreadCount(unread)
-                        .totalCount(notifs.size())
-                        .latestTime(latest.getCreateTime())
-                        .isPinned(false) // TODO: check pins table
-                        .build());
+                    items.add(NotificationItemDTO.builder()
+                            .itemType(type)
+                            .title(title)
+                            .preview(preview)
+                            .unreadCount(unread)
+                            .totalCount(notifs.size())
+                            .latestTime(latest.getCreateTime())
+                            .isPinned(false)
+                            .build());
+                }
             }
+        } catch (Exception e) {
+            log.warn("Failed to load notification groups: {}", e.getMessage());
         }
 
         // 2. Message conversations
-        List<Message> allMessages = messageMapper.selectList(
+        try {
+            List<Message> allMessages = messageMapper.selectList(
                 new LambdaQueryWrapper<Message>()
                         .and(w -> w.eq(Message::getReceiverId, userId).or().eq(Message::getSenderId, userId))
                         .orderByDesc(Message::getCreateTime));
@@ -151,6 +161,10 @@ public class NotificationServiceImpl implements NotificationService {
                     .build());
         }
 
+        } catch (Exception e) {
+            log.warn("Failed to load message conversations: {}", e.getMessage());
+        }
+
         // Sort: pinned first, then by latest time desc
         items.sort((a, b) -> {
             if (a.isPinned() != b.isPinned()) return a.isPinned() ? -1 : 1;
@@ -162,13 +176,14 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public List<NotificationDetailDTO> getNotificationDetail(String userId, String type) {
-        List<Notification> notifs = notificationMapper.selectList(
-                new LambdaQueryWrapper<Notification>()
-                        .eq(Notification::getUserId, userId)
-                        .eq(Notification::getType, type)
-                        .orderByDesc(Notification::getCreateTime));
+        try {
+            List<Notification> notifs = notificationMapper.selectList(
+                    new LambdaQueryWrapper<Notification>()
+                            .eq(Notification::getUserId, userId)
+                            .eq(Notification::getType, type)
+                            .orderByDesc(Notification::getCreateTime));
 
-        List<NotificationDetailDTO> result = new ArrayList<>();
+            List<NotificationDetailDTO> result = new ArrayList<>();
         for (Notification n : notifs) {
             User sender = userMapper.selectById(n.getSenderId());
             result.add(NotificationDetailDTO.builder()
@@ -183,24 +198,31 @@ public class NotificationServiceImpl implements NotificationService {
                     .createTime(n.getCreateTime())
                     .build());
         }
-        return result;
+            return result;
+        } catch (Exception e) {
+            log.warn("Failed to load notification detail: {}", e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     @Override
     public void markAsRead(String userId, String type) {
-        notificationMapper.update(null, new LambdaUpdateWrapper<Notification>()
-                .eq(Notification::getUserId, userId)
-                .eq(Notification::getType, type)
-                .eq(Notification::getIsRead, 0)
-                .set(Notification::getIsRead, 1));
+        try {
+            notificationMapper.update(null, new LambdaUpdateWrapper<Notification>()
+                    .eq(Notification::getUserId, userId)
+                    .eq(Notification::getType, type)
+                    .eq(Notification::getIsRead, 0)
+                    .set(Notification::getIsRead, 1));
 
-        // For STRANGER_MSG and CONVERSATION, also mark messages as read
-        if ("STRANGER_MSG".equals(type) || "CONVERSATION".equals(type)) {
-            // Mark all unread messages where I'm the receiver as read
-            messageMapper.update(null, new LambdaUpdateWrapper<Message>()
-                    .eq(Message::getReceiverId, userId)
-                    .eq(Message::getIsRead, 0)
-                    .set(Message::getIsRead, 1));
+            // For STRANGER_MSG and CONVERSATION, also mark messages as read
+            if ("STRANGER_MSG".equals(type) || "CONVERSATION".equals(type)) {
+                messageMapper.update(null, new LambdaUpdateWrapper<Message>()
+                        .eq(Message::getReceiverId, userId)
+                        .eq(Message::getIsRead, 0)
+                        .set(Message::getIsRead, 1));
+            }
+        } catch (Exception e) {
+            log.warn("Failed to mark notifications as read: {}", e.getMessage());
         }
     }
 
@@ -212,15 +234,20 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public int getUnreadCount(String userId) {
-        long notifUnread = notificationMapper.selectCount(
-                new LambdaQueryWrapper<Notification>()
-                        .eq(Notification::getUserId, userId)
-                        .eq(Notification::getIsRead, 0));
-        long msgUnread = messageMapper.selectCount(
-                new LambdaQueryWrapper<Message>()
-                        .eq(Message::getReceiverId, userId)
-                        .eq(Message::getIsRead, 0));
-        return (int) (notifUnread + msgUnread);
+        try {
+            long notifUnread = notificationMapper.selectCount(
+                    new LambdaQueryWrapper<Notification>()
+                            .eq(Notification::getUserId, userId)
+                            .eq(Notification::getIsRead, 0));
+            long msgUnread = messageMapper.selectCount(
+                    new LambdaQueryWrapper<Message>()
+                            .eq(Message::getReceiverId, userId)
+                            .eq(Message::getIsRead, 0));
+            return (int) (notifUnread + msgUnread);
+        } catch (Exception e) {
+            log.warn("Failed to get unread count: {}", e.getMessage());
+            return 0;
+        }
     }
 
     private String buildPreview(List<Notification> notifs, String type) {
