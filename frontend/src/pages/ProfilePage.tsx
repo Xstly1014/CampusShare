@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import NavBar from '../components/common/NavBar'
-import { postApi } from '../services/api'
+import { postApi, fileApi, userApi } from '../services/api'
+import { toast } from '../stores/toastStore'
 import {
   User,
   Mail,
@@ -27,11 +28,32 @@ export default function ProfilePage() {
   const navigate = useNavigate()
   const [showEditModal, setShowEditModal] = useState(false)
   const [editUsername, setEditUsername] = useState(user?.username || '')
-  const [editBio, setEditBio] = useState('这个人很懒，什么都没留下...')
-  const [bio, setBio] = useState('这个人很懒，什么都没留下...')
-  const [avatar, setAvatar] = useState<string | null>(null)
+  const [editBio, setEditBio] = useState(user?.bio || '这个人很懒，什么都没留下...')
+  const [bio, setBio] = useState(user?.bio || '这个人很懒，什么都没留下...')
+  const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl || null)
   const [counts, setCounts] = useState({ browse: 0, starred: 0, liked: 0 })
   const [stats, setStats] = useState({ totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
+
+  // Fetch latest user profile from backend
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await userApi.getMe()
+        const u = res.data
+        if (u.avatarUrl) setAvatar(u.avatarUrl)
+        if (u.bio) {
+          setBio(u.bio)
+          setEditBio(u.bio)
+        }
+        if (u.username) setEditUsername(u.username)
+        // Update localStorage
+        localStorage.setItem('campusshare_user', JSON.stringify(u))
+      } catch {
+        // ignore
+      }
+    }
+    fetchUser()
+  }, [])
 
   // Fetch counts for the three lists + my post stats
   useEffect(() => {
@@ -63,20 +85,58 @@ export default function ProfilePage() {
     { key: 'liked', label: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, count: counts.liked, color: 'bg-red-50 text-red-600' },
   ]
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        setAvatar(ev.target?.result as string)
+    if (!file) return
+
+    // Preview locally first
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setAvatar(ev.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+
+    // Upload then save to backend
+    try {
+      const uploadRes = await fileApi.upload(file)
+      const avatarUrl = uploadRes.url
+      const res = await userApi.updateProfile({ avatarUrl })
+      // Update auth context user data in localStorage
+      const savedUser = localStorage.getItem('campusshare_user')
+      if (savedUser) {
+        const userData = JSON.parse(savedUser)
+        userData.avatarUrl = avatarUrl
+        localStorage.setItem('campusshare_user', JSON.stringify(userData))
       }
-      reader.readAsDataURL(file)
+      setAvatar(avatarUrl)
+      toast.success('头像修改成功')
+    } catch (err) {
+      toast.error((err as Error).message || '头像上传失败')
     }
   }
 
-  const handleSaveProfile = () => {
-    setBio(editBio)
-    setShowEditModal(false)
+  const handleSaveProfile = async () => {
+    try {
+      const res = await userApi.updateProfile({
+        username: editUsername.trim() || undefined,
+        bio: editBio,
+      })
+      // Update auth context user data in localStorage
+      const savedUser = localStorage.getItem('campusshare_user')
+      if (savedUser) {
+        const userData = JSON.parse(savedUser)
+        userData.username = editUsername.trim() || userData.username
+        userData.bio = editBio
+        localStorage.setItem('campusshare_user', JSON.stringify(userData))
+      }
+      setBio(editBio)
+      setShowEditModal(false)
+      toast.success('资料保存成功')
+      // Reload to reflect updated username
+      window.location.reload()
+    } catch (err) {
+      toast.error((err as Error).message || '保存失败')
+    }
   }
 
   return (

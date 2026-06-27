@@ -171,6 +171,37 @@ public class UserServiceImpl implements UserService {
         User user = getUserById(userId);
         return convertToUserDTO(user);
     }
+
+    @Override
+    @Transactional
+    public UserDTO updateProfile(String userId, UpdateProfileRequest request) {
+        User user = getUserById(userId);
+
+        if (request.getUsername() != null && !request.getUsername().trim().isEmpty()) {
+            // Check if username is taken by another user
+            if (!request.getUsername().equals(user.getUsername())) {
+                boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
+                        .eq(User::getUsername, request.getUsername())
+                        .ne(User::getId, userId));
+                if (exists) {
+                    throw new BusinessException(ResultCode.USER_ACCOUNT_ALREADY_EXIST);
+                }
+            }
+            user.setUsername(request.getUsername().trim());
+        }
+
+        if (request.getBio() != null) {
+            user.setBio(request.getBio());
+        }
+
+        if (request.getAvatarUrl() != null) {
+            user.setAvatarUrl(request.getAvatarUrl());
+        }
+
+        userMapper.updateById(user);
+        log.info("用户 {} 更新资料成功", userId);
+        return convertToUserDTO(user);
+    }
     
     @Override
     public void resetPassword(ResetPasswordRequest request) {

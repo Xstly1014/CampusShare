@@ -32,6 +32,11 @@ public interface UserService {
      * 获取当前用户信息
      */
     UserDTO getCurrentUser(String userId);
+
+    /**
+     * 更新用户资料（昵称、简介、头像）
+     */
+    UserDTO updateProfile(String userId, UpdateProfileRequest request);
     
     /**
      * 重置密码（忘记密码）

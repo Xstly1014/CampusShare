@@ -54,6 +54,17 @@ interface BackendPost {
   createTime: string
 }
 
+interface CommentItem {
+  id: string
+  postId: string
+  userId: string
+  username: string
+  avatarUrl: string
+  content: string
+  likeCount: number
+  createTime: string
+}
+
 export default function PostDetailPage() {
   const { postId, schoolId } = useParams<{ postId: string; schoolId: string }>()
   const navigate = useNavigate()
@@ -68,6 +79,9 @@ export default function PostDetailPage() {
   const [starCount, setStarCount] = useState(0)
   const [likeCount, setLikeCount] = useState(0)
   const [toggling, setToggling] = useState(false)
+  const [comments, setComments] = useState<CommentItem[]>([])
+  const [newComment, setNewComment] = useState('')
+  const [submittingComment, setSubmittingComment] = useState(false)
 
   const fetchPost = useCallback(async () => {
     if (!postId) return
@@ -102,6 +116,42 @@ export default function PostDetailPage() {
   useEffect(() => {
     fetchPost()
   }, [fetchPost])
+
+  const fetchComments = useCallback(async () => {
+    if (!postId) return
+    try {
+      const res = await postApi.getComments(postId)
+      setComments(res.data || [])
+    } catch (err) {
+      // ignore comment fetch errors
+    }
+  }, [postId])
+
+  useEffect(() => {
+    fetchComments()
+  }, [fetchComments])
+
+  const handleSubmitComment = async () => {
+    if (!newComment.trim() || !postId || submittingComment) return
+    if (!isAuthenticated) {
+      toast.warning('请先登录')
+      return
+    }
+    setSubmittingComment(true)
+    try {
+      const res = await postApi.createComment(postId, newComment.trim())
+      setComments((prev) => [...prev, res.data])
+      setNewComment('')
+      // Update comment count in post
+      if (post) {
+        setPost({ ...post, commentCount: post.commentCount + 1 })
+      }
+    } catch (err) {
+      toast.error((err as Error).message || '评论失败')
+    } finally {
+      setSubmittingComment(false)
+    }
+  }
 
   const handleStar = async () => {
     if (!isAuthenticated) {
@@ -308,13 +358,32 @@ export default function PostDetailPage() {
         {/* 评论区 */}
         <div className="mt-4">
           <h2 className="text-sm font-semibold text-gray-900 mb-2 px-1">
-            全部评论 <span className="text-gray-400 font-normal">({post.commentCount})</span>
+            全部评论 <span className="text-gray-400 font-normal">({comments.length})</span>
           </h2>
           <div className="bg-white rounded-2xl border border-gray-100 px-4">
-            <div className="py-12 text-center">
-              <MessageSquare className="w-10 h-10 text-gray-200 mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">暂无评论，来发第一条评论吧</p>
-            </div>
+            {comments.length > 0 ? (
+              comments.map((comment) => (
+                <div key={comment.id} className="flex gap-3 py-4 border-b border-gray-50 last:border-0">
+                  <img
+                    src={comment.avatarUrl}
+                    alt={comment.username}
+                    className="w-9 h-9 rounded-full flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-900">{comment.username}</span>
+                      <span className="text-xs text-gray-400">{formatTime(comment.createTime)}</span>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed">{comment.content}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="py-12 text-center">
+                <MessageSquare className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                <p className="text-gray-400 text-sm">暂无评论，来发第一条评论吧</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -325,12 +394,17 @@ export default function PostDetailPage() {
           <div className="flex-1 relative">
             <input
               type="text"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmitComment()}
               placeholder="说点什么..."
               className="w-full px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all pr-10"
             />
           </div>
           <button
-            className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
+            onClick={handleSubmitComment}
+            disabled={!newComment.trim() || submittingComment}
+            className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
           </button>

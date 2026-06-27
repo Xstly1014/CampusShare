@@ -148,4 +148,16 @@ export const postApi = {
     api.get(`/posts/mine?page=${page}&size=${size}`),
 
   getMyPostStats: () => api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>('/posts/my-stats'),
+
+  getComments: (postId: string) => api.get(`/posts/${postId}/comments`),
+
+  createComment: (postId: string, content: string, parentId?: string, replyToUserId?: string) =>
+    api.post(`/posts/${postId}/comments`, { content, parentId, replyToUserId }),
+}
+
+export const userApi = {
+  getMe: () => api.get('/users/me'),
+
+  updateProfile: (data: { username?: string; bio?: string; avatarUrl?: string }) =>
+    api.put('/users/me', data),
 }
