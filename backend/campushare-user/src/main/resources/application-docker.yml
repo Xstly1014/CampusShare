@@ -19,6 +19,29 @@ jwt:
   secret: CampusShare-Secret-Key-For-Docker-Deployment-2024-Minimum-256-Bits-Required
   expiration: 86400000 # 24小时
 
+# 邮件配置（Docker环境通过环境变量注入）
+spring:
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: ${MAIL_USERNAME:campusshare@qq.com}
+    password: ${MAIL_PASSWORD:your-smtp-authorization-code}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+# 邮件发件人显示名
+mail:
+  from-name: CampusShare 校园共享
+
 # MyBatis Plus配置
 mybatis-plus:
   configuration:

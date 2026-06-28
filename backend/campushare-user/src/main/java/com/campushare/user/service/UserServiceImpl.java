@@ -27,11 +27,12 @@ import java.util.concurrent.TimeUnit;
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
-    
+
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final RedisTemplate<String, String> redisTemplate;
     private final JwtUtils jwtUtils;
+    private final EmailService emailService;
     
     @Override
     public LoginResponse login(LoginRequest request) {
@@ -137,10 +138,10 @@ public class UserServiceImpl implements UserService {
         if (count >= RedisConstants.VERIFY_CODE_MAX_COUNT) {
             throw new BusinessException(ResultCode.VERIFY_CODE_SEND_TOO_FREQUENT);
         }
-        
+
         // 2. 生成6位随机验证码
         String verifyCode = String.format("%06d", (int) ((Math.random() * 9 + 1) * 100000));
-        
+
         // 3. 保存验证码到Redis
         redisTemplate.opsForValue().set(
             RedisConstants.VERIFY_CODE_PREFIX + account,
@@ -148,13 +149,18 @@ public class UserServiceImpl implements UserService {
             RedisConstants.VERIFY_CODE_EXPIRE_TIME,
             TimeUnit.MILLISECONDS
         );
-        
+
         // 4. 增加发送次数
         redisTemplate.opsForValue().increment(countKey);
         redisTemplate.expire(countKey, 3600000, TimeUnit.MILLISECONDS);
-        
-        // 5. 实际应调用短信/邮件服务发送验证码
-        log.info("发送验证码到 {}: {}", account, verifyCode);
+
+        // 5. 发送验证码（邮箱走真实邮件，手机号暂走日志）
+        if ("email".equals(type) || account.contains("@")) {
+            emailService.sendVerifyCodeEmail(account, verifyCode);
+        } else {
+            // 手机号：暂无短信服务，日志输出验证码（开发调试用）
+            log.info("发送短信验证码到 {}: {}", account, verifyCode);
+        }
     }
     
     @Override

@@ -37,6 +37,24 @@ spring:
     serialization:
       write-dates-as-timestamps: false
 
+  # 邮件配置
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: ${MAIL_USERNAME:campusshare@qq.com}
+    password: ${MAIL_PASSWORD:your-smtp-authorization-code}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
   # 文件上传配置
   servlet:
     multipart:
@@ -47,6 +65,10 @@ spring:
 file:
   upload-path: ./uploads/
   access-url: /files/
+
+# 邮件发件人显示名
+mail:
+  from-name: CampusShare 校园共享
 
 # 服务端口
 server:

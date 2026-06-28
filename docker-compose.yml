@@ -78,6 +78,9 @@ services:
       - OTEL_LOGS_EXPORTER=none
       - OTEL_METRICS_EXPORTER=none
       - OTEL_TRACES_SAMPLER=parentbased_always_on
+      # 邮件 SMTP 配置（在 .env 文件中设置真实值）
+      - MAIL_USERNAME=${MAIL_USERNAME:-campusshare@qq.com}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-your-smtp-authorization-code}
     volumes:
       - uploads_data:/app/uploads
     depends_on:

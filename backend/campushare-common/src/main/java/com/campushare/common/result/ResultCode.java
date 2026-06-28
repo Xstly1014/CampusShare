@@ -29,6 +29,10 @@ public enum ResultCode {
     VERIFY_CODE_ERROR(3002, "验证码错误"),
     VERIFY_CODE_EXPIRED(3003, "验证码已过期"),
     VERIFY_CODE_SEND_TOO_FREQUENT(3004, "发送验证码过于频繁"),
+
+    /* 邮件错误：3xxx */
+    EMAIL_SEND_FAILED(3005, "邮件发送失败，请稍后重试"),
+    EMAIL_NOT_CONFIGURED(3006, "邮件服务未配置"),
     
     /* Token错误：4xxx */
     TOKEN_NOT_FOUND(4001, "Token不存在"),
