@@ -114,7 +114,8 @@ public class NotificationServiceImpl implements NotificationService {
         try {
             List<Message> allMessages = messageMapper.selectList(
                     new LambdaQueryWrapper<Message>()
-                            .and(w -> w.eq(Message::getReceiverId, userId).or().eq(Message::getSenderId, userId))
+                            .and(w -> w.eq(Message::getReceiverId, userId).eq(Message::getReceiverHidden, 0)
+                                    .or(w2 -> w2.eq(Message::getSenderId, userId).eq(Message::getSenderHidden, 0)))
                             .orderByDesc(Message::getCreateTime));
 
             // Group by other user
@@ -278,6 +279,7 @@ public class NotificationServiceImpl implements NotificationService {
             long msgUnread = messageMapper.selectCount(
                     new LambdaQueryWrapper<Message>()
                             .eq(Message::getReceiverId, userId)
+                            .eq(Message::getReceiverHidden, 0)
                             .eq(Message::getIsRead, 0));
             return (int) (notifUnread + msgUnread);
         } catch (Exception e) {
