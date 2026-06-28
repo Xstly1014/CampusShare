@@ -44,7 +44,7 @@ export default function NavBar() {
           {navItems.map((item) => {
             const Icon = item.icon
             const active = isActive(item.path)
-            const showBadge = item.badge !== undefined && Number(item.badge) > 0 && !active
+            const showBadge = item.badge !== undefined && Number(item.badge) > 0
             return (
               <button
                 key={item.path}
