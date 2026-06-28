@@ -22,8 +22,8 @@ jwt:
 # 邮件配置（Docker环境通过环境变量注入）
 spring:
   mail:
-    host: smtp.qq.com
-    port: 587
+    host: ${MAIL_HOST:smtp.qq.com}
+    port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:campusshare@qq.com}
     password: ${MAIL_PASSWORD:your-smtp-authorization-code}
     default-encoding: UTF-8
