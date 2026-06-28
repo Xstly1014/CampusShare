@@ -91,6 +91,13 @@ changelog/
 # Agent 工作流文档（本地记录，不提交）
 AGENT-WORKFLOW.md
 
+# 简历文件（本地，不提交到GitHub）
+/简历.pdf
+/resume/
+
+# 性能优化教学日志（本地，不提交到GitHub）
+/optimization-logs/
+
 # ===== 操作系统 =====
 # macOS
 .DS_Store

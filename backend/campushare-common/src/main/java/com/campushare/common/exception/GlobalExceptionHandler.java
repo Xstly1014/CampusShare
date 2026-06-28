@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
@@ -101,6 +102,14 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Result<?> handleNoHandlerFoundException(NoHandlerFoundException e) {
         log.error("请求路径不存在: {}", e.getMessage());
+        return Result.error(ResultCode.RESOURCE_NOT_FOUND.getCode(), 
+                          "请求路径不存在");
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<?> handleNoResourceFoundException(NoResourceFoundException e, HttpServletRequest request) {
+        log.warn("静态资源不存在: {}", request.getRequestURI());
         return Result.error(ResultCode.RESOURCE_NOT_FOUND.getCode(), 
                           "请求路径不存在");
     }

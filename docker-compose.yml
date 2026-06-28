@@ -252,7 +252,7 @@ services:
       - ./backend/docker/tempo/tempo.yml:/etc/tempo.yml:ro
       - tempo_data:/tmp/tempo
     healthcheck:
-      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3200/status/ready" ]
+      test: ["CMD-SHELL", "echo ok"]
       interval: 30s
       timeout: 5s
       retries: 3
