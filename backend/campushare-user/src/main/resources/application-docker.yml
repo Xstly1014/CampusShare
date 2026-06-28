@@ -14,13 +14,7 @@ spring:
       password: ""
       database: 0
 
-# JWT配置
-jwt:
-  secret: CampusShare-Secret-Key-For-Docker-Deployment-2024-Minimum-256-Bits-Required
-  expiration: 86400000 # 24小时
-
-# 邮件配置（Docker环境通过环境变量注入）
-spring:
+  # 邮件配置（Docker环境通过环境变量注入）
   mail:
     host: ${MAIL_HOST:smtp.qq.com}
     port: ${MAIL_PORT:587}
@@ -37,6 +31,11 @@ spring:
           connectiontimeout: 5000
           timeout: 5000
           writetimeout: 5000
+
+# JWT配置
+jwt:
+  secret: CampusShare-Secret-Key-For-Docker-Deployment-2024-Minimum-256-Bits-Required
+  expiration: 86400000 # 24小时
 
 # 邮件发件人显示名
 mail:
