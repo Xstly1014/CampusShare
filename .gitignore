@@ -19,6 +19,9 @@ dist-ssr/
 build/
 *.local
 
+# Vite
+.vite/
+
 # Testing
 coverage/
 
@@ -26,6 +29,11 @@ coverage/
 .env
 .env.local
 .env.*.local
+
+# ===== 运行时数据 =====
+# 文件上传目录（Docker volume管理，不提交到Git）
+.uploads/
+uploads/
 
 # ===== 后端相关 =====
 # Maven
