@@ -28,6 +28,7 @@ export interface NotificationDetail {
   type: string
   targetId?: string
   targetTitle?: string
+  schoolId?: string
   isRead: number
   createTime: string
 }

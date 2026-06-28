@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, Heart, Star, UserPlus, MessageSquare, Pin, ChevronRight } from 'lucide-react'
+import { ChevronLeft, Heart, Star, UserPlus, MessageSquare, MessageCircle, Pin, ChevronRight } from 'lucide-react'
 import { notificationApi } from '../services/api'
 import type { NotificationItem, NotificationDetail } from '../services/api'
 import { formatTime } from '../utils/time'
@@ -11,6 +11,8 @@ const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
   LIKE: { icon: <Heart className="w-5 h-5" />, color: 'bg-red-50 text-red-500' },
   STAR: { icon: <Star className="w-5 h-5" />, color: 'bg-orange-50 text-orange-500' },
   FOLLOW: { icon: <UserPlus className="w-5 h-5" />, color: 'bg-blue-50 text-blue-500' },
+  COMMENT: { icon: <MessageCircle className="w-5 h-5" />, color: 'bg-green-50 text-green-500' },
+  REPLY: { icon: <MessageCircle className="w-5 h-5" />, color: 'bg-emerald-50 text-emerald-500' },
   STRANGER_MSG: { icon: <MessageSquare className="w-5 h-5" />, color: 'bg-gray-50 text-gray-500' },
   CONVERSATION: { icon: <MessageSquare className="w-5 h-5" />, color: 'bg-cyan-50 text-cyan-500' },
 }
@@ -160,12 +162,9 @@ export default function NotificationPage() {
                           <div
                             key={d.id}
                             onClick={() => {
-                              if (d.targetId) {
-                                // Navigate to post - need schoolId, but we don't have it here
-                                // Navigate to user profile instead
-                                navigate(`/user/${d.senderId}`)
+                              if (d.targetId && d.schoolId) {
+                                navigate(`/school/${d.schoolId}/post/${d.targetId}`)
                               } else {
-                                // Follow notification - go to user profile
                                 navigate(`/user/${d.senderId}`)
                               }
                             }}
@@ -183,6 +182,8 @@ export default function NotificationPage() {
                                 {d.type === 'LIKE' && ` 赞了你的帖子`}
                                 {d.type === 'STAR' && ` 收藏了你的帖子`}
                                 {d.type === 'FOLLOW' && ` 关注了你`}
+                                {d.type === 'COMMENT' && ` 评论了你的帖子`}
+                                {d.type === 'REPLY' && ` 回复了你的评论`}
                               </p>
                               {d.targetTitle && <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{d.targetTitle}</p>}
                             </div>

@@ -13,6 +13,7 @@ import com.campushare.user.mapper.CommentMapper;
 import com.campushare.user.mapper.PostMapper;
 import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.CommentService;
+import com.campushare.user.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,10 +33,12 @@ public class CommentServiceImpl implements CommentService {
     private final PostMapper postMapper;
     private final UserMapper userMapper;
     private final CommentLikeMapper commentLikeMapper;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
-    public CommentDTO createComment(String userId, String postId, String content, String parentId, String replyToUserId) {
+    public CommentDTO createComment(String userId, String postId, String content, String parentId,
+            String replyToUserId) {
         if (content == null || content.trim().isEmpty()) {
             throw new BusinessException(40001, "评论内容不能为空");
         }
@@ -59,6 +62,18 @@ public class CommentServiceImpl implements CommentService {
         postMapper.update(null, new LambdaUpdateWrapper<Post>()
                 .eq(Post::getId, postId)
                 .setSql("comment_count = comment_count + 1"));
+
+        String postTitle = post.getTitle();
+        if (postTitle == null || postTitle.isEmpty()) {
+            postTitle = post.getContent().length() > 20 ? post.getContent().substring(0, 20) + "..."
+                    : post.getContent();
+        }
+
+        if (replyToUserId != null && !replyToUserId.isEmpty() && !replyToUserId.equals(userId)) {
+            notificationService.createNotification(replyToUserId, userId, "REPLY", postId, postTitle);
+        } else if (!post.getAuthorId().equals(userId)) {
+            notificationService.createNotification(post.getAuthorId(), userId, "COMMENT", postId, postTitle);
+        }
 
         log.info("用户 {} 评论帖子 {}", userId, postId);
         return buildCommentDTO(comment);
