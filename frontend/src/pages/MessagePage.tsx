@@ -82,7 +82,7 @@ export default function MessagePage() {
       <div className="min-h-screen bg-gray-50 pb-16">
         <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
           <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-            <button onClick={() => navigate('/profile')} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
+            <button onClick={() => navigate(-1)} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
               <ChevronLeft className="w-5 h-5 text-gray-600" />
             </button>
             <span className="text-sm font-medium text-gray-900">私信</span>
@@ -130,7 +130,7 @@ export default function MessagePage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate('/messages')} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
+          <button onClick={() => navigate(-1)} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex items-center gap-2">

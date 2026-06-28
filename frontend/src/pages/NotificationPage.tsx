@@ -5,6 +5,7 @@ import { notificationApi } from '../services/api'
 import type { NotificationItem, NotificationDetail } from '../services/api'
 import { formatTime } from '../utils/time'
 import { toast } from '../stores/toastStore'
+import NavBar from '../components/common/NavBar'
 
 const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
   LIKE: { icon: <Heart className="w-5 h-5" />, color: 'bg-red-50 text-red-500' },
@@ -113,9 +114,19 @@ export default function NotificationPage() {
                     onClick={() => handleExpand(item)}
                     className={`bg-white rounded-xl border ${item.unreadCount > 0 ? 'border-blue-200' : 'border-gray-100'} p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors relative group`}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${config.color}`}>
-                      {config.icon}
-                    </div>
+                    {item.itemType === 'CONVERSATION' ? (
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600">
+                        {item.otherUserAvatar ? (
+                          <img src={item.otherUserAvatar.startsWith('/files/') ? `/api${item.otherUserAvatar}` : item.otherUserAvatar} alt={item.otherUserName || ''} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white font-bold">{(item.otherUserName || '?').substring(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${config.color}`}>
+                        {config.icon}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-gray-900">{item.title}</p>
@@ -196,6 +207,7 @@ export default function NotificationPage() {
           </div>
         )}
       </div>
+      <NavBar />
     </div>
   )
 }
