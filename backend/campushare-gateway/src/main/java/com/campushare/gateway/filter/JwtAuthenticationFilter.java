@@ -46,7 +46,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
-        String method = request.getMethodValue();
+        HttpMethod method = request.getMethod();
         
         if (isWhiteListed(path)) {
             return chain.filter(exchange);
@@ -97,8 +97,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return false;
     }
     
-    private boolean isPublicGetRequest(String path, String method) {
-        if (!HttpMethod.GET.matches(method)) return false;
+    private boolean isPublicGetRequest(String path, HttpMethod method) {
+        if (method != HttpMethod.GET) return false;
         for (String prefix : PUBLIC_GET_PREFIXES) {
             if (path.startsWith(prefix)) return true;
         }
