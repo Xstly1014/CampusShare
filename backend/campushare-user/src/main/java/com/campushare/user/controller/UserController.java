@@ -4,17 +4,17 @@ import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.*;
 import com.campushare.user.entity.User;
+import com.campushare.user.feign.PostFeignClient;
+import com.campushare.user.feign.PostListDTO;
+import com.campushare.user.feign.UserPostStats;
 import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.CreatorService;
 import com.campushare.user.service.FollowService;
-import com.campushare.user.service.PostService;
 import com.campushare.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,12 +25,10 @@ public class UserController {
 
     private final UserService userService;
     private final FollowService followService;
-    private final PostService postService;
     private final CreatorService creatorService;
+    private final PostFeignClient postFeignClient;
     private final JwtUtils jwtUtils;
     private final UserMapper userMapper;
-
-    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @GetMapping("/me")
     public Result<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
@@ -114,7 +112,7 @@ public class UserController {
             return Result.success(null);
         }
 
-        UserPostStats stats = postService.getMyPostStats(userId);
+        UserPostStats stats = postFeignClient.getUserStats(userId).getData();
         long followerCount = followService.getFollowerCount(userId);
         long followingCount = followService.getFollowingCount(userId);
         boolean isFollowing = followService.isFollowing(currentUserId, userId);
@@ -143,8 +141,7 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<com.campushare.user.entity.Post> posts = postService.getMyPosts(userId, page, size);
-        return Result.success(enrichPosts(posts));
+        return postFeignClient.getUserPosts(userId, page, size);
     }
 
     @GetMapping("/{userId}/starred")
@@ -153,8 +150,7 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<com.campushare.user.entity.Post> posts = postService.getStarredPosts(userId, page, size);
-        return Result.success(enrichPosts(posts));
+        return postFeignClient.getUserStarred(userId, page, size);
     }
 
     @GetMapping("/{userId}/liked")
@@ -163,8 +159,7 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<com.campushare.user.entity.Post> posts = postService.getLikedPosts(userId, page, size);
-        return Result.success(enrichPosts(posts));
+        return postFeignClient.getUserLiked(userId, page, size);
     }
 
     @GetMapping("/{userId}/history")
@@ -173,8 +168,7 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<com.campushare.user.entity.Post> posts = postService.getViewHistory(userId, page, size);
-        return Result.success(enrichPosts(posts));
+        return postFeignClient.getUserHistory(userId, page, size);
     }
 
     @PostMapping("/{userId}/follow")
@@ -208,41 +202,5 @@ public class UserController {
     public Result<List<UserDTO>> getMutualList(@RequestHeader("Authorization") String token) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         return Result.success(followService.getMutualList(userId));
-    }
-
-    private List<PostListDTO> enrichPosts(List<com.campushare.user.entity.Post> posts) {
-        if (posts.isEmpty()) return new ArrayList<>();
-        List<String> authorIds = new ArrayList<>();
-        for (com.campushare.user.entity.Post p : posts) {
-            if (!authorIds.contains(p.getAuthorId())) authorIds.add(p.getAuthorId());
-        }
-        List<User> authors = userMapper.selectBatchIds(authorIds);
-        Map<String, User> authorMap = new HashMap<>();
-        for (User u : authors) authorMap.put(u.getId(), u);
-
-        List<PostListDTO> result = new ArrayList<>();
-        for (com.campushare.user.entity.Post p : posts) {
-            User author = authorMap.get(p.getAuthorId());
-            PostListDTO dto = new PostListDTO();
-            dto.setId(p.getId());
-            dto.setSchoolId(p.getSchoolId());
-            dto.setAuthorId(p.getAuthorId());
-            dto.setAuthorName(author != null ? author.getUsername() : "未知用户");
-            dto.setAuthorAvatar(author != null && author.getAvatarUrl() != null ? author.getAvatarUrl() : null);
-            dto.setPostType(p.getPostType());
-            dto.setTitle(p.getTitle());
-            dto.setContent(p.getContent());
-            dto.setFileUrl(p.getFileUrl());
-            dto.setFileName(p.getFileName());
-            dto.setFileType(p.getFileType());
-            dto.setFileSize(p.getFileSize());
-            dto.setViewCount(p.getViewCount());
-            dto.setStarCount(p.getStarCount());
-            dto.setLikeCount(p.getLikeCount());
-            dto.setCommentCount(p.getCommentCount());
-            dto.setCreateTime(p.getCreateTime() != null ? p.getCreateTime().format(FMT) : null);
-            result.add(dto);
-        }
-        return result;
     }
 }

@@ -36,6 +36,15 @@ scrape_configs:
           service: 'campushare-user'
     scrape_interval: 10s
 
+  # 帖子服务
+  - job_name: 'campushare-post'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['post-service:8082']
+        labels:
+          service: 'campushare-post'
+    scrape_interval: 10s
+
   # API 网关
   - job_name: 'campushare-gateway'
     metrics_path: '/actuator/prometheus'

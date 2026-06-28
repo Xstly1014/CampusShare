@@ -4,15 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.campushare.user.dto.NotificationDetailDTO;
 import com.campushare.user.dto.NotificationItemDTO;
-import com.campushare.user.entity.Follow;
 import com.campushare.user.entity.Message;
 import com.campushare.user.entity.Notification;
-import com.campushare.user.entity.Post;
 import com.campushare.user.entity.User;
 import com.campushare.user.mapper.FollowMapper;
 import com.campushare.user.mapper.MessageMapper;
 import com.campushare.user.mapper.NotificationMapper;
-import com.campushare.user.mapper.PostMapper;
 import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -31,11 +28,9 @@ public class NotificationServiceImpl implements NotificationService {
     private final MessageMapper messageMapper;
     private final UserMapper userMapper;
     private final FollowMapper followMapper;
-    private final PostMapper postMapper;
 
     @Override
     public void createNotification(String userId, String senderId, String type, String targetId, String targetTitle) {
-        // Don't notify self
         if (userId.equals(senderId))
             return;
 
@@ -50,8 +45,6 @@ public class NotificationServiceImpl implements NotificationService {
                     .build();
             notificationMapper.insert(notif);
         } catch (Exception e) {
-            // Notification creation should never break the main operation
-            // (like/star/follow)
             log.warn("Failed to create notification: {}", e.getMessage());
         }
     }
@@ -60,7 +53,6 @@ public class NotificationServiceImpl implements NotificationService {
     public List<NotificationItemDTO> getNotificationFeed(String userId) {
         List<NotificationItemDTO> items = new ArrayList<>();
 
-        // 1. Notification groups (LIKE, STAR, FOLLOW, COMMENT, REPLY)
         try {
             for (String type : Arrays.asList("LIKE", "STAR", "FOLLOW", "COMMENT", "REPLY")) {
                 List<Notification> notifs = notificationMapper.selectList(
@@ -75,23 +67,12 @@ public class NotificationServiceImpl implements NotificationService {
 
                     String title;
                     switch (type) {
-                        case "LIKE":
-                            title = "赞";
-                            break;
-                        case "STAR":
-                            title = "收藏";
-                            break;
-                        case "FOLLOW":
-                            title = "新增粉丝";
-                            break;
-                        case "COMMENT":
-                            title = "评论";
-                            break;
-                        case "REPLY":
-                            title = "回复";
-                            break;
-                        default:
-                            title = type;
+                        case "LIKE": title = "赞"; break;
+                        case "STAR": title = "收藏"; break;
+                        case "FOLLOW": title = "新增粉丝"; break;
+                        case "COMMENT": title = "评论"; break;
+                        case "REPLY": title = "回复"; break;
+                        default: title = type;
                     }
                     String preview = buildPreview(notifs, type);
 
@@ -110,7 +91,6 @@ public class NotificationServiceImpl implements NotificationService {
             log.warn("Failed to load notification groups: {}", e.getMessage());
         }
 
-        // 2. Message conversations
         try {
             List<Message> allMessages = messageMapper.selectList(
                     new LambdaQueryWrapper<Message>()
@@ -118,7 +98,6 @@ public class NotificationServiceImpl implements NotificationService {
                                     .or(w2 -> w2.eq(Message::getSenderId, userId).eq(Message::getSenderHidden, 0)))
                             .orderByDesc(Message::getCreateTime));
 
-            // Group by other user
             Map<String, List<Message>> conversationMap = new LinkedHashMap<>();
             for (Message m : allMessages) {
                 String otherId = m.getSenderId().equals(userId) ? m.getReceiverId() : m.getSenderId();
@@ -141,12 +120,11 @@ public class NotificationServiceImpl implements NotificationService {
                 }
             }
 
-            // Stranger messages group
             if (!strangerConvs.isEmpty()) {
                 List<Message> strangerMsgs = allMessages.stream()
                         .filter(m -> strangerConvs
                                 .contains(m.getSenderId().equals(userId) ? m.getReceiverId() : m.getSenderId()))
-                        .filter(m -> m.getReceiverId().equals(userId)) // messages sent TO me
+                        .filter(m -> m.getReceiverId().equals(userId))
                         .collect(Collectors.toList());
 
                 if (!strangerMsgs.isEmpty()) {
@@ -157,8 +135,7 @@ public class NotificationServiceImpl implements NotificationService {
                     items.add(NotificationItemDTO.builder()
                             .itemType("STRANGER_MSG")
                             .title("陌生人私信")
-                            .preview(sender != null ? sender.getUsername() + ": " + latest.getContent()
-                                    : latest.getContent())
+                            .preview(sender != null ? sender.getUsername() + ": " + latest.getContent() : latest.getContent())
                             .unreadCount(unread)
                             .totalCount(strangerMsgs.size())
                             .latestTime(latest.getCreateTime())
@@ -167,12 +144,10 @@ public class NotificationServiceImpl implements NotificationService {
                 }
             }
 
-            // Ongoing conversations
             for (String otherId : ongoingConvs) {
                 List<Message> msgs = conversationMap.get(otherId);
-                Message latest = msgs.get(0); // already sorted desc
-                int unread = (int) msgs.stream().filter(m -> m.getReceiverId().equals(userId) && m.getIsRead() == 0)
-                        .count();
+                Message latest = msgs.get(0);
+                int unread = (int) msgs.stream().filter(m -> m.getReceiverId().equals(userId) && m.getIsRead() == 0).count();
                 User other = userMapper.selectById(otherId);
 
                 items.add(NotificationItemDTO.builder()
@@ -193,10 +168,8 @@ public class NotificationServiceImpl implements NotificationService {
             log.warn("Failed to load message conversations: {}", e.getMessage());
         }
 
-        // Sort: pinned first, then by latest time desc
         items.sort((a, b) -> {
-            if (a.isPinned() != b.isPinned())
-                return a.isPinned() ? -1 : 1;
+            if (a.isPinned() != b.isPinned()) return a.isPinned() ? -1 : 1;
             return b.getLatestTime().compareTo(a.getLatestTime());
         });
 
@@ -215,13 +188,6 @@ public class NotificationServiceImpl implements NotificationService {
             List<NotificationDetailDTO> result = new ArrayList<>();
             for (Notification n : notifs) {
                 User sender = userMapper.selectById(n.getSenderId());
-                String schoolId = null;
-                if (n.getTargetId() != null && !n.getTargetId().isEmpty()) {
-                    Post post = postMapper.selectById(n.getTargetId());
-                    if (post != null) {
-                        schoolId = post.getSchoolId();
-                    }
-                }
                 result.add(NotificationDetailDTO.builder()
                         .id(String.valueOf(n.getId()))
                         .senderId(n.getSenderId())
@@ -230,7 +196,7 @@ public class NotificationServiceImpl implements NotificationService {
                         .type(n.getType())
                         .targetId(n.getTargetId())
                         .targetTitle(n.getTargetTitle())
-                        .schoolId(schoolId)
+                        .schoolId(null)
                         .isRead(n.getIsRead())
                         .createTime(n.getCreateTime())
                         .build());
@@ -251,7 +217,6 @@ public class NotificationServiceImpl implements NotificationService {
                     .eq(Notification::getIsRead, 0)
                     .set(Notification::getIsRead, 1));
 
-            // For STRANGER_MSG and CONVERSATION, also mark messages as read
             if ("STRANGER_MSG".equals(type) || "CONVERSATION".equals(type)) {
                 messageMapper.update(null, new LambdaUpdateWrapper<Message>()
                         .eq(Message::getReceiverId, userId)
@@ -265,7 +230,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void togglePin(String userId, String itemType, String targetId) {
-        // TODO: Implement with a pins table. For now, this is a no-op stub.
         log.info("Toggle pin: user={}, type={}, target={}", userId, itemType, targetId);
     }
 
@@ -294,27 +258,17 @@ public class NotificationServiceImpl implements NotificationService {
         String name = sender != null ? sender.getUsername() : "未知用户";
 
         if (notifs.size() == 1) {
-            if ("LIKE".equals(type))
-                return name + " 赞了你的帖子";
-            if ("STAR".equals(type))
-                return name + " 收藏了你的帖子";
-            if ("FOLLOW".equals(type))
-                return name + " 关注了你";
-            if ("COMMENT".equals(type))
-                return name + " 评论了你的帖子";
-            if ("REPLY".equals(type))
-                return name + " 回复了你的评论";
+            if ("LIKE".equals(type)) return name + " 赞了你的帖子";
+            if ("STAR".equals(type)) return name + " 收藏了你的帖子";
+            if ("FOLLOW".equals(type)) return name + " 关注了你";
+            if ("COMMENT".equals(type)) return name + " 评论了你的帖子";
+            if ("REPLY".equals(type)) return name + " 回复了你的评论";
         } else {
-            if ("LIKE".equals(type))
-                return name + " 等" + notifs.size() + "人赞了你的帖子";
-            if ("STAR".equals(type))
-                return name + " 等" + notifs.size() + "人收藏了你的帖子";
-            if ("FOLLOW".equals(type))
-                return name + " 等" + notifs.size() + "人关注了你";
-            if ("COMMENT".equals(type))
-                return name + " 等" + notifs.size() + "人评论了你的帖子";
-            if ("REPLY".equals(type))
-                return name + " 等" + notifs.size() + "人回复了你的评论";
+            if ("LIKE".equals(type)) return name + " 等" + notifs.size() + "人赞了你的帖子";
+            if ("STAR".equals(type)) return name + " 等" + notifs.size() + "人收藏了你的帖子";
+            if ("FOLLOW".equals(type)) return name + " 等" + notifs.size() + "人关注了你";
+            if ("COMMENT".equals(type)) return name + " 等" + notifs.size() + "人评论了你的帖子";
+            if ("REPLY".equals(type)) return name + " 等" + notifs.size() + "人回复了你的评论";
         }
         return "";
     }

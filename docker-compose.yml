@@ -102,6 +102,48 @@ services:
     networks:
       - campushare-network
 
+  # 帖子服务
+  post-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: post-service
+    image: campusshare/post-service:latest
+    container_name: campushare-post-service
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - TZ=Asia/Shanghai
+      - JAVA_OPTS=-Xms256m -Xmx512m -javaagent:/app/opentelemetry-javaagent.jar
+      - OTEL_SERVICE_NAME=campushare-post
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_LOGS_EXPORTER=none
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_TRACES_SAMPLER=parentbased_always_on
+    dns:
+      - 8.8.8.8
+      - 114.114.114.114
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8082/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - campushare-network
+
   # API网关服务
   gateway-service:
     build:
@@ -125,6 +167,8 @@ services:
       - OTEL_TRACES_SAMPLER=parentbased_always_on
     depends_on:
       user-service:
+        condition: service_healthy
+      post-service:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/actuator/health" ]

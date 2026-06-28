@@ -16,6 +16,7 @@
     <modules>
         <module>campushare-common</module>
         <module>campushare-user</module>
+        <module>campushare-post</module>
         <module>campushare-gateway</module>
     </modules>
 

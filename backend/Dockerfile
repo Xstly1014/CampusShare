@@ -14,6 +14,7 @@ COPY settings.xml /usr/share/maven/conf/settings.xml
 COPY pom.xml .
 COPY campushare-common/pom.xml campushare-common/
 COPY campushare-user/pom.xml campushare-user/
+COPY campushare-post/pom.xml campushare-post/
 COPY campushare-gateway/pom.xml campushare-gateway/
 
 # Download dependencies (this layer will be cached)
@@ -22,6 +23,7 @@ RUN mvn dependency:go-offline -B
 # Copy source code
 COPY campushare-common/src campushare-common/src
 COPY campushare-user/src campushare-user/src
+COPY campushare-post/src campushare-post/src
 COPY campushare-gateway/src campushare-gateway/src
 
 # Build the project
@@ -56,7 +58,35 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=docker", "app.jar"]
 
 # ========================================
-# Stage 3: Gateway Service
+# Stage 3: Post Service
+# ========================================
+FROM eclipse-temurin:17-jre-alpine AS post-service
+
+WORKDIR /app
+
+RUN apk add --no-cache curl tzdata && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+ENV TZ=Asia/Shanghai
+
+# 下载 OpenTelemetry Java Agent
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.3.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
+
+COPY --from=builder /build/campushare-post/target/campushare-post-*.jar app.jar
+
+# Expose port
+EXPOSE 8082
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8082/actuator/health || exit 1
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=docker", "app.jar"]
+
+# ========================================
+# Stage 4: Gateway Service
 # ========================================
 FROM eclipse-temurin:17-jre-alpine AS gateway-service
 

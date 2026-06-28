@@ -1,4 +1,4 @@
-package com.campushare.user;
+package com.campushare.post;
 
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
@@ -7,12 +7,12 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.retry.annotation.EnableRetry;
 
 @SpringBootApplication(scanBasePackages = "com.campushare")
-@MapperScan("com.campushare.user.mapper")
-@EnableFeignClients(basePackages = "com.campushare.user.feign")
+@MapperScan("com.campushare.post.mapper")
+@EnableFeignClients(basePackages = "com.campushare.post.feign")
 @EnableRetry
-public class UserApplication {
-    
+public class PostApplication {
+
     public static void main(String[] args) {
-        SpringApplication.run(UserApplication.class, args);
+        SpringApplication.run(PostApplication.class, args);
     }
 }

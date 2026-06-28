@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -31,18 +32,27 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         "/api/auth/send-code",
         "/api/auth/reset-password",
         "/api/auth/refresh-token",
-        "/api/posts/school",
-        "/api/posts/",
         "/api/files/",
         "/api/admin/"
+    );
+    
+    private static final List<String> PUBLIC_GET_PREFIXES = Arrays.asList(
+        "/api/posts/",
+        "/api/comments/",
+        "/api/categories/"
     );
     
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
+        String method = request.getMethodValue();
         
         if (isWhiteListed(path)) {
+            return chain.filter(exchange);
+        }
+        
+        if (isPublicGetRequest(path, method)) {
             return chain.filter(exchange);
         }
         
@@ -77,7 +87,22 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     }
     
     private boolean isWhiteListed(String path) {
-        return WHITE_LIST.stream().anyMatch(path::startsWith);
+        for (String pattern : WHITE_LIST) {
+            if (pattern.endsWith("/")) {
+                if (path.startsWith(pattern)) return true;
+            } else {
+                if (path.equals(pattern) || path.startsWith(pattern + "/")) return true;
+            }
+        }
+        return false;
+    }
+    
+    private boolean isPublicGetRequest(String path, String method) {
+        if (!HttpMethod.GET.matches(method)) return false;
+        for (String prefix : PUBLIC_GET_PREFIXES) {
+            if (path.startsWith(prefix)) return true;
+        }
+        return false;
     }
     
     private String extractToken(ServerHttpRequest request) {

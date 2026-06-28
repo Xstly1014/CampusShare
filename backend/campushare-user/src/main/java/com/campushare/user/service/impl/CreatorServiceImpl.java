@@ -1,15 +1,15 @@
 package com.campushare.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campushare.common.exception.BusinessException;
 import com.campushare.user.dto.CreatorApplyRequest;
 import com.campushare.user.dto.CreatorStatsDTO;
 import com.campushare.user.dto.CreatorStatusDTO;
-import com.campushare.user.dto.UserPostStats;
 import com.campushare.user.entity.CreatorVerification;
-import com.campushare.common.exception.BusinessException;
+import com.campushare.user.feign.PostFeignClient;
+import com.campushare.user.feign.UserPostStats;
 import com.campushare.user.mapper.CreatorVerificationMapper;
 import com.campushare.user.service.CreatorService;
-import com.campushare.user.service.PostService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,11 +22,11 @@ public class CreatorServiceImpl implements CreatorService {
     private static final int REQUIRED_POSTS = 50;
 
     private final CreatorVerificationMapper creatorVerificationMapper;
-    private final PostService postService;
+    private final PostFeignClient postFeignClient;
 
     @Override
     public CreatorStatsDTO getStats(String userId) {
-        UserPostStats stats = postService.getMyPostStats(userId);
+        UserPostStats stats = postFeignClient.getUserStats(userId).getData();
         int totalLikes = (int) stats.getTotalLikes();
         int totalPosts = (int) stats.getPostCount();
         return CreatorStatsDTO.builder()

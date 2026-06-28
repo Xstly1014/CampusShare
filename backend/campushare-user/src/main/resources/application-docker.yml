@@ -1,12 +1,10 @@
 spring:
   datasource:
-    # Docker环境下的MySQL连接配置
     url: jdbc:mysql://mysql:3306/campushare?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
     password: root123456
     driver-class-name: com.mysql.cj.jdbc.Driver
 
-  # Docker环境下的Redis连接配置
   data:
     redis:
       host: redis
@@ -14,7 +12,6 @@ spring:
       password: ""
       database: 0
 
-  # 邮件配置（Docker环境通过环境变量注入）
   mail:
     host: ${MAIL_HOST:smtp.qq.com}
     port: ${MAIL_PORT:587}
@@ -23,7 +20,7 @@ spring:
     default-encoding: UTF-8
     properties:
       mail:
-        debug: true  # 开启JavaMail调试日志，排查SMTP通信问题
+        debug: true
         smtp:
           auth: true
           starttls:
@@ -33,16 +30,17 @@ spring:
           timeout: 30000
           writetimeout: 30000
 
-# JWT配置
+service:
+  post:
+    url: http://post-service:8082
+
 jwt:
   secret: CampusShare-Secret-Key-For-Docker-Deployment-2024-Minimum-256-Bits-Required
-  expiration: 86400000 # 24小时
+  expiration: 86400000
 
-# 邮件发件人显示名
 mail:
   from-name: CampusShare 校园共享
 
-# MyBatis Plus配置
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
@@ -52,16 +50,13 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-# 服务器配置
 server:
   port: 8081
 
-# 文件存储配置（Docker环境使用绝对路径）
 file:
   upload-path: /app/uploads/
   access-url: /files/
 
-# Actuator健康检查
 management:
   endpoints:
     web:
@@ -72,6 +67,6 @@ management:
       show-details: always
   health:
     mail:
-      enabled: false  # 禁用邮件健康检查，避免SMTP连接问题导致服务整体unhealthy
+      enabled: false
     redis:
       enabled: true
