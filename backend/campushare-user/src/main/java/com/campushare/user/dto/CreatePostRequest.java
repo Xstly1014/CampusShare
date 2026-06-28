@@ -5,6 +5,8 @@ import lombok.Data;
 @Data
 public class CreatePostRequest {
     private String schoolId;
+    private String categoryId;
+    private String subCategoryId;
     private String postType;
     private String title;
     private String content;

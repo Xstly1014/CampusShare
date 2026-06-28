@@ -10,6 +10,10 @@ import lombok.NoArgsConstructor;
 public class PostDetailDTO {
     private String id;
     private String schoolId;
+    private String categoryId;
+    private String subCategoryId;
+    private String categoryName;
+    private String subCategoryName;
     private String authorId;
     private String authorName;
     private String authorAvatar;

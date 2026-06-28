@@ -59,18 +59,22 @@ public class PostServiceImpl implements PostService {
         if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
             throw new BusinessException(40001, "标题不能为空");
         }
-        if (request.getSchoolId() == null) {
-            throw new BusinessException(40002, "学校ID不能为空");
+        boolean hasSchool = request.getSchoolId() != null && !request.getSchoolId().trim().isEmpty();
+        boolean hasCategory = request.getCategoryId() != null && !request.getCategoryId().trim().isEmpty();
+        if (!hasSchool && !hasCategory) {
+            throw new BusinessException(40002, "必须选择学校或分类");
         }
 
         Counter.builder("campushare.post.create.total")
                 .tag("type", request.getPostType() != null ? request.getPostType() : "discussion")
-                .tag("school", request.getSchoolId())
+                .tag("school", request.getSchoolId() != null ? request.getSchoolId() : "none")
                 .register(meterRegistry)
                 .increment();
 
         Post post = Post.builder()
-                .schoolId(request.getSchoolId())
+                .schoolId(hasSchool ? request.getSchoolId() : null)
+                .categoryId(hasCategory ? request.getCategoryId() : null)
+                .subCategoryId(hasCategory ? request.getSubCategoryId() : null)
                 .authorId(userId)
                 .postType(request.getPostType() != null ? request.getPostType() : "discussion")
                 .title(request.getTitle().trim())
@@ -112,6 +116,17 @@ public class PostServiceImpl implements PostService {
             post.setFileType(request.getFileType());
             post.setFileSize(request.getFileSize());
         }
+        boolean hasSchool = request.getSchoolId() != null && !request.getSchoolId().trim().isEmpty();
+        boolean hasCategory = request.getCategoryId() != null && !request.getCategoryId().trim().isEmpty();
+        if (hasSchool) {
+            post.setSchoolId(request.getSchoolId());
+            post.setCategoryId(null);
+            post.setSubCategoryId(null);
+        } else if (hasCategory) {
+            post.setSchoolId(null);
+            post.setCategoryId(request.getCategoryId());
+            post.setSubCategoryId(request.getSubCategoryId());
+        }
         postMapper.updateById(post);
         return post;
     }
@@ -144,6 +159,7 @@ public class PostServiceImpl implements PostService {
     public List<Post> getPostsBySchool(String schoolId, String postType, String sortType, int page, int size) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Post::getSchoolId, schoolId)
+                .isNull(Post::getCategoryId)
                 .eq(Post::getStatus, 1)
                 .eq(Post::getDeleted, false);
 
@@ -473,7 +489,9 @@ public class PostServiceImpl implements PostService {
         List<Post> allPosts = postMapper.selectList(
                 new LambdaQueryWrapper<Post>()
                         .eq(Post::getDeleted, false)
-                        .eq(Post::getStatus, 1));
+                        .eq(Post::getStatus, 1)
+                        .isNotNull(Post::getSchoolId)
+                        .isNull(Post::getCategoryId));
         java.util.Map<String, Long> counts = new java.util.HashMap<>();
         for (Post p : allPosts) {
             counts.merge(p.getSchoolId(), 1L, Long::sum);

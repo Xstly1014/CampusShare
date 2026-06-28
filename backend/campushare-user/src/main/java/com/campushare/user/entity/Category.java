@@ -13,52 +13,31 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("posts")
-public class Post implements Serializable {
+@TableName("categories")
+public class Category implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @TableId(value = "id", type = IdType.ASSIGN_UUID)
     private String id;
 
-    private String schoolId;
+    private String name;
 
-    private String categoryId;
+    private String icon;
 
-    private String subCategoryId;
+    private String color;
 
-    private String authorId;
+    private String type;
 
-    private String postType;
+    private String description;
 
-    private String title;
+    private Integer sortOrder;
 
-    private String content;
-
-    private String fileUrl;
-
-    private String fileName;
-
-    private String fileType;
-
-    private Long fileSize;
-
-    private Integer viewCount;
-
-    private Integer starCount;
-
-    private Integer likeCount;
-
-    private Integer commentCount;
-
-    private Integer status;
+    private Integer postCount;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
-
-    @TableLogic
-    private Boolean deleted;
 }

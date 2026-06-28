@@ -1,0 +1,483 @@
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import {
+  ChevronLeft, Plus, Search, Flame, Clock, MessageSquare, FileText,
+  GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
+  Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
+  ChevronRight, X, Upload, File
+} from 'lucide-react'
+import { categoryApi, postApi, fileApi, Category, SubCategory } from '../services/api'
+import SchoolCard from '../components/home/SchoolCard'
+import schoolsData from '../data/schools.json'
+import { toast } from '../stores/toastStore'
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
+  Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
+}
+
+const COLOR_MAP: Record<string, { bg: string; light: string; text: string }> = {
+  blue:    { bg: 'from-blue-400 to-blue-600',     light: 'bg-blue-50',    text: 'text-blue-600' },
+  purple:  { bg: 'from-purple-400 to-purple-600', light: 'bg-purple-50',  text: 'text-purple-600' },
+  red:     { bg: 'from-red-400 to-red-600',       light: 'bg-red-50',     text: 'text-red-600' },
+  pink:    { bg: 'from-pink-400 to-pink-600',     light: 'bg-pink-50',    text: 'text-pink-600' },
+  green:   { bg: 'from-green-400 to-green-600',   light: 'bg-green-50',   text: 'text-green-600' },
+  emerald: { bg: 'from-emerald-400 to-emerald-600', light: 'bg-emerald-50', text: 'text-emerald-600' },
+  amber:   { bg: 'from-amber-400 to-amber-600',   light: 'bg-amber-50',   text: 'text-amber-600' },
+  cyan:    { bg: 'from-cyan-400 to-cyan-600',     light: 'bg-cyan-50',    text: 'text-cyan-600' },
+  orange:  { bg: 'from-orange-400 to-orange-600', light: 'bg-orange-50',  text: 'text-orange-600' },
+  sky:     { bg: 'from-sky-400 to-sky-600',       light: 'bg-sky-50',     text: 'text-sky-600' },
+  indigo:  { bg: 'from-indigo-400 to-indigo-600', light: 'bg-indigo-50',  text: 'text-indigo-600' },
+  teal:    { bg: 'from-teal-400 to-teal-600',     light: 'bg-teal-50',    text: 'text-teal-600' },
+}
+
+const DEFAULT_COLORS = { bg: 'from-gray-400 to-gray-600', light: 'bg-gray-50', text: 'text-gray-600' }
+
+type SortType = 'latest' | 'hottest' | 'active'
+type ViewMode = 'subs' | 'posts'
+
+interface PostItem {
+  id: string
+  schoolId?: string
+  categoryId?: string
+  subCategoryId?: string
+  categoryName?: string
+  subCategoryName?: string
+  authorId: string
+  authorName: string
+  authorAvatar?: string
+  postType: string
+  title: string
+  content: string
+  fileUrl?: string
+  fileName?: string
+  fileType?: string
+  fileSize?: number
+  viewCount: number
+  starCount: number
+  likeCount: number
+  commentCount: number
+  createTime: string
+}
+
+interface School {
+  id: string
+  name: string
+  logo: string
+  resourceCount: number
+}
+
+export default function CategoryDetailPage() {
+  const { categoryId } = useParams<{ categoryId: string }>()
+  const navigate = useNavigate()
+  const [category, setCategory] = useState<Category | null>(null)
+  const [schoolCounts, setSchoolCounts] = useState<Record<string, number>>({})
+  const [catCounts, setCatCounts] = useState<Record<string, number>>({})
+  const [schools, setSchools] = useState<School[]>(schoolsData as School[])
+
+  const [viewMode, setViewMode] = useState<ViewMode>('subs')
+  const [activeSub, setActiveSub] = useState<SubCategory | null>(null)
+  const [posts, setPosts] = useState<PostItem[]>([])
+  const [sortType, setSortType] = useState<SortType>('latest')
+  const [postType, setPostType] = useState('all')
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+
+  const [showCreate, setShowCreate] = useState(false)
+  const [createTitle, setCreateTitle] = useState('')
+  const [createContent, setCreateContent] = useState('')
+  const [createPostType, setCreatePostType] = useState('discussion')
+  const [uploadedFile, setUploadedFile] = useState<{ url: string; name: string; type: string; size: number } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!categoryId) return
+    const fetchData = async () => {
+      try {
+        const [catRes, schoolCountsRes, catCountsRes] = await Promise.all([
+          categoryApi.getDetail(categoryId),
+          postApi.getSchoolPostCounts(),
+          categoryApi.getCounts(),
+        ])
+        setCategory(catRes.data)
+        setSchoolCounts(schoolCountsRes.data || {})
+        setCatCounts(catCountsRes.data || {})
+        const counts = schoolCountsRes.data || {}
+        setSchools((schoolsData as School[]).map(s => ({ ...s, resourceCount: counts[s.id] || 0 })))
+      } catch {}
+    }
+    fetchData()
+  }, [categoryId])
+
+  const loadPosts = useCallback(async (sub: SubCategory | null, reset = false) => {
+    if (!sub || !categoryId) return
+    setLoading(true)
+    try {
+      const currentPage = reset ? 1 : page
+      const res = await categoryApi.getSubCategoryPosts(sub.id, {
+        postType,
+        sortType,
+        page: currentPage,
+        size: 20,
+      })
+      const newPosts = res.data || []
+      setPosts(reset ? newPosts : [...posts, ...newPosts])
+      setHasMore(newPosts.length === 20)
+      setPage(currentPage + 1)
+    } catch {}
+    setLoading(false)
+  }, [categoryId, postType, sortType, page, posts])
+
+  useEffect(() => {
+    if (viewMode === 'posts' && activeSub) {
+      setPage(1)
+      loadPosts(activeSub, true)
+    }
+  }, [viewMode, activeSub?.id, postType, sortType])
+
+  const handleSubClick = (sub: SubCategory) => {
+    setActiveSub(sub)
+    setViewMode('posts')
+    setPage(1)
+    setPosts([])
+  }
+
+  const handleBackToSubs = () => {
+    setViewMode('subs')
+    setActiveSub(null)
+    setPosts([])
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const result = await fileApi.upload(file)
+      setUploadedFile({ url: result.url, name: result.originalName || file.name, type: file.type, size: file.size })
+      toast.success('文件上传成功')
+    } catch {
+      toast.error('文件上传失败')
+    }
+  }
+
+  const handleSubmitPost = async () => {
+    if (!createTitle.trim()) {
+      toast.error('请输入标题')
+      return
+    }
+    if (!createContent.trim() && !uploadedFile) {
+      toast.error('请输入内容或上传文件')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const payload: any = {
+        title: createTitle.trim(),
+        content: createContent,
+        postType: createPostType,
+      }
+      if (category?.type === 'school') {
+        if (activeSub?.id) {
+          payload.schoolId = activeSub.id
+        }
+      } else {
+        payload.categoryId = categoryId
+        payload.subCategoryId = activeSub?.id
+      }
+      if (uploadedFile) {
+        payload.fileUrl = uploadedFile.url
+        payload.fileName = uploadedFile.name
+        payload.fileType = uploadedFile.type
+        payload.fileSize = uploadedFile.size
+      }
+      await postApi.create(payload)
+      toast.success('发布成功')
+      setShowCreate(false)
+      setCreateTitle('')
+      setCreateContent('')
+      setCreatePostType('discussion')
+      setUploadedFile(null)
+      if (viewMode === 'posts' && activeSub) {
+        loadPosts(activeSub, true)
+      }
+    } catch (err: any) {
+      toast.error(err.message || '发布失败')
+    }
+    setSubmitting(false)
+  }
+
+  if (!category) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-400">加载中...</p>
+      </div>
+    )
+  }
+
+  const IconComp = ICON_MAP[category.icon] || GraduationCap
+  const colors = COLOR_MAP[category.color] || DEFAULT_COLORS
+  const isSchool = category.type === 'school'
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <button onClick={() => {
+            if (viewMode === 'posts') handleBackToSubs()
+            else navigate(-1)
+          }} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
+            <ChevronLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center flex-shrink-0`}>
+            <IconComp className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-sm font-semibold text-gray-900">
+              {viewMode === 'posts' && activeSub ? activeSub.name : category.name}
+            </h1>
+            <p className="text-xs text-gray-400">
+              {viewMode === 'posts' && activeSub ? category.name : category.description}
+            </p>
+          </div>
+          {(!isSchool || viewMode === 'posts') && (
+            <button
+              onClick={() => setShowCreate(true)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r ${colors.bg} text-white shadow-sm hover:shadow-md transition-shadow`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>发布</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 py-4">
+        {viewMode === 'subs' && isSchool && (
+          <>
+            <p className="text-sm text-gray-500 mb-4">共收录 {schools.length} 所高校，浏览优质学习资源</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {schools.map((school) => (
+                <SchoolCard key={school.id} school={school} onClick={() => navigate(`/school/${school.id}`)} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {viewMode === 'subs' && !isSchool && (
+          <>
+            <p className="text-sm text-gray-500 mb-4">选择子板块浏览相关内容</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {category.subCategories?.map((sub) => {
+                const count = catCounts[`sub_${sub.id}`] || sub.postCount || 0
+                return (
+                  <div
+                    key={sub.id}
+                    onClick={() => handleSubClick(sub)}
+                    className={`bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group ${colors.light}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-900 text-sm group-hover:text-blue-600 transition-colors">
+                        {sub.name}
+                      </h3>
+                      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-400">{count} 内容</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {viewMode === 'posts' && activeSub && (
+          <>
+            <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+              {(['all', 'resource', 'discussion'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setPostType(t)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                    postType === t
+                      ? `bg-gradient-to-r ${colors.bg} text-white`
+                      : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {t === 'all' ? '全部' : t === 'resource' ? '资源' : '讨论'}
+                </button>
+              ))}
+              <div className="flex-1" />
+              {([
+                { key: 'latest', icon: Clock, label: '最新' },
+                { key: 'hottest', icon: Flame, label: '最热' },
+                { key: 'active', icon: MessageSquare, label: '活跃' },
+              ] as const).map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setSortType(s.key)}
+                  className={`flex items-center gap-1 px-2 py-1.5 text-xs transition-colors ${
+                    sortType === s.key ? colors.text : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <s.icon className="w-3.5 h-3.5" />
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              {posts.map((post) => (
+                <div
+                  key={post.id}
+                  onClick={() => {
+                    if (post.schoolId) {
+                      navigate(`/school/${post.schoolId}/post/${post.id}`)
+                    } else {
+                      navigate(`/category/${post.categoryId}/post/${post.id}`)
+                    }
+                  }}
+                  className="bg-white rounded-xl border border-gray-100 p-4 cursor-pointer hover:border-gray-200 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {post.authorAvatar ? (
+                        <img src={post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar} alt={post.authorName} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white text-xs font-bold">{post.authorName?.substring(0, 1).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500">{post.authorName}</span>
+                    {post.subCategoryName && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${colors.light} ${colors.text}`}>{post.subCategoryName}</span>
+                    )}
+                    <span className="text-xs text-gray-300 ml-auto">{post.createTime?.substring(5, 16)}</span>
+                  </div>
+                  <h3 className="text-sm font-medium text-gray-900 mb-1">{post.title}</h3>
+                  <p className="text-xs text-gray-400 line-clamp-2 mb-2">{post.content}</p>
+                  {post.fileName && (
+                    <div className="flex items-center gap-1.5 text-xs text-blue-500 bg-blue-50 rounded-lg px-2 py-1.5 mb-2 w-fit">
+                      <File className="w-3 h-3" />
+                      {post.fileName}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <span className="flex items-center gap-0.5"><Flame className="w-3 h-3" />{post.likeCount}</span>
+                    <span className="flex items-center gap-0.5"><MessageSquare className="w-3 h-3" />{post.commentCount}</span>
+                  </div>
+                </div>
+              ))}
+
+              {loading && (
+                <div className="text-center py-4 text-sm text-gray-400">加载中...</div>
+              )}
+
+              {!loading && posts.length === 0 && (
+                <div className="text-center py-16">
+                  <p className="text-gray-400 text-sm">暂无内容</p>
+                  <p className="text-gray-300 text-xs mt-1">成为第一个发帖的人吧</p>
+                </div>
+              )}
+
+              {!loading && hasMore && posts.length > 0 && (
+                <button
+                  onClick={() => loadPosts(activeSub, false)}
+                  className="w-full py-3 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  加载更多
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowCreate(false)}>
+          <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">发布帖子</h3>
+              <button onClick={() => setShowCreate(false)} className="p-1 hover:bg-gray-100 rounded-full">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {!isSchool && !activeSub && (
+                <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">请先选择一个子板块后再发布</p>
+              )}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">标题</label>
+                <input
+                  type="text"
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  placeholder="输入帖子标题"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCreatePostType('discussion')}
+                  className={`flex-1 py-2 text-xs rounded-lg border transition-colors ${
+                    createPostType === 'discussion' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-500'
+                  }`}
+                >
+                  讨论帖
+                </button>
+                <button
+                  onClick={() => setCreatePostType('resource')}
+                  className={`flex-1 py-2 text-xs rounded-lg border transition-colors ${
+                    createPostType === 'resource' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-500'
+                  }`}
+                >
+                  资源帖
+                </button>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">内容</label>
+                <textarea
+                  value={createContent}
+                  onChange={(e) => setCreateContent(e.target.value)}
+                  placeholder="分享你的想法..."
+                  rows={5}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 resize-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">附件（可选）</label>
+                {uploadedFile ? (
+                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
+                    <File className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs text-gray-600 flex-1 truncate">{uploadedFile.name}</span>
+                    <button onClick={() => setUploadedFile(null)} className="text-gray-400 hover:text-red-500">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-lg p-4 cursor-pointer hover:border-blue-300 transition-colors">
+                    <Upload className="w-5 h-5 text-gray-400" />
+                    <span className="text-xs text-gray-400">点击上传文件</span>
+                    <input type="file" className="hidden" onChange={handleFileUpload} />
+                  </label>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100">
+              <button
+                onClick={handleSubmitPost}
+                disabled={submitting || (!isSchool && !activeSub)}
+                className={`w-full py-2.5 rounded-lg text-sm font-medium text-white transition-all ${
+                  submitting || (!isSchool && !activeSub) ? 'bg-gray-300 cursor-not-allowed' : `bg-gradient-to-r ${colors.bg} hover:shadow-md`
+                }`}
+              >
+                {submitting ? '发布中...' : '发布'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

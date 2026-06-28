@@ -1,18 +1,35 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import SearchBar from '../components/home/SearchBar'
-import SchoolCard from '../components/home/SchoolCard'
+import {
+  GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
+  Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
+  Search
+} from 'lucide-react'
 import NavBar from '../components/common/NavBar'
-import schoolsData from '../data/schools.json'
-import { postApi, userApi } from '../services/api'
+import { categoryApi, userApi, Category } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
-interface School {
-  id: string
-  name: string
-  logo: string
-  resourceCount: number
+const ICON_MAP: Record<string, React.ElementType> = {
+  GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
+  Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
 }
+
+const COLOR_MAP: Record<string, { bg: string; text: string; ring: string }> = {
+  blue:    { bg: 'from-blue-400 to-blue-600',     text: 'text-blue-600',     ring: 'ring-blue-100' },
+  purple:  { bg: 'from-purple-400 to-purple-600', text: 'text-purple-600',   ring: 'ring-purple-100' },
+  red:     { bg: 'from-red-400 to-red-600',       text: 'text-red-600',      ring: 'ring-red-100' },
+  pink:    { bg: 'from-pink-400 to-pink-600',     text: 'text-pink-600',     ring: 'ring-pink-100' },
+  green:   { bg: 'from-green-400 to-green-600',   text: 'text-green-600',    ring: 'ring-green-100' },
+  emerald: { bg: 'from-emerald-400 to-emerald-600', text: 'text-emerald-600', ring: 'ring-emerald-100' },
+  amber:   { bg: 'from-amber-400 to-amber-600',   text: 'text-amber-600',    ring: 'ring-amber-100' },
+  cyan:    { bg: 'from-cyan-400 to-cyan-600',     text: 'text-cyan-600',     ring: 'ring-cyan-100' },
+  orange:  { bg: 'from-orange-400 to-orange-600', text: 'text-orange-600',   ring: 'ring-orange-100' },
+  sky:     { bg: 'from-sky-400 to-sky-600',       text: 'text-sky-600',      ring: 'ring-sky-100' },
+  indigo:  { bg: 'from-indigo-400 to-indigo-600', text: 'text-indigo-600',   ring: 'ring-indigo-100' },
+  teal:    { bg: 'from-teal-400 to-teal-600',     text: 'text-teal-600',     ring: 'ring-teal-100' },
+}
+
+const DEFAULT_COLORS = { bg: 'from-gray-400 to-gray-600', text: 'text-gray-600', ring: 'ring-gray-100' }
 
 interface UserResult {
   id: string
@@ -23,22 +40,26 @@ interface UserResult {
 
 export default function HomePage() {
   const [searchKeyword, setSearchKeyword] = useState('')
-  const [schools, setSchools] = useState<School[]>(schoolsData)
+  const [categories, setCategories] = useState<Category[]>([])
   const [userResults, setUserResults] = useState<UserResult[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
-    const fetchCounts = async () => {
+    const fetchData = async () => {
       try {
-        const res = await postApi.getSchoolPostCounts()
-        const counts = res.data || {}
-        setSchools(schoolsData.map((s: School) => ({ ...s, resourceCount: counts[s.id] || 0 })))
+        const [catsRes, countsRes] = await Promise.all([
+          categoryApi.getAll(),
+          categoryApi.getCounts(),
+        ])
+        setCategories(catsRes.data || [])
+        setCounts(countsRes.data || {})
       } catch {}
     }
-    fetchCounts()
+    fetchData()
   }, [])
 
-  // Search users when keyword changes
   useEffect(() => {
     if (!searchKeyword.trim()) {
       setUserResults([])
@@ -53,23 +74,37 @@ export default function HomePage() {
     return () => clearTimeout(timer)
   }, [searchKeyword])
 
-  const filteredSchools = useMemo(() => {
-    if (!searchKeyword) return schools
-    return schools.filter((s: School) => s.name.toLowerCase().includes(searchKeyword.toLowerCase()))
-  }, [searchKeyword, schools])
+  const getPostCount = (cat: Category) => {
+    if (counts[cat.id]) return counts[cat.id]
+    return cat.postCount || 0
+  }
 
-  const navigate = useNavigate()
+  const handleCategoryClick = (cat: Category) => {
+    if (cat.type === 'school') {
+      navigate(`/category/${cat.id}`)
+    } else {
+      navigate(`/category/${cat.id}`)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       <div className="sticky top-0 bg-white border-b border-gray-100 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3">
-          <SearchBar onSearch={setSearchKeyword} />
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="搜索用户..."
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
+            />
+          </div>
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6">
-        {/* 用户搜索结果 */}
         {searchKeyword && userResults.length > 0 && (
           <div className="mb-6">
             <h2 className="text-sm font-semibold text-gray-900 mb-3">用户</h2>
@@ -89,22 +124,46 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* 学校列表 */}
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900 mb-1">选择学校</h1>
-          <p className="text-sm text-gray-500">共收录 {schoolsData.length} 所高校，浏览优质学习资源</p>
-        </div>
+        {!searchKeyword && (
+          <>
+            <div className="mb-6">
+              <h1 className="text-xl font-bold text-gray-900 mb-1">分类广场</h1>
+              <p className="text-sm text-gray-500">选择感兴趣的分类，发现精彩内容</p>
+            </div>
 
-        {filteredSchools.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {filteredSchools.map((school: School) => (
-              <SchoolCard key={school.id} school={school} onClick={() => navigate(`/school/${school.id}`)} />
-            ))}
-          </div>
-        ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {categories.map((cat) => {
+                const IconComp = ICON_MAP[cat.icon] || GraduationCap
+                const colors = COLOR_MAP[cat.color] || DEFAULT_COLORS
+                const count = getPostCount(cat)
+                const subCount = cat.subCategories?.length || 0
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => handleCategoryClick(cat)}
+                    className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
+                  >
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform`}>
+                      <IconComp className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="font-semibold text-gray-900 text-sm mb-1">{cat.name}</h3>
+                    <p className="text-xs text-gray-400 line-clamp-1">{cat.description}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs text-gray-500">{count} 内容</span>
+                      {cat.type === 'category' && subCount > 0 && (
+                        <span className="text-xs text-gray-300">· {subCount} 子板块</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {searchKeyword && userResults.length === 0 && (
           <div className="text-center py-16">
-            <p className="text-gray-400 text-sm">未找到匹配的学校</p>
-            {userResults.length === 0 && <p className="text-gray-300 text-xs mt-1">请尝试其他搜索关键词</p>}
+            <p className="text-gray-400 text-sm">未找到匹配的用户</p>
           </div>
         )}
       </div>

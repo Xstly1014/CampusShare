@@ -6,6 +6,7 @@ import WarehousePage from '../pages/WarehousePage'
 import ProfilePage from '../pages/ProfilePage'
 import SchoolDetailPage from '../pages/SchoolDetailPage'
 import PostDetailPage from '../pages/PostDetailPage'
+import CategoryDetailPage from '../pages/CategoryDetailPage'
 import MyListPage from '../pages/MyListPage'
 import SettingsPage from '../pages/SettingsPage'
 import UserProfilePage from '../pages/UserProfilePage'
@@ -124,6 +125,14 @@ export default function Router() {
         <Route
           path="/creator-verification"
           element={<PrivateRoute><CreatorVerificationPage /></PrivateRoute>}
+        />
+        <Route
+          path="/category/:categoryId"
+          element={<PrivateRoute><CategoryDetailPage /></PrivateRoute>}
+        />
+        <Route
+          path="/category/:categoryId/post/:postId"
+          element={<PrivateRoute><PostDetailPage /></PrivateRoute>}
         />
 
         {/* 未匹配路由：重定向到首页 */}

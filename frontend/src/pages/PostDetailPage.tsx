@@ -59,7 +59,11 @@ function formatNumber(n: number): string {
 
 interface BackendPost {
   id: string
-  schoolId: string
+  schoolId?: string
+  categoryId?: string
+  subCategoryId?: string
+  categoryName?: string
+  subCategoryName?: string
   authorId: string
   authorName?: string
   authorAvatar?: string
@@ -385,7 +389,7 @@ export default function PostDetailPage() {
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
           <span className="text-sm font-medium text-gray-900">
-            {school ? school.name : '帖子详情'}
+            {school ? school.name : (post?.subCategoryName || post?.categoryName || '帖子详情')}
           </span>
           <div className="flex items-center gap-1">
             {isPostAuthor && (

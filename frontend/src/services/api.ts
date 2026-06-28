@@ -130,7 +130,9 @@ export const fileApi = {
 
 export const postApi = {
   create: (data: {
-    schoolId: string
+    schoolId?: string
+    categoryId?: string
+    subCategoryId?: string
     postType: string
     title: string
     content: string
@@ -141,6 +143,9 @@ export const postApi = {
   }) => api.post('/posts', data),
 
   edit: (postId: string, data: {
+    schoolId?: string
+    categoryId?: string
+    subCategoryId?: string
     title?: string
     content?: string
     fileUrl?: string
@@ -283,6 +288,60 @@ export interface CreatorStatus {
   reviewTime?: string
   totalLikes?: number
   totalPosts?: number
+}
+
+export interface SubCategory {
+  id: string
+  categoryId: string
+  name: string
+  sortOrder: number
+  postCount: number
+}
+
+export interface Category {
+  id: string
+  name: string
+  icon: string
+  color: string
+  type: 'school' | 'category'
+  description: string
+  sortOrder: number
+  postCount: number
+  subCategories: SubCategory[]
+}
+
+export const categoryApi = {
+  getAll: () => api.get<Category[]>('/categories'),
+
+  getDetail: (categoryId: string) => api.get<Category>(`/categories/${categoryId}`),
+
+  getSubCategoryPosts: (
+    subCategoryId: string,
+    params: { postType?: string; sortType?: string; page?: number; size?: number } = {}
+  ) => {
+    const query = new URLSearchParams()
+    if (params.postType) query.set('postType', params.postType)
+    if (params.sortType) query.set('sortType', params.sortType)
+    if (params.page) query.set('page', String(params.page))
+    if (params.size) query.set('size', String(params.size))
+    const queryStr = query.toString()
+    return api.get(`/categories/sub/${subCategoryId}/posts${queryStr ? `?${queryStr}` : ''}`)
+  },
+
+  getCategoryPosts: (
+    categoryId: string,
+    params: { postType?: string; sortType?: string; page?: number; size?: number } = {}
+  ) => {
+    const query = new URLSearchParams()
+    if (params.postType) query.set('postType', params.postType)
+    if (params.sortType) query.set('sortType', params.sortType)
+    if (params.page) query.set('page', String(params.page))
+    if (params.size) query.set('size', String(params.size))
+    const queryStr = query.toString()
+    return api.get(`/categories/${categoryId}/posts${queryStr ? `?${queryStr}` : ''}`)
+  },
+
+  getCounts: () => api.get<Record<string, number>>('/categories/counts'),
 }
 
 export const creatorApi = {

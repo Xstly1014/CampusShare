@@ -3,8 +3,12 @@ package com.campushare.user.controller;
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.*;
+import com.campushare.user.entity.Category;
 import com.campushare.user.entity.Post;
+import com.campushare.user.entity.SubCategory;
 import com.campushare.user.entity.User;
+import com.campushare.user.mapper.CategoryMapper;
+import com.campushare.user.mapper.SubCategoryMapper;
 import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.PostService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +28,8 @@ public class PostController {
     private final PostService postService;
     private final JwtUtils jwtUtils;
     private final UserMapper userMapper;
+    private final CategoryMapper categoryMapper;
+    private final SubCategoryMapper subCategoryMapper;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -64,9 +70,15 @@ public class PostController {
         postService.incrementViewCount(userId, postId);
         post.setViewCount(post.getViewCount() + 1);
         User author = userMapper.selectById(post.getAuthorId());
+        Category cat = post.getCategoryId() != null ? categoryMapper.selectById(post.getCategoryId()) : null;
+        SubCategory sub = post.getSubCategoryId() != null ? subCategoryMapper.selectById(post.getSubCategoryId()) : null;
         PostDetailDTO dto = new PostDetailDTO();
         dto.setId(post.getId());
         dto.setSchoolId(post.getSchoolId());
+        dto.setCategoryId(post.getCategoryId());
+        dto.setSubCategoryId(post.getSubCategoryId());
+        dto.setCategoryName(cat != null ? cat.getName() : null);
+        dto.setSubCategoryName(sub != null ? sub.getName() : null);
         dto.setAuthorId(post.getAuthorId());
         dto.setAuthorName(author != null ? author.getUsername() : "未知用户");
         dto.setAuthorAvatar(author != null && author.getAvatarUrl() != null ? author.getAvatarUrl() : null);
@@ -215,9 +227,15 @@ public class PostController {
         List<PostListDTO> result = new ArrayList<>();
         for (Post p : posts) {
             User author = authorMap.get(p.getAuthorId());
+            Category cat = p.getCategoryId() != null ? categoryMapper.selectById(p.getCategoryId()) : null;
+            SubCategory sub = p.getSubCategoryId() != null ? subCategoryMapper.selectById(p.getSubCategoryId()) : null;
             PostListDTO dto = new PostListDTO();
             dto.setId(p.getId());
             dto.setSchoolId(p.getSchoolId());
+            dto.setCategoryId(p.getCategoryId());
+            dto.setSubCategoryId(p.getSubCategoryId());
+            dto.setCategoryName(cat != null ? cat.getName() : null);
+            dto.setSubCategoryName(sub != null ? sub.getName() : null);
             dto.setAuthorId(p.getAuthorId());
             dto.setAuthorName(author != null ? author.getUsername() : "未知用户");
             dto.setAuthorAvatar(author != null && author.getAvatarUrl() != null ? author.getAvatarUrl() : null);
