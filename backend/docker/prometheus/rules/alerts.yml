@@ -53,11 +53,12 @@ groups:
           description: "CPU 使用率超过 80%，当前值: {{ $value | humanizePercentage }}"
 
       # 请求量突增（可能是异常流量）
-      - alert: RequestSpike
-        expr: rate(http_server_requests_seconds_count[5m]) > 2 * avg_over_time(rate(http_server_requests_seconds_count[5m])[1h])
-        for: 5m
-        labels:
-          severity: info
-        annotations:
-          summary: "{{ $labels.application }} 请求量突增"
-          description: "当前 QPS 是过去 1 小时平均的 2 倍以上"
+      # TODO: 修复PromQL语法 - avg_over_time不能直接嵌套rate，需用recording rule或其他方式
+      # - alert: RequestSpike
+      #   expr: rate(http_server_requests_seconds_count[5m]) > 2 * avg_over_time(rate(http_server_requests_seconds_count[5m])[1h])
+      #   for: 5m
+      #   labels:
+      #     severity: info
+      #   annotations:
+      #     summary: "{{ $labels.application }} 请求量突增"
+      #     description: "当前 QPS 是过去 1 小时平均的 2 倍以上"
