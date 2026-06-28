@@ -1,4 +1,4 @@
-package com.campushare.user.service;
+package com.campushare.user.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -9,6 +9,8 @@ import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.*;
 import com.campushare.user.entity.User;
 import com.campushare.user.mapper.UserMapper;
+import com.campushare.user.service.EmailService;
+import com.campushare.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -16,13 +18,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-/**
- * 用户服务实现类
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -36,30 +35,24 @@ public class UserServiceImpl implements UserService {
     
     @Override
     public LoginResponse login(LoginRequest request) {
-        // 1. 查询用户
         User user = findByAccount(request.getAccount());
         if (user == null) {
             throw new BusinessException(ResultCode.USER_ACCOUNT_NOT_EXIST);
         }
         
-        // 2. 验证密码
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BusinessException(ResultCode.USER_LOGIN_ERROR);
         }
         
-        // 3. 检查账号状态
         if (user.getStatus() == 0) {
             throw new BusinessException(ResultCode.USER_ACCOUNT_FORBIDDEN);
         }
         
-        // 4. 生成Token
         String token = jwtUtils.generateAccessToken(user.getId(), user.getUsername());
         String refreshToken = jwtUtils.generateRefreshToken(user.getId());
         
-        // 5. 保存Token到Redis
         saveTokenToRedis(user.getId(), token);
         
-        // 6. 构建响应
         return LoginResponse.builder()
                 .token(token)
                 .refreshToken(refreshToken)
@@ -71,7 +64,6 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public LoginResponse register(RegisterRequest request) {
-        // 1. 验证验证码
         String key = RedisConstants.VERIFY_CODE_PREFIX + request.getAccount();
         String cachedCode = redisTemplate.opsForValue().get(key);
         log.info("验证验证码 - key: {}, 缓存验证码: {}, 用户输入: {}", key, cachedCode, request.getVerifyCode());
@@ -79,10 +71,8 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ResultCode.VERIFY_CODE_ERROR);
         }
         
-        // 2. 删除已使用的验证码
         redisTemplate.delete(RedisConstants.VERIFY_CODE_PREFIX + request.getAccount());
         
-        // 3. 检查账号是否已存在
         if (userMapper.exists(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, request.getUsername()))) {
             throw new BusinessException(ResultCode.USER_ACCOUNT_ALREADY_EXIST, "用户名已存在");
@@ -100,7 +90,6 @@ public class UserServiceImpl implements UserService {
             }
         }
         
-        // 4. 创建用户
         User user = User.builder()
                 .username(request.getUsername())
                 .email("email".equals(request.getRegisterType()) ? request.getAccount() : null)
@@ -111,16 +100,13 @@ public class UserServiceImpl implements UserService {
         
         userMapper.insert(user);
         
-        // 5. 生成Token
         String token = jwtUtils.generateAccessToken(user.getId(), user.getUsername());
         String refreshToken = jwtUtils.generateRefreshToken(user.getId());
         
-        // 6. 保存Token到Redis
         saveTokenToRedis(user.getId(), token);
         
         log.info("用户注册成功: {}", user.getUsername());
         
-        // 7. 构建响应
         return LoginResponse.builder()
                 .token(token)
                 .refreshToken(refreshToken)
@@ -131,7 +117,6 @@ public class UserServiceImpl implements UserService {
     
     @Override
     public void sendVerifyCode(String account, String type) {
-        // 1. 检查发送频率
         String countKey = RedisConstants.VERIFY_CODE_COUNT_PREFIX + account;
         String countStr = redisTemplate.opsForValue().get(countKey);
         int count = StrUtil.isBlank(countStr) ? 0 : Integer.parseInt(countStr);
@@ -139,10 +124,8 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ResultCode.VERIFY_CODE_SEND_TOO_FREQUENT);
         }
 
-        // 2. 生成6位随机验证码
         String verifyCode = String.format("%06d", (int) ((Math.random() * 9 + 1) * 100000));
 
-        // 3. 保存验证码到Redis
         redisTemplate.opsForValue().set(
             RedisConstants.VERIFY_CODE_PREFIX + account,
             verifyCode,
@@ -150,15 +133,12 @@ public class UserServiceImpl implements UserService {
             TimeUnit.MILLISECONDS
         );
 
-        // 4. 增加发送次数
         redisTemplate.opsForValue().increment(countKey);
         redisTemplate.expire(countKey, 3600000, TimeUnit.MILLISECONDS);
 
-        // 5. 发送验证码（邮箱走真实邮件，手机号暂走日志）
         if ("email".equals(type) || account.contains("@")) {
             emailService.sendVerifyCodeEmail(account, verifyCode);
         } else {
-            // 手机号：暂无短信服务，日志输出验证码（开发调试用）
             log.info("发送短信验证码到 {}: {}", account, verifyCode);
         }
     }
@@ -184,7 +164,6 @@ public class UserServiceImpl implements UserService {
         User user = getUserById(userId);
 
         if (request.getUsername() != null && !request.getUsername().trim().isEmpty()) {
-            // Check if username is taken by another user
             if (!request.getUsername().equals(user.getUsername())) {
                 boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
                         .eq(User::getUsername, request.getUsername())
@@ -229,10 +208,8 @@ public class UserServiceImpl implements UserService {
     public UserDTO bindEmail(String userId, ChangeAccountRequest request) {
         User user = getUserById(userId);
 
-        // If already bound, must verify original email first (unless realName verified)
         if (user.getEmail() != null && !user.getEmail().isEmpty()) {
             if (!Boolean.TRUE.equals(request.getRealNameVerify())) {
-                // Must verify original email
                 if (request.getOriginalAccount() == null || request.getOriginalVerifyCode() == null) {
                     throw new BusinessException(4001, "换绑邮箱需先验证原邮箱");
                 }
@@ -243,10 +220,8 @@ public class UserServiceImpl implements UserService {
             }
         }
 
-        // Verify new email code
         verifyCode(request.getNewAccount(), request.getNewVerifyCode());
 
-        // Check if email already used by another user
         boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
                 .eq(User::getEmail, request.getNewAccount())
                 .ne(User::getId, userId));
@@ -264,7 +239,6 @@ public class UserServiceImpl implements UserService {
     public UserDTO bindPhone(String userId, ChangeAccountRequest request) {
         User user = getUserById(userId);
 
-        // If already bound, must verify original phone first (unless realName verified)
         if (user.getPhone() != null && !user.getPhone().isEmpty()) {
             if (!Boolean.TRUE.equals(request.getRealNameVerify())) {
                 if (request.getOriginalAccount() == null || request.getOriginalVerifyCode() == null) {
@@ -277,10 +251,8 @@ public class UserServiceImpl implements UserService {
             }
         }
 
-        // Verify new phone code
         verifyCode(request.getNewAccount(), request.getNewVerifyCode());
 
-        // Check if phone already used by another user
         boolean exists = userMapper.exists(new LambdaQueryWrapper<User>()
                 .eq(User::getPhone, request.getNewAccount())
                 .ne(User::getId, userId));
@@ -295,8 +267,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void realNameVerify(String userId, String realName, String idCard) {
-        // 预留接口：实名认证逻辑暂不实现
-        // 未来可对接第三方实名认证服务，认证通过后在 Redis 中标记该用户可跳过原绑定验证
         throw new BusinessException(4001, "实名认证功能暂未开放");
     }
 
@@ -311,7 +281,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void resetPassword(ResetPasswordRequest request) {
-        // 1. 验证验证码
         String key = RedisConstants.VERIFY_CODE_PREFIX + request.getAccount();
         String cachedCode = redisTemplate.opsForValue().get(key);
         log.info("验证验证码 - key: {}, 缓存验证码: {}, 用户输入: {}", key, cachedCode, request.getVerifyCode());
@@ -319,43 +288,41 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ResultCode.VERIFY_CODE_ERROR);
         }
         
-        // 2. 查询用户
         User user = findByAccount(request.getAccount());
         if (user == null) {
             throw new BusinessException(ResultCode.USER_ACCOUNT_NOT_EXIST);
         }
         
-        // 3. 更新密码
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userMapper.updateById(user);
         
-        // 4. 删除已使用的验证码
         redisTemplate.delete(RedisConstants.VERIFY_CODE_PREFIX + request.getAccount());
         
         log.info("用户重置密码成功: {}", user.getUsername());
     }
+
+    @Override
+    public List<User> searchUsers(String keyword, String excludeUserId) {
+        return userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .like(User::getUsername, keyword)
+                        .eq(User::getDeleted, false)
+                        .ne(User::getId, excludeUserId)
+                        .last("LIMIT 20"));
+    }
     
-    /**
-     * 根据账号查询用户
-     */
     private User findByAccount(String account) {
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
         if (account.contains("@")) {
-            // 邮箱登录
             wrapper.eq(User::getEmail, account);
         } else if (account.matches("^1[3-9]\\d{9}$")) {
-            // 手机号登录
             wrapper.eq(User::getPhone, account);
         } else {
-            // 不支持用户名登录（昵称可修改，不适合作为登录账号）
             throw new BusinessException(ResultCode.USER_ACCOUNT_NOT_EXIST);
         }
         return userMapper.selectOne(wrapper);
     }
     
-    /**
-     * 保存Token到Redis
-     */
     private void saveTokenToRedis(String userId, String token) {
         String tokenKey = RedisConstants.USER_TOKEN_PREFIX + userId;
         redisTemplate.opsForValue().set(
@@ -366,9 +333,6 @@ public class UserServiceImpl implements UserService {
         );
     }
     
-    /**
-     * 转换用户实体为DTO
-     */
     private UserDTO convertToUserDTO(User user) {
         return UserDTO.builder()
                 .id(user.getId())

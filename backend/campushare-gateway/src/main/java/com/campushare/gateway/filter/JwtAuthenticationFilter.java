@@ -2,7 +2,6 @@ package com.campushare.gateway.filter;
 
 import cn.hutool.core.util.StrUtil;
 import com.campushare.gateway.utils.JwtUtils;
-import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,9 +18,6 @@ import reactor.core.publisher.Mono;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * JWT认证过滤器
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -29,9 +25,6 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     
     private final JwtUtils jwtUtils;
     
-    /**
-     * 不需要认证的路径
-     */
     private static final List<String> WHITE_LIST = Arrays.asList(
         "/api/auth/login",
         "/api/auth/register",
@@ -39,6 +32,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         "/api/auth/reset-password",
         "/api/auth/refresh-token",
         "/api/posts/school",
+        "/api/posts/",
         "/api/files/",
         "/api/admin/"
     );
@@ -48,34 +42,27 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
         
-        // 检查是否在白名单中
         if (isWhiteListed(path)) {
             return chain.filter(exchange);
         }
         
-        // 获取Token
         String token = extractToken(request);
         if (StrUtil.isBlank(token)) {
             return unauthorized(exchange.getResponse(), "未提供认证令牌");
         }
         
-        // 验证Token
         try {
             if (!jwtUtils.validateToken(token)) {
                 return unauthorized(exchange.getResponse(), "令牌无效或已过期");
             }
             
-            // 检查是否是访问令牌
             if (!jwtUtils.isAccessToken(token)) {
                 return unauthorized(exchange.getResponse(), "无效的令牌类型");
             }
             
-            // 解析用户信息
-            Claims claims = jwtUtils.parseToken(token);
-            String userId = claims.get("userId", String.class);
-            String username = claims.get("username", String.class);
+            String userId = jwtUtils.getUserId(token);
+            String username = jwtUtils.getUsername(token);
             
-            // 将用户信息添加到请求头
             ServerHttpRequest modifiedRequest = request.mutate()
                     .header("X-User-Id", userId)
                     .header("X-Username", username)
@@ -89,16 +76,10 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         }
     }
     
-    /**
-     * 检查路径是否在白名单中
-     */
     private boolean isWhiteListed(String path) {
-        return WHITE_LIST.stream().anyMatch(path::contains);
+        return WHITE_LIST.stream().anyMatch(path::startsWith);
     }
     
-    /**
-     * 从请求头提取Token
-     */
     private String extractToken(ServerHttpRequest request) {
         String bearerToken = request.getHeaders().getFirst("Authorization");
         if (StrUtil.isNotBlank(bearerToken) && bearerToken.startsWith("Bearer ")) {
@@ -107,9 +88,6 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return null;
     }
     
-    /**
-     * 返回未授权响应
-     */
     private Mono<Void> unauthorized(ServerHttpResponse response, String message) {
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
         response.getHeaders().add("Content-Type", "application/json");
@@ -119,6 +97,6 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     
     @Override
     public int getOrder() {
-        return -100; // 优先级最高
+        return -100;
     }
 }

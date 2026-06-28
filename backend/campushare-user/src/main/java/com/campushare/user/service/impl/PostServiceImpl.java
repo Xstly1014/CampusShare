@@ -1,4 +1,4 @@
-package com.campushare.user.service;
+package com.campushare.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -15,6 +15,7 @@ import com.campushare.user.mapper.PostMapper;
 import com.campushare.user.mapper.PostStarMapper;
 import com.campushare.user.mapper.ViewHistoryMapper;
 import com.campushare.user.service.NotificationService;
+import com.campushare.user.service.PostService;
 import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -28,7 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -44,14 +47,10 @@ public class PostServiceImpl implements PostService {
     private final MeterRegistry meterRegistry;
     private final NotificationService notificationService;
 
-    // Redis key patterns
     private static final String REDIS_KEY_STAR = "post:star:";
     private static final String REDIS_KEY_LIKE = "post:like:";
     private static final int REDIS_CACHE_TTL_DAYS = 30;
 
-    // ================================================================
-    // Create post
-    // ================================================================
     @Override
     @Transactional
     @Timed(value = "campushare.post.create.duration", description = "Time taken to create a post")
@@ -94,9 +93,6 @@ public class PostServiceImpl implements PostService {
         return post;
     }
 
-    // ================================================================
-    // Edit / Delete post
-    // ================================================================
     @Override
     @Transactional
     public Post editPost(String userId, String postId, CreatePostRequest request) {
@@ -138,14 +134,10 @@ public class PostServiceImpl implements PostService {
         if (!post.getAuthorId().equals(userId)) {
             throw new BusinessException(4030, "无权删除他人的帖子");
         }
-        // Logical delete
         postMapper.deleteById(postId);
         log.info("用户 {} 删除帖子 {}", userId, postId);
     }
 
-    // ================================================================
-    // Get post
-    // ================================================================
     @Override
     public Post getPostById(String postId) {
         Post post = postMapper.selectById(postId);
@@ -179,9 +171,6 @@ public class PostServiceImpl implements PostService {
         return pageResult.getRecords();
     }
 
-    // ================================================================
-    // View count + view history
-    // ================================================================
     @Override
     @Retryable(
             retryFor = {RuntimeException.class},
@@ -190,12 +179,10 @@ public class PostServiceImpl implements PostService {
     )
     @Transactional
     public void incrementViewCount(String userId, String postId) {
-        // 1. Atomic increment view_count in DB
         postMapper.update(null, new LambdaUpdateWrapper<Post>()
                 .eq(Post::getId, postId)
                 .setSql("view_count = view_count + 1"));
 
-        // 2. Record view history (upsert: update view_time if exists, else insert)
         if (userId != null && !userId.isEmpty()) {
             ViewHistory existing = viewHistoryMapper.selectOne(
                     new LambdaQueryWrapper<ViewHistory>()
@@ -216,25 +203,18 @@ public class PostServiceImpl implements PostService {
         }
     }
 
-    // ================================================================
-    // Star (favorite) toggle - DB is source of truth, Redis as cache
-    // ================================================================
     @Override
     @Transactional
     public boolean toggleStar(String userId, String postId) {
-        // Verify post exists
         Post post = getPostById(postId);
-
         String redisKey = REDIS_KEY_STAR + postId + ":" + userId;
 
-        // Check DB for existing star record
         PostStar existing = postStarMapper.selectOne(
                 new LambdaQueryWrapper<PostStar>()
                         .eq(PostStar::getPostId, postId)
                         .eq(PostStar::getUserId, userId));
 
         if (existing != null) {
-            // Unstar: delete from DB, decrement count, remove Redis cache
             postStarMapper.deleteById(existing.getId());
             postMapper.update(null, new LambdaUpdateWrapper<Post>()
                     .eq(Post::getId, postId)
@@ -243,7 +223,6 @@ public class PostServiceImpl implements PostService {
             log.info("用户 {} 取消收藏帖子 {}", userId, postId);
             return false;
         } else {
-            // Star: insert into DB, increment count, set Redis cache
             PostStar star = PostStar.builder()
                     .postId(postId)
                     .userId(userId)
@@ -254,32 +233,24 @@ public class PostServiceImpl implements PostService {
                     .eq(Post::getId, postId)
                     .setSql("star_count = star_count + 1"));
             redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
-            // Create notification for post author
             notificationService.createNotification(post.getAuthorId(), userId, "STAR", postId, post.getTitle());
             log.info("用户 {} 收藏帖子 {}", userId, postId);
             return true;
         }
     }
 
-    // ================================================================
-    // Like toggle - DB is source of truth, Redis as cache
-    // ================================================================
     @Override
     @Transactional
     public boolean toggleLike(String userId, String postId) {
-        // Verify post exists
         Post post = getPostById(postId);
-
         String redisKey = REDIS_KEY_LIKE + postId + ":" + userId;
 
-        // Check DB for existing like record
         PostLike existing = postLikeMapper.selectOne(
                 new LambdaQueryWrapper<PostLike>()
                         .eq(PostLike::getPostId, postId)
                         .eq(PostLike::getUserId, userId));
 
         if (existing != null) {
-            // Unlike: delete from DB, decrement count, remove Redis cache
             postLikeMapper.deleteById(existing.getId());
             postMapper.update(null, new LambdaUpdateWrapper<Post>()
                     .eq(Post::getId, postId)
@@ -288,7 +259,6 @@ public class PostServiceImpl implements PostService {
             log.info("用户 {} 取消点赞帖子 {}", userId, postId);
             return false;
         } else {
-            // Like: insert into DB, increment count, set Redis cache
             PostLike like = PostLike.builder()
                     .postId(postId)
                     .userId(userId)
@@ -299,16 +269,12 @@ public class PostServiceImpl implements PostService {
                     .eq(Post::getId, postId)
                     .setSql("like_count = like_count + 1"));
             redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
-            // Create notification for post author
             notificationService.createNotification(post.getAuthorId(), userId, "LIKE", postId, post.getTitle());
             log.info("用户 {} 点赞帖子 {}", userId, postId);
             return true;
         }
     }
 
-    // ================================================================
-    // State check (for display)
-    // ================================================================
     @Override
     public boolean isStarredBy(String userId, String postId) {
         if (userId == null || userId.isEmpty()) {
@@ -319,7 +285,6 @@ public class PostServiceImpl implements PostService {
         if (Boolean.TRUE.equals(cached)) {
             return true;
         }
-        // Fallback to DB
         Long count = postStarMapper.selectCount(
                 new LambdaQueryWrapper<PostStar>()
                         .eq(PostStar::getPostId, postId)
@@ -341,7 +306,6 @@ public class PostServiceImpl implements PostService {
         if (Boolean.TRUE.equals(cached)) {
             return true;
         }
-        // Fallback to DB
         Long count = postLikeMapper.selectCount(
                 new LambdaQueryWrapper<PostLike>()
                         .eq(PostLike::getPostId, postId)
@@ -353,12 +317,8 @@ public class PostServiceImpl implements PostService {
         return false;
     }
 
-    // ================================================================
-    // Personal homepage queries
-    // ================================================================
     @Override
     public List<Post> getViewHistory(String userId, int page, int size) {
-        // 1. Query view_history ordered by view_time desc
         Page<ViewHistory> historyPage = viewHistoryMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<ViewHistory>()
@@ -369,15 +329,12 @@ public class PostServiceImpl implements PostService {
             return new ArrayList<>();
         }
 
-        // 2. Get post IDs in order
         List<String> postIds = new ArrayList<>();
         for (ViewHistory vh : historyPage.getRecords()) {
             postIds.add(vh.getPostId());
         }
 
-        // 3. Query posts and preserve order
         List<Post> posts = postMapper.selectBatchIds(postIds);
-        // Reorder to match history order (filter out deleted posts)
         List<Post> result = new ArrayList<>();
         for (String pid : postIds) {
             for (Post p : posts) {
@@ -392,7 +349,6 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public List<Post> getStarredPosts(String userId, int page, int size) {
-        // 1. Query post_stars ordered by create_time desc
         Page<PostStar> starPage = postStarMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<PostStar>()
@@ -423,7 +379,6 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public List<Post> getLikedPosts(String userId, int page, int size) {
-        // 1. Query post_likes ordered by create_time desc
         Page<PostLike> likePage = postLikeMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<PostLike>()
@@ -452,9 +407,6 @@ public class PostServiceImpl implements PostService {
         return result;
     }
 
-    // ================================================================
-    // My posts + aggregate stats
-    // ================================================================
     @Override
     public List<Post> getMyPosts(String userId, int page, int size) {
         Page<Post> postPage = postMapper.selectPage(
@@ -485,14 +437,14 @@ public class PostServiceImpl implements PostService {
     }
 
     @Override
-    public java.util.Map<String, Long> getSchoolPostCounts() {
+    public Map<String, Long> getSchoolPostCounts() {
         List<Post> allPosts = postMapper.selectList(
                 new LambdaQueryWrapper<Post>()
                         .eq(Post::getDeleted, false)
                         .eq(Post::getStatus, 1)
                         .isNotNull(Post::getSchoolId)
                         .isNull(Post::getCategoryId));
-        java.util.Map<String, Long> counts = new java.util.HashMap<>();
+        Map<String, Long> counts = new HashMap<>();
         for (Post p : allPosts) {
             counts.merge(p.getSchoolId(), 1L, Long::sum);
         }

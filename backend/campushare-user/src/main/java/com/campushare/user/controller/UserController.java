@@ -1,41 +1,37 @@
 package com.campushare.user.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.*;
-import com.campushare.user.entity.Follow;
 import com.campushare.user.entity.User;
-import com.campushare.user.mapper.FollowMapper;
 import com.campushare.user.mapper.UserMapper;
+import com.campushare.user.service.CreatorService;
+import com.campushare.user.service.FollowService;
 import com.campushare.user.service.PostService;
 import com.campushare.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 用户控制器
- */
 @RestController
 @RequestMapping("/users")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
+    private final FollowService followService;
+    private final PostService postService;
+    private final CreatorService creatorService;
     private final JwtUtils jwtUtils;
     private final UserMapper userMapper;
-    private final FollowMapper followMapper;
-    private final PostService postService;
-    private final com.campushare.user.service.NotificationService notificationService;
-    private final com.campushare.user.service.CreatorService creatorService;
 
-    /**
-     * 获取当前用户信息
-     */
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     @GetMapping("/me")
     public Result<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
@@ -44,9 +40,6 @@ public class UserController {
         return Result.success(user);
     }
 
-    /**
-     * 更新当前用户资料（昵称、简介、头像）
-     */
     @PutMapping("/me")
     public Result<UserDTO> updateProfile(
             @RequestHeader("Authorization") String token,
@@ -92,21 +85,12 @@ public class UserController {
         return Result.success(null);
     }
 
-    // ================================================================
-    // User search
-    // ================================================================
-
     @GetMapping("/search")
     public Result<List<UserDTO>> searchUsers(
             @RequestHeader("Authorization") String token,
             @RequestParam String keyword) {
         String currentUserId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<User> users = userMapper.selectList(
-                new LambdaQueryWrapper<User>()
-                        .like(User::getUsername, keyword)
-                        .eq(User::getDeleted, false)
-                        .ne(User::getId, currentUserId)
-                        .last("LIMIT 20"));
+        List<User> users = userService.searchUsers(keyword, currentUserId);
         List<UserDTO> result = new ArrayList<>();
         for (User u : users) {
             UserDTO dto = new UserDTO();
@@ -120,10 +104,6 @@ public class UserController {
         return Result.success(result);
     }
 
-    // ================================================================
-    // User profile (view other users)
-    // ================================================================
-
     @GetMapping("/{userId}/profile")
     public Result<UserProfileDTO> getUserProfile(
             @RequestHeader("Authorization") String token,
@@ -135,14 +115,9 @@ public class UserController {
         }
 
         UserPostStats stats = postService.getMyPostStats(userId);
-        long followerCount = followMapper.selectCount(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowingId, userId));
-        long followingCount = followMapper.selectCount(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
-        boolean isFollowing = followMapper.exists(
-                new LambdaQueryWrapper<Follow>()
-                        .eq(Follow::getFollowerId, currentUserId)
-                        .eq(Follow::getFollowingId, userId));
+        long followerCount = followService.getFollowerCount(userId);
+        long followingCount = followService.getFollowingCount(userId);
+        boolean isFollowing = followService.isFollowing(currentUserId, userId);
 
         UserProfileDTO dto = UserProfileDTO.builder()
                 .id(user.getId())
@@ -202,136 +177,38 @@ public class UserController {
         return Result.success(enrichPosts(posts));
     }
 
-    // ================================================================
-    // Follow / Unfollow
-    // ================================================================
-
     @PostMapping("/{userId}/follow")
     public Result<Boolean> toggleFollow(
             @RequestHeader("Authorization") String token,
             @PathVariable String userId) {
         String currentUserId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        if (currentUserId.equals(userId)) {
-            return Result.success(false);
-        }
-        Follow existing = followMapper.selectOne(
-                new LambdaQueryWrapper<Follow>()
-                        .eq(Follow::getFollowerId, currentUserId)
-                        .eq(Follow::getFollowingId, userId));
-        if (existing != null) {
-            followMapper.deleteById(existing.getId());
-            return Result.success(false);
-        } else {
-            Follow follow = Follow.builder()
-                    .followerId(currentUserId)
-                    .followingId(userId)
-                    .build();
-            followMapper.insert(follow);
-            // Create follow notification
-            notificationService.createNotification(userId, currentUserId, "FOLLOW", null, null);
-            return Result.success(true);
-        }
+        boolean isFollowing = followService.toggleFollow(currentUserId, userId);
+        return Result.success(isFollowing);
     }
-
-    // ================================================================
-    // Follow stats & lists (followers / following / mutual)
-    // ================================================================
 
     @GetMapping("/me/follow-stats")
     public Result<Map<String, Long>> getFollowStats(@RequestHeader("Authorization") String token) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        long followingCount = followMapper.selectCount(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
-        long followerCount = followMapper.selectCount(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowingId, userId));
-
-        // Mutual: users I follow who also follow me
-        List<Follow> myFollowings = followMapper.selectList(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
-        long mutualCount = 0;
-        for (Follow f : myFollowings) {
-            boolean mutual = followMapper.exists(
-                    new LambdaQueryWrapper<Follow>()
-                            .eq(Follow::getFollowerId, f.getFollowingId())
-                            .eq(Follow::getFollowingId, userId));
-            if (mutual) mutualCount++;
-        }
-
-        Map<String, Long> stats = new java.util.HashMap<>();
-        stats.put("following", followingCount);
-        stats.put("followers", followerCount);
-        stats.put("mutual", mutualCount);
-        return Result.success(stats);
+        return Result.success(followService.getFollowStats(userId));
     }
 
     @GetMapping("/me/following")
     public Result<List<UserDTO>> getFollowingList(@RequestHeader("Authorization") String token) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<Follow> follows = followMapper.selectList(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
-        List<UserDTO> result = buildUserDTOsFromFollows(follows, true);
-        return Result.success(result);
+        return Result.success(followService.getFollowingList(userId));
     }
 
     @GetMapping("/me/followers")
     public Result<List<UserDTO>> getFollowerList(@RequestHeader("Authorization") String token) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<Follow> follows = followMapper.selectList(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowingId, userId));
-        List<UserDTO> result = buildUserDTOsFromFollows(follows, false);
-        return Result.success(result);
+        return Result.success(followService.getFollowerList(userId));
     }
 
     @GetMapping("/me/mutual")
     public Result<List<UserDTO>> getMutualList(@RequestHeader("Authorization") String token) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<Follow> myFollowings = followMapper.selectList(
-                new LambdaQueryWrapper<Follow>().eq(Follow::getFollowerId, userId));
-        List<UserDTO> result = new ArrayList<>();
-        for (Follow f : myFollowings) {
-            boolean mutual = followMapper.exists(
-                    new LambdaQueryWrapper<Follow>()
-                            .eq(Follow::getFollowerId, f.getFollowingId())
-                            .eq(Follow::getFollowingId, userId));
-            if (mutual) {
-                User u = userMapper.selectById(f.getFollowingId());
-                if (u != null && !u.getDeleted()) {
-                    UserDTO dto = new UserDTO();
-                    dto.setId(u.getId());
-                    dto.setUsername(u.getUsername());
-                    dto.setAvatarUrl(u.getAvatarUrl());
-                    dto.setBio(u.getBio());
-                    dto.setCreator(creatorService.isCreator(u.getId()));
-                    result.add(dto);
-                }
-            }
-        }
-        return Result.success(result);
+        return Result.success(followService.getMutualList(userId));
     }
-
-    private List<UserDTO> buildUserDTOsFromFollows(List<Follow> follows, boolean isFollowing) {
-        List<UserDTO> result = new ArrayList<>();
-        for (Follow f : follows) {
-            String targetId = isFollowing ? f.getFollowingId() : f.getFollowerId();
-            User u = userMapper.selectById(targetId);
-            if (u != null && !u.getDeleted()) {
-                UserDTO dto = new UserDTO();
-                dto.setId(u.getId());
-                dto.setUsername(u.getUsername());
-                dto.setAvatarUrl(u.getAvatarUrl());
-                dto.setBio(u.getBio());
-                dto.setCreator(creatorService.isCreator(u.getId()));
-                result.add(dto);
-            }
-        }
-        return result;
-    }
-
-    // ================================================================
-    // Helper
-    // ================================================================
-
-    private java.time.format.DateTimeFormatter FMT = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private List<PostListDTO> enrichPosts(List<com.campushare.user.entity.Post> posts) {
         if (posts.isEmpty()) return new ArrayList<>();
@@ -340,7 +217,7 @@ public class UserController {
             if (!authorIds.contains(p.getAuthorId())) authorIds.add(p.getAuthorId());
         }
         List<User> authors = userMapper.selectBatchIds(authorIds);
-        java.util.Map<String, User> authorMap = new java.util.HashMap<>();
+        Map<String, User> authorMap = new HashMap<>();
         for (User u : authors) authorMap.put(u.getId(), u);
 
         List<PostListDTO> result = new ArrayList<>();

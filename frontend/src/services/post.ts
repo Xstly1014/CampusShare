@@ -1,0 +1,93 @@
+import { api } from './http'
+
+export interface PostComment {
+  id: string
+  postId: string
+  userId: string
+  username: string
+  avatarUrl: string
+  content: string
+  parentId?: string
+  replyToUserId?: string
+  replyToUsername?: string
+  likeCount: number
+  isLiked: boolean
+  createTime: string
+}
+
+export const postApi = {
+  create: (data: {
+    schoolId?: string
+    categoryId?: string
+    subCategoryId?: string
+    postType: string
+    title: string
+    content: string
+    fileUrl?: string
+    fileName?: string
+    fileType?: string
+    fileSize?: number
+  }) => api.post('/posts', data),
+
+  edit: (postId: string, data: {
+    schoolId?: string
+    categoryId?: string
+    subCategoryId?: string
+    title?: string
+    content?: string
+    fileUrl?: string
+    fileName?: string
+    fileType?: string
+    fileSize?: number
+  }) => api.put(`/posts/${postId}`, data),
+
+  delete: (postId: string) => api.delete(`/posts/${postId}`),
+
+  getDetail: (postId: string) => api.get(`/posts/${postId}`),
+
+  getStatus: (postId: string) => api.get<{ starred: boolean; liked: boolean }>(`/posts/${postId}/status`),
+
+  getBySchool: (
+    schoolId: string,
+    params: { postType?: string; sortType?: string; page?: number; size?: number } = {}
+  ) => {
+    const query = new URLSearchParams()
+    if (params.postType) query.set('postType', params.postType)
+    if (params.sortType) query.set('sortType', params.sortType)
+    if (params.page) query.set('page', String(params.page))
+    if (params.size) query.set('size', String(params.size))
+    const queryStr = query.toString()
+    return api.get(`/posts/school/${schoolId}${queryStr ? `?${queryStr}` : ''}`)
+  },
+
+  toggleStar: (postId: string) => api.post(`/posts/${postId}/star`),
+
+  toggleLike: (postId: string) => api.post(`/posts/${postId}/like`),
+
+  getHistory: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/history?page=${page}&size=${size}`),
+
+  getStarred: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/starred?page=${page}&size=${size}`),
+
+  getLiked: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/liked?page=${page}&size=${size}`),
+
+  getMyPosts: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/mine?page=${page}&size=${size}`),
+
+  getMyPostStats: () => api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>('/posts/my-stats'),
+
+  getComments: (postId: string) => api.get<PostComment[]>(`/posts/${postId}/comments`),
+
+  createComment: (postId: string, content: string, parentId?: string, replyToUserId?: string) =>
+    api.post(`/posts/${postId}/comments`, { content, parentId, replyToUserId }),
+
+  deleteComment: (commentId: string) => api.delete(`/posts/comments/${commentId}`),
+
+  toggleCommentLike: (commentId: string) => api.post(`/posts/comments/${commentId}/like`),
+
+  getMyComments: () => api.get('/posts/my-comments'),
+
+  getSchoolPostCounts: () => api.get<Record<string, number>>('/posts/school-counts'),
+}

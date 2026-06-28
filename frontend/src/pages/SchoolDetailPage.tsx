@@ -16,8 +16,7 @@ import {
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
-import { PostType } from '../data/posts'
-import { fileApi, postApi } from '../services/api'
+import { fileApi, postApi, PostType } from '../services/api'
 import { toast } from '../stores/toastStore'
 
 type SortType = 'latest' | 'hottest' | 'active'
