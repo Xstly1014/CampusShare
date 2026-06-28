@@ -69,3 +69,8 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    mail:
+      enabled: false  # 禁用邮件健康检查，避免SMTP连接问题导致服务整体unhealthy
+    redis:
+      enabled: true
