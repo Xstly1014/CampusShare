@@ -83,6 +83,9 @@ services:
       - MAIL_PORT=${MAIL_PORT:-587}
       - MAIL_USERNAME=${MAIL_USERNAME:-campusshare@qq.com}
       - MAIL_PASSWORD=${MAIL_PASSWORD:-your-smtp-authorization-code}
+    dns:
+      - 8.8.8.8
+      - 114.114.114.114
     volumes:
       - uploads_data:/app/uploads
     depends_on:
