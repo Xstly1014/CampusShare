@@ -52,7 +52,8 @@ public class CategoryController {
             @RequestParam(defaultValue = "all") String postType,
             @RequestParam(defaultValue = "latest") String sortType,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Post::getSubCategoryId, subCategoryId)
                 .eq(Post::getStatus, 1)
@@ -60,6 +61,10 @@ public class CategoryController {
 
         if (postType != null && !"all".equals(postType)) {
             wrapper.eq(Post::getPostType, postType);
+        }
+
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            wrapper.and(w -> w.like(Post::getTitle, keyword).or().like(Post::getContent, keyword));
         }
 
         if ("hottest".equals(sortType)) {

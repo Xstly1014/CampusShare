@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, Plus, Flame, Clock, MessageSquare, FileText,
@@ -16,7 +16,7 @@ import {
   Map, Compass, BedDouble,
   User, Mountain, Focus, SlidersHorizontal,
   BookCopy, Code2, Scroll, Target,
-  Hash
+  Hash, Search
 } from 'lucide-react'
 import { categoryApi, postApi, fileApi, Category, SubCategory } from '../services/api'
 import SchoolCard from '../components/home/SchoolCard'
@@ -61,6 +61,23 @@ const COLOR_MAP: Record<string, { bg: string; light: string; text: string }> = {
 }
 
 const DEFAULT_COLORS = { bg: 'from-gray-400 to-gray-600', light: 'bg-gray-50', text: 'text-gray-600' }
+
+const CATEGORY_DESC_MAP: Record<string, { unit: string; desc: string }> = {
+  'cat-campus':    { unit: '所高校', desc: '浏览优质学习资源' },
+  'cat-music':     { unit: '种曲风', desc: '发现好音乐' },
+  'cat-movie':     { unit: '种题材', desc: '精彩影片看不停' },
+  'cat-anime':     { unit: '种类型', desc: '畅游二次元世界' },
+  'cat-game':      { unit: '个平台', desc: '畅玩精彩游戏' },
+  'cat-stock':     { unit: '个板块', desc: '掌握财经动态' },
+  'cat-interview': { unit: '个方向', desc: '拿下理想offer' },
+  'cat-software':  { unit: '种分类', desc: '实用软件任你选' },
+  'cat-food':      { unit: '种菜系', desc: '发现美味食谱' },
+  'cat-travel':    { unit: '个目的地', desc: '探索精彩世界' },
+  'cat-photo':     { unit: '个技巧', desc: '提升摄影水平' },
+  'cat-book':      { unit: '类书籍', desc: '享受阅读时光' },
+}
+
+const DEFAULT_CAT_DESC = { unit: '个板块', desc: '浏览精选内容' }
 
 type SortType = 'latest' | 'hottest' | 'active'
 type ViewMode = 'subs' | 'posts'
@@ -113,6 +130,10 @@ export default function CategoryDetailPage() {
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
 
+  const [subSearch, setSubSearch] = useState('')
+  const [postKeyword, setPostKeyword] = useState('')
+  const [postSearchInput, setPostSearchInput] = useState('')
+
   const [showCreate, setShowCreate] = useState(false)
   const [createTitle, setCreateTitle] = useState('')
   const [createContent, setCreateContent] = useState('')
@@ -139,7 +160,7 @@ export default function CategoryDetailPage() {
     fetchData()
   }, [categoryId])
 
-  const loadPosts = useCallback(async (sub: SubCategory | null, reset = false) => {
+  const loadPosts = useCallback(async (sub: SubCategory | null, reset = false, keyword?: string) => {
     if (!sub || !categoryId) return
     setLoading(true)
     try {
@@ -149,6 +170,7 @@ export default function CategoryDetailPage() {
         sortType,
         page: currentPage,
         size: 20,
+        keyword: keyword || undefined,
       })
       const newPosts = res.data || []
       setPosts(reset ? newPosts : [...posts, ...newPosts])
@@ -161,22 +183,50 @@ export default function CategoryDetailPage() {
   useEffect(() => {
     if (viewMode === 'posts' && activeSub) {
       setPage(1)
-      loadPosts(activeSub, true)
+      setPosts([])
+      loadPosts(activeSub, true, postKeyword || undefined)
     }
-  }, [viewMode, activeSub?.id, postType, sortType])
+  }, [viewMode, activeSub?.id, postType, sortType, postKeyword])
 
   const handleSubClick = (sub: SubCategory) => {
     setActiveSub(sub)
     setViewMode('posts')
     setPage(1)
     setPosts([])
+    setPostKeyword('')
+    setPostSearchInput('')
   }
 
   const handleBackToSubs = () => {
     setViewMode('subs')
     setActiveSub(null)
     setPosts([])
+    setPostKeyword('')
+    setPostSearchInput('')
   }
+
+  const handlePostSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    setPostKeyword(postSearchInput.trim())
+  }
+
+  const handleClearPostSearch = () => {
+    setPostSearchInput('')
+    setPostKeyword('')
+  }
+
+  const filteredSchools = useMemo(() => {
+    if (!subSearch.trim()) return schools
+    const kw = subSearch.trim().toLowerCase()
+    return schools.filter(s => s.name.toLowerCase().includes(kw))
+  }, [schools, subSearch])
+
+  const filteredSubs = useMemo(() => {
+    if (!category?.subCategories) return []
+    if (!subSearch.trim()) return category.subCategories
+    const kw = subSearch.trim().toLowerCase()
+    return category.subCategories.filter(s => s.name.toLowerCase().includes(kw))
+  }, [category?.subCategories, subSearch])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -228,7 +278,7 @@ export default function CategoryDetailPage() {
       setCreatePostType('discussion')
       setUploadedFile(null)
       if (viewMode === 'posts' && activeSub) {
-        loadPosts(activeSub, true)
+        loadPosts(activeSub, true, postKeyword || undefined)
       }
     } catch (err: any) {
       toast.error(err.message || '发布失败')
@@ -247,17 +297,15 @@ export default function CategoryDetailPage() {
   const IconComp = ICON_MAP[category.icon] || GraduationCap
   const colors = COLOR_MAP[category.color] || DEFAULT_COLORS
   const isSchool = category.type === 'school'
+  const catDesc = CATEGORY_DESC_MAP[category.id] || DEFAULT_CAT_DESC
 
   const getSubCountText = () => {
-    if (isSchool) {
-      return `共收录 ${schools.length} 所高校，浏览优质学习资源`
-    }
-    const subCount = category.subCategories?.length || 0
-    return `共收录 ${subCount} 个子板块，浏览精选内容`
+    const count = isSchool ? schools.length : (category.subCategories?.length || 0)
+    return `共收录 ${count} ${catDesc.unit}，${catDesc.desc}`
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={() => {
@@ -273,66 +321,111 @@ export default function CategoryDetailPage() {
             <h1 className="text-sm font-semibold text-gray-900">
               {viewMode === 'posts' && activeSub ? activeSub.name : category.name}
             </h1>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-400 truncate">
               {viewMode === 'posts' && activeSub ? category.name : category.description}
             </p>
           </div>
-          {(!isSchool || viewMode === 'posts') && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r ${colors.bg} text-white shadow-sm hover:shadow-md transition-shadow`}
-            >
-              <Plus className="w-4 h-4" />
-              <span>发布</span>
-            </button>
-          )}
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-4">
-        {viewMode === 'subs' && isSchool && (
+        {viewMode === 'subs' && (
           <>
-            <p className="text-sm text-gray-500 mb-4">{getSubCountText()}</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {schools.map((school) => (
-                <SchoolCard key={school.id} school={school} onClick={() => navigate(`/school/${school.id}`)} />
-              ))}
-            </div>
-          </>
-        )}
+            <p className="text-sm text-gray-500 mb-3">{getSubCountText()}</p>
 
-        {viewMode === 'subs' && !isSchool && (
-          <>
-            <p className="text-sm text-gray-500 mb-4">{getSubCountText()}</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {category.subCategories?.map((sub) => {
-                const count = catCounts[`sub_${sub.id}`] || sub.postCount || 0
-                const SubIconComp = SUB_ICON_MAP[sub.icon] || Hash
-                return (
-                  <div
-                    key={sub.id}
-                    onClick={() => handleSubClick(sub)}
-                    className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
-                  >
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 shadow-sm group-hover:scale-110 transition-transform`}>
-                      <SubIconComp className="w-5 h-5 text-white" />
-                    </div>
-                    <h3 className="font-semibold text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
-                      {sub.name}
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3 h-3 text-gray-400" />
-                      <span className="text-xs text-gray-400">{count} 内容</span>
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={subSearch}
+                onChange={(e) => setSubSearch(e.target.value)}
+                placeholder={isSchool ? '搜索高校...' : '搜索板块...'}
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+              />
+              {subSearch && (
+                <button
+                  onClick={() => setSubSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 rounded-full"
+                >
+                  <X className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+              )}
             </div>
+
+            {isSchool && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {filteredSchools.map((school) => (
+                  <SchoolCard key={school.id} school={school} onClick={() => navigate(`/school/${school.id}`)} />
+                ))}
+                {filteredSchools.length === 0 && (
+                  <div className="col-span-full text-center py-8 text-sm text-gray-400">未找到匹配的高校</div>
+                )}
+              </div>
+            )}
+
+            {!isSchool && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {filteredSubs.map((sub) => {
+                  const count = catCounts[`sub_${sub.id}`] || sub.postCount || 0
+                  const SubIconComp = SUB_ICON_MAP[sub.icon] || Hash
+                  return (
+                    <div
+                      key={sub.id}
+                      onClick={() => handleSubClick(sub)}
+                      className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
+                    >
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 shadow-sm group-hover:scale-110 transition-transform`}>
+                        <SubIconComp className="w-5 h-5 text-white" />
+                      </div>
+                      <h3 className="font-semibold text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
+                        {sub.name}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3 h-3 text-gray-400" />
+                        <span className="text-xs text-gray-400">{count} 内容</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {filteredSubs.length === 0 && (
+                  <div className="col-span-full text-center py-8 text-sm text-gray-400">未找到匹配的板块</div>
+                )}
+              </div>
+            )}
           </>
         )}
 
         {viewMode === 'posts' && activeSub && (
           <>
+            <form onSubmit={handlePostSearch} className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={postSearchInput}
+                onChange={(e) => setPostSearchInput(e.target.value)}
+                placeholder="搜索该板块内容..."
+                className="w-full pl-9 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+              />
+              {postSearchInput && (
+                <button
+                  type="button"
+                  onClick={handleClearPostSearch}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 rounded-full"
+                >
+                  <X className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+              )}
+            </form>
+
+            {postKeyword && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-1.5 bg-blue-50 rounded-lg text-xs text-blue-600">
+                <span>搜索: "{postKeyword}"</span>
+                <button onClick={handleClearPostSearch} className="ml-auto hover:text-blue-800">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
               {(['all', 'resource', 'discussion'] as const).map((t) => (
                 <button
@@ -421,7 +514,7 @@ export default function CategoryDetailPage() {
 
               {!loading && hasMore && posts.length > 0 && (
                 <button
-                  onClick={() => loadPosts(activeSub, false)}
+                  onClick={() => loadPosts(activeSub, false, postKeyword || undefined)}
                   className="w-full py-3 text-sm text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   加载更多
@@ -431,6 +524,15 @@ export default function CategoryDetailPage() {
           </>
         )}
       </div>
+
+      {viewMode === 'posts' && activeSub && (
+        <button
+          onClick={() => setShowCreate(true)}
+          className={`fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-br ${colors.bg} text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center z-30`}
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
 
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowCreate(false)}>
@@ -442,9 +544,6 @@ export default function CategoryDetailPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {!isSchool && !activeSub && (
-                <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">请先选择一个子板块后再发布</p>
-              )}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">标题</label>
                 <input
@@ -505,9 +604,9 @@ export default function CategoryDetailPage() {
             <div className="p-4 border-t border-gray-100">
               <button
                 onClick={handleSubmitPost}
-                disabled={submitting || (!isSchool && !activeSub)}
+                disabled={submitting}
                 className={`w-full py-2.5 rounded-lg text-sm font-medium text-white transition-all ${
-                  submitting || (!isSchool && !activeSub) ? 'bg-gray-300 cursor-not-allowed' : `bg-gradient-to-r ${colors.bg} hover:shadow-md`
+                  submitting ? 'bg-gray-300 cursor-not-allowed' : `bg-gradient-to-r ${colors.bg} hover:shadow-md`
                 }`}
               >
                 {submitting ? '发布中...' : '发布'}

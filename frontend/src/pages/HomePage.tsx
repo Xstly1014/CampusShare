@@ -32,6 +32,21 @@ const COLOR_MAP: Record<string, { bg: string; text: string; ring: string }> = {
 
 const DEFAULT_COLORS = { bg: 'from-gray-400 to-gray-600', text: 'text-gray-600', ring: 'ring-gray-100' }
 
+const CATEGORY_UNIT_MAP: Record<string, string> = {
+  'cat-campus': '所高校',
+  'cat-music': '种曲风',
+  'cat-movie': '种题材',
+  'cat-anime': '种类型',
+  'cat-game': '个平台',
+  'cat-stock': '个板块',
+  'cat-interview': '个方向',
+  'cat-software': '种分类',
+  'cat-food': '种菜系',
+  'cat-travel': '个目的地',
+  'cat-photo': '个技巧',
+  'cat-book': '类书籍',
+}
+
 interface UserResult {
   id: string
   username: string
@@ -127,7 +142,7 @@ export default function HomePage() {
                 const IconComp = ICON_MAP[cat.icon] || GraduationCap
                 const colors = COLOR_MAP[cat.color] || DEFAULT_COLORS
                 const blockCount = cat.type === 'school' ? schools.length : (cat.subCategories?.length || 0)
-                const blockLabel = cat.type === 'school' ? '所高校' : '个板块'
+                const blockLabel = CATEGORY_UNIT_MAP[cat.id] || '个板块'
                 return (
                   <div
                     key={cat.id}
