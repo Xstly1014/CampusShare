@@ -212,9 +212,8 @@ CampusShare/
 │   ├── tech-design.md          # 技术方案设计文档
 │   └── deployment.md           # 部署运维文档
 │
-├── 📂 changelog/                # 📝 开发变更记录
 ├── docker-compose.yml           # 🐳 Docker Compose 服务编排
-├── .env.example                 # 🔧 环境变量模板
+├── .env.example                 # 🔧 环境变量模板（邮件配置）
 ├── .gitignore                   # Git 忽略配置
 └── README.md                    # 📖 项目总览（本文件）
 ```
@@ -240,7 +239,13 @@ git clone https://github.com/Xstly1014/CampusShare.git
 cd CampusShare
 ```
 
-2. **构建并启动所有服务**
+2. **（可选）配置邮件服务**
+```bash
+cp .env.example .env
+# 编辑 .env，填入邮箱SMTP配置（不配置则邮件功能不可用，不影响其他功能）
+```
+
+3. **构建并启动所有服务**
 ```bash
 docker-compose up -d --build
 ```
