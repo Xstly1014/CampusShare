@@ -259,15 +259,16 @@ export default function UserProfilePage() {
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center"
           onClick={() => setShowAvatarModal(false)}
         >
-          <img
-            src={profile.avatarUrl.startsWith('/files/') ? `/api${profile.avatarUrl}` : profile.avatarUrl}
-            alt={profile.username}
-            className="max-w-[80vw] max-h-[80vh] rounded-2xl object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={profile.avatarUrl.startsWith('/files/') ? `/api${profile.avatarUrl}` : profile.avatarUrl}
+              alt={profile.username}
+              className="w-72 h-72 sm:w-80 sm:h-80 rounded-full object-cover border-4 border-white/20"
+            />
+          </div>
           <button
             onClick={() => setShowAvatarModal(false)}
-            className="absolute top-6 right-6 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white text-xl"
+            className="absolute top-6 right-6 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white text-xl hover:bg-white/30 transition-colors"
           >
             ✕
           </button>

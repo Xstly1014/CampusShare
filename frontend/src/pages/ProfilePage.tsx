@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import NavBar from '../components/common/NavBar'
@@ -21,7 +21,182 @@ import {
   HelpCircle,
   Shield,
   FileText,
+  ZoomIn,
+  ZoomOut,
+  Move,
 } from 'lucide-react'
+
+const CROP_SIZE = 280
+const OUTPUT_SIZE = 400
+
+function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob: Blob) => void; onCancel: () => void }) {
+  const [scale, setScale] = useState(1)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+  const [imgLoaded, setImgLoaded] = useState(false)
+  const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
+  const imgRef = useRef<HTMLImageElement>(null)
+  const dragStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 })
+
+  const handleImageLoad = () => {
+    if (!imgRef.current) return
+    const { naturalWidth, naturalHeight } = imgRef.current
+    setImgSize({ w: naturalWidth, h: naturalHeight })
+    const minScale = Math.max(CROP_SIZE / naturalWidth, CROP_SIZE / naturalHeight)
+    setScale(minScale)
+    const displayW = naturalWidth * minScale
+    const displayH = naturalHeight * minScale
+    setOffset({ x: (CROP_SIZE - displayW) / 2, y: (CROP_SIZE - displayH) / 2 })
+    setImgLoaded(true)
+  }
+
+  const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+    setDragging(true)
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    dragStart.current = { x: clientX, y: clientY, ox: offset.x, oy: offset.y }
+  }
+
+  const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!dragging) return
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    const dx = clientX - dragStart.current.x
+    const dy = clientY - dragStart.current.y
+    setOffset({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy })
+  }, [dragging])
+
+  const handleMouseUp = useCallback(() => {
+    setDragging(false)
+  }, [])
+
+  useEffect(() => {
+    if (dragging) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+      window.addEventListener('touchmove', handleMouseMove)
+      window.addEventListener('touchend', handleMouseUp)
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', handleMouseUp)
+        window.removeEventListener('touchmove', handleMouseMove)
+        window.removeEventListener('touchend', handleMouseUp)
+      }
+    }
+  }, [dragging, handleMouseMove, handleMouseUp])
+
+  const clampOffset = (newScale: number) => {
+    if (!imgRef.current) return offset
+    const displayW = imgSize.w * newScale
+    const displayH = imgSize.h * newScale
+    const minX = CROP_SIZE - displayW
+    const minY = CROP_SIZE - displayH
+    return {
+      x: Math.min(0, Math.max(minX, offset.x)),
+      y: Math.min(0, Math.max(minY, offset.y)),
+    }
+  }
+
+  const handleZoom = (delta: number) => {
+    const minScale = Math.max(CROP_SIZE / imgSize.w, CROP_SIZE / imgSize.h)
+    const maxScale = Math.max(minScale * 4, minScale + 1)
+    const newScale = Math.max(minScale, Math.min(maxScale, scale + delta))
+    setScale(newScale)
+    setOffset(clampOffset(newScale))
+  }
+
+  const handleConfirm = () => {
+    if (!imgRef.current) return
+    const canvas = document.createElement('canvas')
+    canvas.width = OUTPUT_SIZE
+    canvas.height = OUTPUT_SIZE
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(
+      imgRef.current,
+      offset.x * (OUTPUT_SIZE / CROP_SIZE) / scale,
+      offset.y * (OUTPUT_SIZE / CROP_SIZE) / scale,
+      CROP_SIZE * (OUTPUT_SIZE / CROP_SIZE) / scale,
+      CROP_SIZE * (OUTPUT_SIZE / CROP_SIZE) / scale,
+      0,
+      0,
+      OUTPUT_SIZE,
+      OUTPUT_SIZE
+    )
+    canvas.toBlob((blob) => {
+      if (blob) onConfirm(blob)
+    }, 'image/jpeg', 0.92)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center" onClick={onCancel}>
+      <div className="bg-gray-900 w-full max-w-sm rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-white text-center text-base font-semibold mb-4">移动和缩放</h3>
+        <div
+          className="relative mx-auto overflow-hidden"
+          style={{ width: CROP_SIZE, height: CROP_SIZE }}
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleMouseDown}
+        >
+          <div
+            className="absolute inset-0 cursor-move"
+            style={{ touchAction: 'none' }}
+          >
+            <img
+              ref={imgRef}
+              src={src}
+              alt="裁剪预览"
+              onLoad={handleImageLoad}
+              style={{
+                position: 'absolute',
+                left: offset.x,
+                top: offset.y,
+                width: imgSize.w * scale,
+                height: imgSize.h * scale,
+                userSelect: 'none',
+                pointerEvents: 'none',
+              }}
+              draggable={false}
+            />
+          </div>
+          {/* Circular mask overlay */}
+          <div className="absolute inset-0 pointer-events-none">
+            <svg width={CROP_SIZE} height={CROP_SIZE}>
+              <defs>
+                <mask id="circleMask">
+                  <rect width="100%" height="100%" fill="white" />
+                  <circle cx={CROP_SIZE / 2} cy={CROP_SIZE / 2} r={CROP_SIZE / 2 - 2} fill="black" />
+                </mask>
+              </defs>
+              <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#circleMask)" />
+              <circle cx={CROP_SIZE / 2} cy={CROP_SIZE / 2} r={CROP_SIZE / 2 - 2} fill="none" stroke="white" strokeWidth="2" />
+            </svg>
+          </div>
+        </div>
+
+        {imgLoaded && (
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <button onClick={() => handleZoom(-0.1)} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2 text-white/60 text-xs">
+              <Move className="w-3.5 h-3.5" />
+              <span>拖动调整</span>
+            </div>
+            <button onClick={() => handleZoom(0.1)} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+              <ZoomIn className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onCancel} className="flex-1 py-2.5 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20 transition-colors">取消</button>
+          <button onClick={handleConfirm} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">确定</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ProfilePage() {
   const { user, logout } = useAuth()
@@ -36,8 +211,10 @@ export default function ProfilePage() {
   const [commentCount, setCommentCount] = useState(0)
   const [followStats, setFollowStats] = useState({ following: 0, followers: 0, mutual: 0 })
   const [statsModal, setStatsModal] = useState<{ title: string; value: number; suffix: string } | null>(null)
+  const [cropperSrc, setCropperSrc] = useState<string | null>(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch latest user profile from backend
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -49,16 +226,12 @@ export default function ProfilePage() {
           setEditBio(u.bio)
         }
         if (u.username) setEditUsername(u.username)
-        // Update sessionStorage
         sessionStorage.setItem('campusshare_user', JSON.stringify(u))
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     }
     fetchUser()
   }, [])
 
-  // Fetch counts for the three lists + my post stats
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -78,9 +251,7 @@ export default function ProfilePage() {
         setStats(statsRes.data || { totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
         setCommentCount((commentsRes.data || []).length)
         setFollowStats(followRes.data || { following: 0, followers: 0, mutual: 0 })
-      } catch (err) {
-        // Silently ignore, counts stay 0
-      }
+      } catch (err) { /* ignore */ }
     }
     fetchData()
   }, [])
@@ -93,23 +264,32 @@ export default function ProfilePage() {
     { key: 'liked', label: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, count: counts.liked, color: 'bg-red-50 text-red-600' },
   ]
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    // Preview locally first
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过10MB')
+      return
+    }
     const reader = new FileReader()
     reader.onload = (ev) => {
-      setAvatar(ev.target?.result as string)
+      setCropperSrc(ev.target?.result as string)
     }
     reader.readAsDataURL(file)
+    e.target.value = ''
+  }
 
-    // Upload then save to backend
+  const handleCropConfirm = async (blob: Blob) => {
+    setUploadingAvatar(true)
     try {
-      const uploadRes = await fileApi.upload(file)
+      const croppedFile = new File([blob], 'avatar.jpg', { type: 'image/jpeg' })
+      const uploadRes = await fileApi.upload(croppedFile)
       const avatarUrl = uploadRes.url
-      const res = await userApi.updateProfile({ avatarUrl })
-      // Update auth context user data in sessionStorage
+      await userApi.updateProfile({ avatarUrl })
       const savedUser = sessionStorage.getItem('campusshare_user')
       if (savedUser) {
         const userData = JSON.parse(savedUser)
@@ -117,9 +297,13 @@ export default function ProfilePage() {
         sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
       }
       setAvatar(avatarUrl)
+      setCropperSrc(null)
+      setShowEditModal(false)
       toast.success('头像修改成功')
     } catch (err) {
       toast.error((err as Error).message || '头像上传失败')
+    } finally {
+      setUploadingAvatar(false)
     }
   }
 
@@ -129,7 +313,6 @@ export default function ProfilePage() {
         username: editUsername.trim() || undefined,
         bio: editBio,
       })
-      // Update auth context user data in sessionStorage
       const savedUser = sessionStorage.getItem('campusshare_user')
       if (savedUser) {
         const userData = JSON.parse(savedUser)
@@ -140,48 +323,50 @@ export default function ProfilePage() {
       setBio(editBio)
       setShowEditModal(false)
       toast.success('资料保存成功')
-      // Reload to reflect updated username
       window.location.reload()
     } catch (err) {
       toast.error((err as Error).message || '保存失败')
     }
   }
 
+  const openFilePicker = () => {
+    fileInputRef.current?.click()
+  }
+
+  const getAvatarSrc = (url: string | null) => {
+    if (!url) return null
+    return url.startsWith('/files/') ? `/api${url}` : url
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      {/* 顶部个人信息 */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-5xl mx-auto px-4 py-6">
           <div className="flex items-start gap-4">
-            {/* 头像 */}
             <div className="relative group">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden">
+              <div
+                className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden cursor-pointer"
+                onClick={openFilePicker}
+              >
                 {avatar ? (
-                  <img
-                    src={avatar.startsWith('/files/') ? `/api${avatar}` : avatar}
-                    alt="头像"
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={getAvatarSrc(avatar)} alt="头像" className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-white text-xl font-bold">
-                    {user?.username?.substring(0, 1).toUpperCase() || 'U'}
-                  </span>
+                  <span className="text-white text-xl font-bold">{user?.username?.substring(0, 1).toUpperCase() || 'U'}</span>
                 )}
               </div>
-              <label className="absolute bottom-0 right-0 w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={openFilePicker}
+                className="absolute bottom-0 right-0 w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-800"
+              >
                 <Camera className="w-3 h-3 text-white" />
-                <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-              </label>
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
             </div>
 
-            {/* 用户信息 */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-gray-900">{user?.username || '用户'}</h1>
-                <button
-                  onClick={() => setShowEditModal(true)}
-                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-                >
+                <button onClick={() => setShowEditModal(true)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
                   <Edit3 className="w-3.5 h-3.5 text-gray-400" />
                 </button>
               </div>
@@ -201,7 +386,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 统计数据 - 6个：总浏览/获赞/被收藏(弹窗) + 关注/粉丝/互关(跳转列表) */}
           <div className="grid grid-cols-3 gap-2 mt-5">
             <button onClick={() => setStatsModal({ title: '总浏览', value: stats.totalViews, suffix: '个总浏览' })} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
               <p className="text-base font-bold text-gray-900">{stats.totalViews}</p>
@@ -231,7 +415,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* 认证创作者入口 */}
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-100 p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -249,31 +432,24 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* 我的互动 - 入口按钮（类似抖音） */}
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           {listEntries.map((entry, idx) => (
             <button
               key={entry.key}
               onClick={() => navigate(`/profile/${entry.key}`)}
-              className={`w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-50 transition-colors ${
-                idx < listEntries.length - 1 ? 'border-b border-gray-50' : ''
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-50 transition-colors ${idx < listEntries.length - 1 ? 'border-b border-gray-50' : ''
+                }`}
             >
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${entry.color}`}>
-                {entry.icon}
-              </div>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${entry.color}`}>{entry.icon}</div>
               <span className="flex-1 text-left text-sm text-gray-700 font-medium">{entry.label}</span>
-              {entry.count > 0 && (
-                <span className="text-xs text-gray-400">{entry.count}</span>
-              )}
+              {entry.count > 0 && <span className="text-xs text-gray-400">{entry.count}</span>}
               <ChevronRight className="w-4 h-4 text-gray-300" />
             </button>
           ))}
         </div>
       </div>
 
-      {/* 功能菜单 */}
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           <button onClick={() => navigate('/notifications')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
@@ -314,18 +490,13 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* 退出登录 */}
       <div className="max-w-5xl mx-auto px-4 mt-3 mb-6">
-        <button
-          onClick={logout}
-          className="w-full bg-white rounded-2xl border border-gray-100 py-3.5 flex items-center justify-center gap-2 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors"
-        >
+        <button onClick={logout} className="w-full bg-white rounded-2xl border border-gray-100 py-3.5 flex items-center justify-center gap-2 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors">
           <LogOut className="w-4 h-4" />
           退出登录
         </button>
       </div>
 
-      {/* 统计弹窗 */}
       {statsModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setStatsModal(null)}>
           <div className="bg-gradient-to-br from-blue-500 to-purple-600 w-64 rounded-3xl p-8 text-center" onClick={(e) => e.stopPropagation()}>
@@ -337,39 +508,29 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* 编辑资料弹窗 */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowEditModal(false)}>
-          <div
-            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => !uploadingAvatar && setShowEditModal(false)}>
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-gray-900 mb-5">编辑资料</h2>
 
-            {/* 头像 */}
             <div className="flex justify-center mb-5">
               <div className="relative group">
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden">
+                <div
+                  className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden cursor-pointer"
+                  onClick={openFilePicker}
+                >
                   {avatar ? (
-                    <img
-                      src={avatar.startsWith('/files/') ? `/api${avatar}` : avatar}
-                      alt="头像"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={getAvatarSrc(avatar)} alt="头像" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-white text-2xl font-bold">
-                      {user?.username?.substring(0, 1).toUpperCase() || 'U'}
-                    </span>
+                    <span className="text-white text-2xl font-bold">{user?.username?.substring(0, 1).toUpperCase() || 'U'}</span>
                   )}
                 </div>
-                <label className="absolute bottom-0 right-0 w-7 h-7 bg-gray-900 rounded-full flex items-center justify-center cursor-pointer">
+                <button onClick={openFilePicker} className="absolute bottom-0 right-0 w-7 h-7 bg-gray-900 rounded-full flex items-center justify-center cursor-pointer hover:bg-gray-800">
                   <Camera className="w-3.5 h-3.5 text-white" />
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-                </label>
+                </button>
               </div>
             </div>
 
-            {/* 用户名 */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">用户名</label>
               <input
@@ -380,7 +541,6 @@ export default function ProfilePage() {
               />
             </div>
 
-            {/* 个人简介 */}
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">个人简介</label>
               <textarea
@@ -391,26 +551,18 @@ export default function ProfilePage() {
               />
             </div>
 
-            {/* 按钮 */}
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSaveProfile}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                保存
-              </button>
+              <button onClick={() => setShowEditModal(false)} disabled={uploadingAvatar} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-40">取消</button>
+              <button onClick={handleSaveProfile} disabled={uploadingAvatar} className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{uploadingAvatar ? '上传中...' : '保存'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 底部导航栏 */}
+      {cropperSrc && (
+        <AvatarCropper src={cropperSrc} onConfirm={handleCropConfirm} onCancel={() => setCropperSrc(null)} />
+      )}
+
       <NavBar />
     </div>
   )
