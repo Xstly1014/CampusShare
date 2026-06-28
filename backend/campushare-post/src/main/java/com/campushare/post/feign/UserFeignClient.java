@@ -18,6 +18,9 @@ public interface UserFeignClient {
     @PostMapping("/internal/users/notifications")
     void createNotification(@RequestBody NotificationRequest request);
 
+    @PostMapping("/internal/users/batch-create-test")
+    Map<String, Object> batchCreateTestUsers(@RequestBody Map<String, Object> request);
+
     @lombok.Data
     class UserSimpleInfo {
         private String id;

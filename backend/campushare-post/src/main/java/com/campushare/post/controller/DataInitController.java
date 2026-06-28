@@ -22,6 +22,14 @@ public class DataInitController {
         return Result.success(result);
     }
 
+    @PostMapping("/init-full-data")
+    public Result<String> initFullTestData(
+            @RequestParam(defaultValue = "10000") int userCount,
+            @RequestParam(defaultValue = "2") int postsPerUser) {
+        String result = dataInitService.initFullTestData(userCount, postsPerUser);
+        return Result.success(result);
+    }
+
     @PostMapping("/clear-posts")
     public Result<String> clearAllPosts() {
         String result = dataInitService.clearAllPosts();

@@ -1,6 +1,7 @@
 package com.campushare.post.service.impl;
 
 import com.campushare.post.entity.Post;
+import com.campushare.post.feign.UserFeignClient;
 import com.campushare.post.mapper.*;
 import com.campushare.post.service.DataInitService;
 import lombok.RequiredArgsConstructor;
@@ -9,10 +10,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -26,6 +24,7 @@ public class DataInitServiceImpl implements DataInitService {
     private final CommentLikeMapper commentLikeMapper;
     private final ViewHistoryMapper viewHistoryMapper;
     private final RedisTemplate<String, String> redisTemplate;
+    private final UserFeignClient userFeignClient;
 
     private static final String[] SCHOOL_IDS = {"1", "2", "3", "4", "5", "6", "7", "8"};
     private static final String[] POST_TYPES = {"resource", "discussion"};
@@ -43,7 +42,9 @@ public class DataInitServiceImpl implements DataInitService {
             "C语言程序设计", "Java编程", "Python入门", "机器学习", "深度学习",
             "人工智能", "英语四级", "英语六级", "考研英语", "考研政治",
             "马克思主义原理", "毛泽东思想概论", "中国近代史纲要", "思想道德修养", "大学语文",
-            "离散数学", "编译原理", "设计模式", "算法导论", "微服务架构"
+            "离散数学", "编译原理", "设计模式", "算法导论", "微服务架构",
+            "食堂推荐", "宿舍条件", "选课攻略", "社团招新", "实习经验",
+            "保研经验", "求职分享", "校园风景", "运动会", "学生会"
     };
 
     private static final String[] CONTENT_SNIPPETS = {
@@ -61,7 +62,12 @@ public class DataInitServiceImpl implements DataInitService {
             "求推荐一本好书，想深入学习一下这方面的内容。",
             "刚考完研，把我用过的资料都整理出来了，免费分享给学弟学妹。",
             "课程设计的完整代码和报告，花了我整整两周才做完。",
-            "这门课的重点总结，总共就十几页纸，背完考试稳了。"
+            "这门课的重点总结，总共就十几页纸，背完考试稳了。",
+            "学校食堂新开的窗口味道还不错，推荐大家去试试。",
+            "宿舍改造完成，花了不到200块，效果超满意。",
+            "这家公司实习体验很好，氛围轻松，工资也不错，推荐给学弟学妹。",
+            "保研成功了，分享一下准备过程中的经验和踩过的坑。",
+            "秋招拿到了心仪的offer，总结一下面试经验。"
     };
 
     private static final Random random = new Random();
@@ -118,51 +124,19 @@ public class DataInitServiceImpl implements DataInitService {
             List<Post> posts = new ArrayList<>();
 
             for (int i = 0; i < postsPerSchool; i++) {
-                String postType = getRandomPostType();
-                String title = generateTitle();
-                String content = generateContent();
-                LocalDateTime randomTime = generateRandomTime();
-
-                Post post = Post.builder()
-                        .schoolId(schoolId)
-                        .authorId(generateRandomUserId())
-                        .postType(postType)
-                        .title(title)
-                        .content(content)
-                        .viewCount(0)
-                        .starCount(0)
-                        .likeCount(0)
-                        .commentCount(0)
-                        .status(1)
-                        .deleted(false)
-                        .createTime(randomTime)
-                        .updateTime(randomTime)
-                        .build();
-
+                Post post = buildRandomPost(schoolId, generateRandomUserId());
                 posts.add(post);
                 totalPosts++;
 
                 if (posts.size() >= 100) {
-                    for (Post p : posts) {
-                        try {
-                            postMapper.insert(p);
-                        } catch (Exception e) {
-                            log.error("插入帖子失败: title={}", p.getTitle(), e);
-                        }
-                    }
+                    batchInsertPosts(posts);
                     posts.clear();
                     log.info("学校 {} 已插入 {} 条", schoolId, totalPosts);
                 }
             }
 
             if (!posts.isEmpty()) {
-                for (Post p : posts) {
-                    try {
-                        postMapper.insert(p);
-                    } catch (Exception e) {
-                        log.error("插入帖子失败: title={}", p.getTitle(), e);
-                    }
-                }
+                batchInsertPosts(posts);
             }
             log.info("学校 {} 数据生成完成", schoolId);
         }
@@ -170,6 +144,113 @@ public class DataInitServiceImpl implements DataInitService {
         String result = String.format("测试数据生成完成！共生成 %d 条帖子", totalPosts);
         log.info(result);
         return result;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public String initFullTestData(int userCount, int postsPerUser) {
+        log.info("========== 开始全量数据初始化: {} 用户, 每用户约 {} 帖 ==========", userCount, postsPerUser);
+
+        int batchSize = 500;
+        int totalUsers = 0;
+        int totalPosts = 0;
+        int totalBatches = (int) Math.ceil((double) userCount / batchSize);
+
+        for (int batch = 0; batch < totalBatches; batch++) {
+            int currentBatchSize = Math.min(batchSize, userCount - batch * batchSize);
+            log.info("===== 处理第 {}/{} 批，创建 {} 个用户 =====", batch + 1, totalBatches, currentBatchSize);
+
+            List<Map<String, String>> users;
+            try {
+                Map<String, Object> request = new HashMap<>();
+                request.put("count", currentBatchSize);
+                Object response = userFeignClient.batchCreateTestUsers(request);
+
+                if (response instanceof Map) {
+                    Map<String, Object> respMap = (Map<String, Object>) response;
+                    Object data = respMap.get("data");
+                    if (data instanceof List) {
+                        users = (List<Map<String, String>>) data;
+                    } else {
+                        log.error("Feign返回数据格式异常: {}", respMap);
+                        continue;
+                    }
+                } else {
+                    log.error("Feign返回类型异常: {}", response);
+                    continue;
+                }
+            } catch (Exception e) {
+                log.error("第 {} 批创建用户失败: {}", batch + 1, e.getMessage(), e);
+                continue;
+            }
+
+            totalUsers += users.size();
+            log.info("第 {} 批用户创建成功: {} 个", batch + 1, users.size());
+
+            List<Post> posts = new ArrayList<>();
+            for (Map<String, String> userInfo : users) {
+                String userId = userInfo.get("id");
+                String schoolId = userInfo.get("schoolId");
+                if (userId == null || schoolId == null) continue;
+
+                int userPostCount = postsPerUser + random.nextInt(3) - 1;
+                if (userPostCount < 1) userPostCount = 1;
+
+                for (int p = 0; p < userPostCount; p++) {
+                    posts.add(buildRandomPost(schoolId, userId));
+                    totalPosts++;
+
+                    if (posts.size() >= 200) {
+                        batchInsertPosts(posts);
+                        posts.clear();
+                    }
+                }
+            }
+
+            if (!posts.isEmpty()) {
+                batchInsertPosts(posts);
+            }
+
+            log.info("第 {} 批完成，累计: {} 用户, {} 帖子", batch + 1, totalUsers, totalPosts);
+        }
+
+        String result = String.format("全量数据初始化完成！共创建 %d 个用户，%d 条帖子（分布在 %d 个学校）",
+                totalUsers, totalPosts, SCHOOL_IDS.length);
+        log.info(result);
+        return result;
+    }
+
+    private Post buildRandomPost(String schoolId, String authorId) {
+        String postType = getRandomPostType();
+        String title = generateTitle();
+        String content = generateContent();
+        LocalDateTime randomTime = generateRandomTime();
+
+        return Post.builder()
+                .schoolId(schoolId)
+                .authorId(authorId)
+                .postType(postType)
+                .title(title)
+                .content(content)
+                .viewCount(random.nextInt(500))
+                .starCount(0)
+                .likeCount(random.nextInt(50))
+                .commentCount(0)
+                .status(1)
+                .deleted(false)
+                .createTime(randomTime)
+                .updateTime(randomTime)
+                .build();
+    }
+
+    private void batchInsertPosts(List<Post> posts) {
+        for (Post p : posts) {
+            try {
+                postMapper.insert(p);
+            } catch (Exception e) {
+                log.error("插入帖子失败: title={}", p.getTitle(), e);
+            }
+        }
     }
 
     private String getRandomPostType() {
