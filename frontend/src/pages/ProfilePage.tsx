@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import NavBar from '../components/common/NavBar'
-import { postApi, fileApi, userApi } from '../services/api'
+import { postApi, fileApi, userApi, creatorApi, CreatorStatus } from '../services/api'
 import { toast } from '../stores/toastStore'
 import {
   User,
@@ -114,10 +114,10 @@ function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (
     if (!ctx) return
     ctx.drawImage(
       imgRef.current,
-      offset.x * (OUTPUT_SIZE / CROP_SIZE) / scale,
-      offset.y * (OUTPUT_SIZE / CROP_SIZE) / scale,
-      CROP_SIZE * (OUTPUT_SIZE / CROP_SIZE) / scale,
-      CROP_SIZE * (OUTPUT_SIZE / CROP_SIZE) / scale,
+      -offset.x / scale,
+      -offset.y / scale,
+      CROP_SIZE / scale,
+      CROP_SIZE / scale,
       0,
       0,
       OUTPUT_SIZE,
@@ -213,6 +213,7 @@ export default function ProfilePage() {
   const [statsModal, setStatsModal] = useState<{ title: string; value: number; suffix: string } | null>(null)
   const [cropperSrc, setCropperSrc] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [creatorStatus, setCreatorStatus] = useState<CreatorStatus | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -235,13 +236,14 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [historyRes, starredRes, likedRes, statsRes, commentsRes, followRes] = await Promise.all([
+        const [historyRes, starredRes, likedRes, statsRes, commentsRes, followRes, creatorRes] = await Promise.all([
           postApi.getHistory(1, 1),
           postApi.getStarred(1, 1),
           postApi.getLiked(1, 1),
           postApi.getMyPostStats(),
           postApi.getMyComments(),
           userApi.getFollowStats(),
+          creatorApi.getStatus(),
         ])
         setCounts({
           browse: (historyRes.data || []).length,
@@ -251,6 +253,7 @@ export default function ProfilePage() {
         setStats(statsRes.data || { totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
         setCommentCount((commentsRes.data || []).length)
         setFollowStats(followRes.data || { following: 0, followers: 0, mutual: 0 })
+        setCreatorStatus(creatorRes.data || null)
       } catch (err) { /* ignore */ }
     }
     fetchData()
@@ -366,6 +369,11 @@ export default function ProfilePage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-gray-900">{user?.username || '用户'}</h1>
+                {creatorStatus?.status === 'APPROVED' && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0" title="认证创作者">
+                    <span className="text-white text-[10px] font-bold leading-none">V</span>
+                  </span>
+                )}
                 <button onClick={() => setShowEditModal(true)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
                   <Edit3 className="w-3.5 h-3.5 text-gray-400" />
                 </button>
@@ -422,13 +430,22 @@ export default function ProfilePage() {
               <Award className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-amber-900">认证创作者</p>
-              <p className="text-xs text-amber-600">申请认证，享受专属激励奖励</p>
+              <p className="text-sm font-semibold text-amber-900">
+                {creatorStatus?.status === 'APPROVED' ? '已认证创作者' : creatorStatus?.status === 'PENDING' ? '认证审核中' : '认证创作者'}
+              </p>
+              <p className="text-xs text-amber-600">
+                {creatorStatus?.status === 'APPROVED' ? '你已享受专属激励奖励' : creatorStatus?.status === 'PENDING' ? '申请已提交，请耐心等待' : '申请认证，享受专属激励奖励'}
+              </p>
             </div>
           </div>
-          <button className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-full hover:bg-amber-600 transition-colors">
-            立即申请
-          </button>
+          {creatorStatus?.status !== 'APPROVED' && (
+            <button
+              onClick={() => navigate('/creator-verification')}
+              className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-full hover:bg-amber-600 transition-colors"
+            >
+              {creatorStatus?.status === 'PENDING' ? '查看详情' : creatorStatus?.status === 'REJECTED' ? '重新申请' : '立即申请'}
+            </button>
+          )}
         </div>
       </div>
 

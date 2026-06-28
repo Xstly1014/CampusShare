@@ -27,4 +27,6 @@ public class UserProfileDTO {
     private boolean isFollowing;
     @JsonProperty("isSelf")
     private boolean isSelf;
+    @JsonProperty("isCreator")
+    private boolean isCreator;
 }

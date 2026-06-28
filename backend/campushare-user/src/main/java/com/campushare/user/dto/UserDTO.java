@@ -1,5 +1,6 @@
 package com.campushare.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -58,4 +59,7 @@ public class UserDTO {
      * 创建时间
      */
     private String createTime;
+
+    @JsonProperty("isCreator")
+    private boolean isCreator;
 }

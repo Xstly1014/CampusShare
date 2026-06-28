@@ -20,6 +20,7 @@ interface UserProfile {
   followingCount: number
   isFollowing: boolean
   isSelf: boolean
+  isCreator?: boolean
 }
 
 interface BackendPost {
@@ -136,21 +137,15 @@ export default function UserProfilePage() {
 
   if (!profile) return null
 
-  // If it's self, redirect to own profile
-  if (profile.isSelf) {
-    navigate('/profile')
-    return null
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 pb-16">
+    <div className="min-h-screen bg-gray-50">
       {/* 顶部导航 */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <span className="text-sm font-medium text-gray-900">用户主页</span>
+          <span className="text-sm font-medium text-gray-900">{profile.isSelf ? '我的主页' : '用户主页'}</span>
         </div>
       </div>
 
@@ -171,6 +166,11 @@ export default function UserProfilePage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-gray-900">{profile.username}</h1>
+                {profile.isCreator && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0" title="认证创作者">
+                    <span className="text-white text-[10px] font-bold leading-none">V</span>
+                  </span>
+                )}
                 <button onClick={handleCopyId} className="p-1 hover:bg-gray-100 rounded-full transition-colors" title="复制ID">
                   <Copy className="w-3.5 h-3.5 text-gray-400" />
                 </button>
@@ -182,18 +182,29 @@ export default function UserProfilePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => navigate(`/messages/${userId}`)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-              >
-                <MessageSquare className="w-4 h-4" />私信
-              </button>
-              <button
-                onClick={handleFollow}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors ${profile.isFollowing ? 'bg-gray-100 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-              >
-                {profile.isFollowing ? <><UserCheck className="w-4 h-4" />已关注</> : <><UserPlus className="w-4 h-4" />关注</>}
-              </button>
+              {profile.isSelf ? (
+                <button
+                  onClick={() => navigate('/profile')}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  编辑资料
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => navigate(`/messages/${userId}`)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                  >
+                    <MessageSquare className="w-4 h-4" />私信
+                  </button>
+                  <button
+                    onClick={handleFollow}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors ${profile.isFollowing ? 'bg-gray-100 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                  >
+                    {profile.isFollowing ? <><UserCheck className="w-4 h-4" />已关注</> : <><UserPlus className="w-4 h-4" />关注</>}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

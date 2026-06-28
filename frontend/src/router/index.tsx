@@ -12,6 +12,7 @@ import UserProfilePage from '../pages/UserProfilePage'
 import FollowListPage from '../pages/FollowListPage'
 import MessagePage from '../pages/MessagePage'
 import NotificationPage from '../pages/NotificationPage'
+import CreatorVerificationPage from '../pages/CreatorVerificationPage'
 
 // 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -119,6 +120,10 @@ export default function Router() {
         <Route
           path="/notifications"
           element={<PrivateRoute><NotificationPage /></PrivateRoute>}
+        />
+        <Route
+          path="/creator-verification"
+          element={<PrivateRoute><CreatorVerificationPage /></PrivateRoute>}
         />
 
         {/* 未匹配路由：重定向到首页 */}

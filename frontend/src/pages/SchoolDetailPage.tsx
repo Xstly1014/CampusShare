@@ -117,8 +117,13 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
 
   const handleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
-    if (target.closest('button')) return
+    if (target.closest('button') || target.closest('a')) return
     navigate(`/school/${schoolId}/post/${post.id}`)
+  }
+
+  const handleAvatarClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigate(`/user/${post.author.id}`)
   }
 
   return (
@@ -126,9 +131,10 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
       <div className="flex items-start gap-3">
         {/* 头像 */}
         <img
+          onClick={handleAvatarClick}
           src={post.author.avatar}
           alt={post.author.username}
-          className="w-10 h-10 rounded-full flex-shrink-0"
+          className="w-10 h-10 rounded-full flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
         />
 
         <div className="flex-1 min-w-0">

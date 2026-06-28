@@ -192,6 +192,27 @@ CREATE TABLE IF NOT EXISTS notifications (
     INDEX idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知表';
 
+-- 创建创作者认证申请表
+CREATE TABLE IF NOT EXISTS creator_verifications (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(36) NOT NULL COMMENT '申请人用户ID',
+    real_name VARCHAR(50) NOT NULL COMMENT '真实姓名',
+    id_card VARCHAR(20) NOT NULL COMMENT '身份证号',
+    id_card_front VARCHAR(500) COMMENT '身份证正面照片URL',
+    id_card_back VARCHAR(500) COMMENT '身份证反面照片URL',
+    total_likes INT DEFAULT 0 COMMENT '申请时总获赞数',
+    total_posts INT DEFAULT 0 COMMENT '申请时总帖子数',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING-审核中，APPROVED-已通过，REJECTED-已驳回',
+    reject_reason VARCHAR(500) COMMENT '驳回原因',
+    review_time TIMESTAMP NULL COMMENT '审核时间',
+    reviewer_id VARCHAR(36) COMMENT '审核人ID',
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
+    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_user (user_id),
+    INDEX idx_status (status),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='创作者认证申请表';
+
 -- 创建资源表
 CREATE TABLE IF NOT EXISTS resources (
     id VARCHAR(36) PRIMARY KEY COMMENT '资源ID',

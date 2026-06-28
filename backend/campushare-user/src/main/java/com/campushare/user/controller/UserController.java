@@ -31,6 +31,7 @@ public class UserController {
     private final FollowMapper followMapper;
     private final PostService postService;
     private final com.campushare.user.service.NotificationService notificationService;
+    private final com.campushare.user.service.CreatorService creatorService;
 
     /**
      * 获取当前用户信息
@@ -39,6 +40,7 @@ public class UserController {
     public Result<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         UserDTO user = userService.getCurrentUser(userId);
+        user.setCreator(creatorService.isCreator(userId));
         return Result.success(user);
     }
 
@@ -112,6 +114,7 @@ public class UserController {
             dto.setUsername(u.getUsername());
             dto.setAvatarUrl(u.getAvatarUrl());
             dto.setBio(u.getBio());
+            dto.setCreator(creatorService.isCreator(u.getId()));
             result.add(dto);
         }
         return Result.success(result);
@@ -154,6 +157,7 @@ public class UserController {
                 .followingCount(followingCount)
                 .isFollowing(isFollowing)
                 .isSelf(currentUserId.equals(userId))
+                .isCreator(creatorService.isCreator(userId))
                 .build();
         return Result.success(dto);
     }
@@ -297,6 +301,7 @@ public class UserController {
                     dto.setUsername(u.getUsername());
                     dto.setAvatarUrl(u.getAvatarUrl());
                     dto.setBio(u.getBio());
+                    dto.setCreator(creatorService.isCreator(u.getId()));
                     result.add(dto);
                 }
             }
@@ -315,6 +320,7 @@ public class UserController {
                 dto.setUsername(u.getUsername());
                 dto.setAvatarUrl(u.getAvatarUrl());
                 dto.setBio(u.getBio());
+                dto.setCreator(creatorService.isCreator(u.getId()));
                 result.add(dto);
             }
         }

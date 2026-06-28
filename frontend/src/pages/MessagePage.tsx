@@ -170,12 +170,15 @@ export default function MessagePage() {
                 const unread = !isMe && conv.isRead === 0
                 return (
                   <div key={conv.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 hover:border-gray-200 transition-colors group">
-                    <div onClick={() => navigate(`/messages/${otherId}`)} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0 relative">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div
+                        onClick={(e) => { e.stopPropagation(); navigate(`/user/${otherId}`) }}
+                        className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0 relative cursor-pointer hover:opacity-80 transition-opacity"
+                      >
                         {otherAvatar ? <img src={otherAvatar.startsWith('/files/') ? `/api${otherAvatar}` : otherAvatar} alt={otherName} className="w-full h-full object-cover" /> : <span className="text-white font-bold">{(otherName || '?').substring(0, 1).toUpperCase()}</span>}
                         {unread && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div onClick={() => navigate(`/messages/${otherId}`)} className="flex-1 min-w-0 cursor-pointer">
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-medium text-gray-900">{otherName || '用户'}</p>
                           <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{formatTime(conv.createTime)}</span>
@@ -221,7 +224,10 @@ export default function MessagePage() {
           <button onClick={() => navigate(-1)} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div className="flex items-center gap-2">
+          <div
+            onClick={() => userId && navigate(`/user/${userId}`)}
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+          >
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden">
               {otherUser?.avatarUrl ? <img src={otherUser.avatarUrl.startsWith('/files/') ? `/api${otherUser.avatarUrl}` : otherUser.avatarUrl} alt={otherUser.username} className="w-full h-full object-cover" /> : <span className="text-white text-xs font-bold">{otherUser?.username?.substring(0, 1).toUpperCase()}</span>}
             </div>
@@ -237,7 +243,10 @@ export default function MessagePage() {
               const isMe = msg.senderId === currentUser?.id
               return (
                 <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <div
+                    onClick={() => navigate(`/user/${msg.senderId}`)}
+                    className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                  >
                     {msg.senderAvatar ? <img src={msg.senderAvatar.startsWith('/files/') ? `/api${msg.senderAvatar}` : msg.senderAvatar} alt={msg.senderName} className="w-full h-full object-cover" /> : <span className="text-white text-xs font-bold">{msg.senderName?.substring(0, 1).toUpperCase()}</span>}
                   </div>
                   <div className={`max-w-[70%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
