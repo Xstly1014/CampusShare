@@ -240,15 +240,7 @@ git clone https://github.com/Xstly1014/CampusShare.git
 cd CampusShare
 ```
 
-2. **配置环境变量（可选，邮件功能需要）**
-```bash
-cp .env.example .env
-# 编辑 .env，填入邮箱SMTP配置（QQ邮箱需开启SMTP并获取授权码）
-# MAIL_USERNAME=your-email@qq.com
-# MAIL_PASSWORD=your-smtp-authorization-code
-```
-
-3. **构建并启动所有服务**
+2. **构建并启动所有服务**
 ```bash
 docker-compose up -d --build
 ```
