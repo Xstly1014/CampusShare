@@ -8,6 +8,7 @@ import {
 import NavBar from '../components/common/NavBar'
 import { categoryApi, userApi, Category } from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import schools from '../data/schools.json'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
@@ -42,19 +43,14 @@ export default function HomePage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
   const [userResults, setUserResults] = useState<UserResult[]>([])
-  const [counts, setCounts] = useState<Record<string, number>>({})
   const { user } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [catsRes, countsRes] = await Promise.all([
-          categoryApi.getAll(),
-          categoryApi.getCounts(),
-        ])
+        const catsRes = await categoryApi.getAll()
         setCategories(catsRes.data || [])
-        setCounts(countsRes.data || {})
       } catch {}
     }
     fetchData()
@@ -73,11 +69,6 @@ export default function HomePage() {
     }, 300)
     return () => clearTimeout(timer)
   }, [searchKeyword])
-
-  const getPostCount = (cat: Category) => {
-    if (counts[cat.id]) return counts[cat.id]
-    return cat.postCount || 0
-  }
 
   const handleCategoryClick = (cat: Category) => {
     if (cat.type === 'school') {
@@ -135,8 +126,8 @@ export default function HomePage() {
               {categories.map((cat) => {
                 const IconComp = ICON_MAP[cat.icon] || GraduationCap
                 const colors = COLOR_MAP[cat.color] || DEFAULT_COLORS
-                const count = getPostCount(cat)
-                const subCount = cat.subCategories?.length || 0
+                const blockCount = cat.type === 'school' ? schools.length : (cat.subCategories?.length || 0)
+                const blockLabel = cat.type === 'school' ? '所高校' : '个板块'
                 return (
                   <div
                     key={cat.id}
@@ -149,10 +140,7 @@ export default function HomePage() {
                     <h3 className="font-semibold text-gray-900 text-sm mb-1">{cat.name}</h3>
                     <p className="text-xs text-gray-400 line-clamp-1">{cat.description}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs text-gray-500">{count} 内容</span>
-                      {cat.type === 'category' && subCount > 0 && (
-                        <span className="text-xs text-gray-300">· {subCount} 子板块</span>
-                      )}
+                      <span className="text-xs text-gray-500">内含{blockCount}{blockLabel}</span>
                     </div>
                   </div>
                 )

@@ -294,6 +294,7 @@ export interface SubCategory {
   id: string
   categoryId: string
   name: string
+  icon: string
   sortOrder: number
   postCount: number
 }

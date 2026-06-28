@@ -43,7 +43,7 @@ export default function SchoolCard({ school, onClick }: SchoolCardProps) {
         </h3>
         <div className="flex items-center text-xs text-gray-400">
           <FileText className="w-3 h-3 mr-1" />
-          <span>{school.resourceCount} 份资料</span>
+          <span>{school.resourceCount} 内容</span>
         </div>
       </div>
     </div>

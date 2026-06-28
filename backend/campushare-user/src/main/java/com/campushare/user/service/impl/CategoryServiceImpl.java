@@ -97,6 +97,7 @@ public class CategoryServiceImpl implements CategoryService {
                 .id(sub.getId())
                 .categoryId(sub.getCategoryId())
                 .name(sub.getName())
+                .icon(sub.getIcon())
                 .sortOrder(sub.getSortOrder())
                 .postCount(sub.getPostCount())
                 .build();

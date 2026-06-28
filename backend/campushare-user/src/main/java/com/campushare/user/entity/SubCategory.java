@@ -25,6 +25,8 @@ public class SubCategory implements Serializable {
 
     private String name;
 
+    private String icon;
+
     private Integer sortOrder;
 
     private Integer postCount;

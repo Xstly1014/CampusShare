@@ -1,10 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft, Plus, Search, Flame, Clock, MessageSquare, FileText,
+  ChevronLeft, Plus, Flame, Clock, MessageSquare, FileText,
   GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
   Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
-  ChevronRight, X, Upload, File
+  X, Upload, File,
+  Mic2, Globe, Languages, Star, Waves, Guitar, Volume2, Mic, Headphones,
+  Zap, Smile, Rocket, Heart, Skull, Film, Palette, Tv, BookCheck,
+  Sparkle, Users, Coffee, Sprout, Key, Cog, Trophy, Wand2,
+  Monitor, Smartphone, Gamepad as GamepadIcon, Puzzle, Lightbulb, Wrench,
+  Landmark, Building2, DollarSign, PieChart, Coins, LineChart,
+  Globe2, Wallet, Building, Scale, Bookmark,
+  MonitorPlay, Command, Tablet, Blocks,
+  ChefHat, MapPin, Cake, Wine, Dumbbell,
+  Map, Compass, BedDouble,
+  User, Mountain, Focus, SlidersHorizontal,
+  BookCopy, Code2, Scroll, Target,
+  Hash
 } from 'lucide-react'
 import { categoryApi, postApi, fileApi, Category, SubCategory } from '../services/api'
 import SchoolCard from '../components/home/SchoolCard'
@@ -14,6 +26,23 @@ import { toast } from '../stores/toastStore'
 const ICON_MAP: Record<string, React.ElementType> = {
   GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
   Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
+}
+
+const SUB_ICON_MAP: Record<string, React.ElementType> = {
+  Mic2, Globe, Languages, Star, Waves, Guitar, Volume2, Mic, Headphones,
+  Zap, Smile, Rocket, Heart, Skull, Film, Palette, Tv, BookCheck,
+  Flame, Hearts: Heart, Sparkle, Users, Coffee, Sprout, Key, Cog, Trophy, Wand2,
+  Monitor, Smartphone, Gamepad: GamepadIcon, Puzzle, Lightbulb, Wrench,
+  Landmark, Building2, DollarSign, PieChart, Coins, LineChart,
+  Globe2, Wallet, Building, Scale, Bookmark,
+  MonitorPlay, Command, Tablet, Blocks,
+  ChefHat, MapPin, Cake, Wine, Dumbbell,
+  Map, Compass, BedDouble,
+  User, Mountain, Focus, Aperture: Focus, SlidersHorizontal,
+  BookCopy, BookText: BookCopy, Code2, Scroll, ScrollText: Scroll, Target,
+  Piano: Music, PlaneTakeoff: Plane, Laugh: Smile,
+  TabletSmartphone: Tablet, BriefcaseBusiness: Briefcase, Banknote: Wallet,
+  CakeSlice: Cake, GlassWater: Wine, Bed: BedDouble, BookOpenCheck: BookCheck,
 }
 
 const COLOR_MAP: Record<string, { bg: string; light: string; text: string }> = {
@@ -219,6 +248,14 @@ export default function CategoryDetailPage() {
   const colors = COLOR_MAP[category.color] || DEFAULT_COLORS
   const isSchool = category.type === 'school'
 
+  const getSubCountText = () => {
+    if (isSchool) {
+      return `共收录 ${schools.length} 所高校，浏览优质学习资源`
+    }
+    const subCount = category.subCategories?.length || 0
+    return `共收录 ${subCount} 个子板块，浏览精选内容`
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
@@ -255,7 +292,7 @@ export default function CategoryDetailPage() {
       <div className="max-w-5xl mx-auto px-4 py-4">
         {viewMode === 'subs' && isSchool && (
           <>
-            <p className="text-sm text-gray-500 mb-4">共收录 {schools.length} 所高校，浏览优质学习资源</p>
+            <p className="text-sm text-gray-500 mb-4">{getSubCountText()}</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {schools.map((school) => (
                 <SchoolCard key={school.id} school={school} onClick={() => navigate(`/school/${school.id}`)} />
@@ -266,22 +303,23 @@ export default function CategoryDetailPage() {
 
         {viewMode === 'subs' && !isSchool && (
           <>
-            <p className="text-sm text-gray-500 mb-4">选择子板块浏览相关内容</p>
+            <p className="text-sm text-gray-500 mb-4">{getSubCountText()}</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {category.subCategories?.map((sub) => {
                 const count = catCounts[`sub_${sub.id}`] || sub.postCount || 0
+                const SubIconComp = SUB_ICON_MAP[sub.icon] || Hash
                 return (
                   <div
                     key={sub.id}
                     onClick={() => handleSubClick(sub)}
-                    className={`bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group ${colors.light}`}
+                    className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-gray-900 text-sm group-hover:text-blue-600 transition-colors">
-                        {sub.name}
-                      </h3>
-                      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 shadow-sm group-hover:scale-110 transition-transform`}>
+                      <SubIconComp className="w-5 h-5 text-white" />
                     </div>
+                    <h3 className="font-semibold text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
+                      {sub.name}
+                    </h3>
                     <div className="flex items-center gap-2">
                       <FileText className="w-3 h-3 text-gray-400" />
                       <span className="text-xs text-gray-400">{count} 内容</span>

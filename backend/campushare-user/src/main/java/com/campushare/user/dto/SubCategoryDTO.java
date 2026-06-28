@@ -13,6 +13,7 @@ public class SubCategoryDTO {
     private String id;
     private String categoryId;
     private String name;
+    private String icon;
     private Integer sortOrder;
     private Integer postCount;
 }
