@@ -52,4 +52,13 @@ public class MessageController {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         return Result.success(messageService.canSendMessage(userId, otherUserId));
     }
+
+    @DeleteMapping("/conversation/{otherUserId}")
+    public Result<Void> hideConversation(
+            @RequestHeader("Authorization") String token,
+            @PathVariable String otherUserId) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        messageService.hideConversation(userId, otherUserId);
+        return Result.success();
+    }
 }

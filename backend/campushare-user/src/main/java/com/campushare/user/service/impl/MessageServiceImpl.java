@@ -2,146 +2,192 @@ package com.campushare.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.user.dto.MessageDTO;
 import com.campushare.user.entity.Follow;
 import com.campushare.user.entity.Message;
 import com.campushare.user.entity.User;
-import com.campushare.user.mapper.FollowMapper;
 import com.campushare.user.mapper.MessageMapper;
-import com.campushare.user.mapper.UserMapper;
+import com.campushare.user.service.FollowService;
 import com.campushare.user.service.MessageService;
+import com.campushare.user.service.UserService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
-public class MessageServiceImpl implements MessageService {
+public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> implements MessageService {
 
-    private final MessageMapper messageMapper;
-    private final UserMapper userMapper;
-    private final FollowMapper followMapper;
+    private final UserService userService;
+    private final FollowService followService;
 
     @Override
+    @Transactional
     public MessageDTO sendMessage(String senderId, String receiverId, String content) {
-        if (content == null || content.trim().isEmpty()) {
-            throw new BusinessException(4001, "消息内容不能为空");
-        }
         if (senderId.equals(receiverId)) {
             throw new BusinessException(4001, "不能给自己发私信");
         }
 
-        // Check restriction
+        User receiver = userService.getById(receiverId);
+        if (receiver == null) {
+            throw new BusinessException(4040, "接收者不存在");
+        }
+
         if (!canSendMessage(senderId, receiverId)) {
             throw new BusinessException(4001, "你已发送过消息，请等待对方回复后再发送");
         }
 
+        // Reset hidden flags for both sides when a new message is sent
+        LambdaUpdateWrapper<Message> resetHidden = new LambdaUpdateWrapper<Message>()
+                .and(w -> w.eq(Message::getSenderId, senderId).eq(Message::getReceiverId, receiverId))
+                .or(w -> w.eq(Message::getSenderId, receiverId).eq(Message::getReceiverId, senderId))
+                .set(Message::getSenderHidden, 0)
+                .set(Message::getReceiverHidden, 0);
+        update(resetHidden);
+
         Message msg = Message.builder()
                 .senderId(senderId)
                 .receiverId(receiverId)
-                .content(content.trim())
+                .content(content)
                 .isRead(0)
+                .senderHidden(0)
+                .receiverHidden(0)
                 .build();
-        messageMapper.insert(msg);
+        save(msg);
 
-        return buildMessageDTO(msg);
-    }
-
-    @Override
-    public boolean canSendMessage(String senderId, String receiverId) {
-        // If receiver follows sender, no restriction
-        boolean receiverFollowsSender = followMapper.exists(
-                new LambdaQueryWrapper<Follow>()
-                        .eq(Follow::getFollowerId, receiverId)
-                        .eq(Follow::getFollowingId, senderId));
-        if (receiverFollowsSender)
-            return true;
-
-        // If receiver has ever replied to sender, no restriction
-        boolean receiverReplied = messageMapper.exists(
-                new LambdaQueryWrapper<Message>()
-                        .eq(Message::getSenderId, receiverId)
-                        .eq(Message::getReceiverId, senderId));
-        if (receiverReplied)
-            return true;
-
-        // Otherwise, check if sender already sent a message (only 1 allowed)
-        long sentCount = messageMapper.selectCount(
-                new LambdaQueryWrapper<Message>()
-                        .eq(Message::getSenderId, senderId)
-                        .eq(Message::getReceiverId, receiverId));
-        return sentCount == 0;
+        return convertToDTO(msg);
     }
 
     @Override
     public List<MessageDTO> getConversation(String userId1, String userId2) {
-        List<Message> messages = messageMapper.selectList(
-                new LambdaQueryWrapper<Message>()
-                        .and(w -> w
-                                .and(w1 -> w1.eq(Message::getSenderId, userId1).eq(Message::getReceiverId, userId2))
-                                .or(w2 -> w2.eq(Message::getSenderId, userId2).eq(Message::getReceiverId, userId1)))
-                        .orderByAsc(Message::getCreateTime));
+        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
+                .nested(w -> w.eq(Message::getSenderId, userId1)
+                        .eq(Message::getReceiverId, userId2)
+                        .eq(Message::getSenderHidden, 0))
+                .or()
+                .nested(w -> w.eq(Message::getSenderId, userId2)
+                        .eq(Message::getReceiverId, userId1)
+                        .eq(Message::getReceiverHidden, 0))
+                .orderByAsc(Message::getCreateTime);
 
-        List<MessageDTO> result = new ArrayList<>();
-        for (Message m : messages) {
-            result.add(buildMessageDTO(m));
-        }
-        return result;
+        List<Message> msgs = list(wrapper);
+        return msgs.stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 
     @Override
     public List<MessageDTO> getConversationList(String userId) {
-        // Get all messages involving this user
-        List<Message> allMessages = messageMapper.selectList(
-                new LambdaQueryWrapper<Message>()
-                        .and(w -> w.eq(Message::getSenderId, userId).or().eq(Message::getReceiverId, userId))
-                        .orderByDesc(Message::getCreateTime));
+        LambdaQueryWrapper<Message> sentWrapper = new LambdaQueryWrapper<Message>()
+                .eq(Message::getSenderId, userId)
+                .eq(Message::getSenderHidden, 0);
+        LambdaQueryWrapper<Message> receivedWrapper = new LambdaQueryWrapper<Message>()
+                .eq(Message::getReceiverId, userId)
+                .eq(Message::getReceiverHidden, 0);
 
-        // Group by the other user, keep latest message
+        List<Message> sent = list(sentWrapper);
+        List<Message> received = list(receivedWrapper);
+
         Map<String, Message> latestMap = new HashMap<>();
-        for (Message m : allMessages) {
-            String otherUserId = m.getSenderId().equals(userId) ? m.getReceiverId() : m.getSenderId();
-            if (!latestMap.containsKey(otherUserId)) {
-                latestMap.put(otherUserId, m);
+        for (Message m : sent) {
+            String otherId = m.getReceiverId();
+            Message existing = latestMap.get(otherId);
+            if (existing == null || m.getCreateTime().isAfter(existing.getCreateTime())) {
+                latestMap.put(otherId, m);
+            }
+        }
+        for (Message m : received) {
+            String otherId = m.getSenderId();
+            Message existing = latestMap.get(otherId);
+            if (existing == null || m.getCreateTime().isAfter(existing.getCreateTime())) {
+                latestMap.put(otherId, m);
             }
         }
 
-        List<MessageDTO> result = new ArrayList<>();
-        for (Message m : latestMap.values()) {
-            result.add(buildMessageDTO(m));
-        }
-        result.sort(Comparator.comparing(MessageDTO::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())));
-        return result;
+        List<Message> result = new ArrayList<>(latestMap.values());
+        result.sort((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()));
+
+        return result.stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 
     @Override
-    public void markAsRead(String userId, String otherUserId) {
-        messageMapper.update(null, new LambdaUpdateWrapper<Message>()
-                .eq(Message::getSenderId, otherUserId)
-                .eq(Message::getReceiverId, userId)
-                .eq(Message::getIsRead, 0)
-                .set(Message::getIsRead, 1));
+    public boolean canSendMessage(String senderId, String receiverId) {
+        Follow receiverFollowSender = followService.getOne(
+                new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFollowerId, receiverId)
+                        .eq(Follow::getFollowingId, senderId)
+                        .last("LIMIT 1"),
+                false);
+        if (receiverFollowSender != null) {
+            return true;
+        }
+
+        long receiverReplied = count(new LambdaQueryWrapper<Message>()
+                .eq(Message::getSenderId, receiverId)
+                .eq(Message::getReceiverId, senderId));
+        if (receiverReplied > 0) {
+            return true;
+        }
+
+        long sentCount = count(new LambdaQueryWrapper<Message>()
+                .eq(Message::getSenderId, senderId)
+                .eq(Message::getReceiverId, receiverId));
+        return sentCount == 0;
     }
 
-    private MessageDTO buildMessageDTO(Message msg) {
-        User sender = userMapper.selectById(msg.getSenderId());
-        return MessageDTO.builder()
-                .id(msg.getId())
-                .senderId(msg.getSenderId())
-                .senderName(sender != null ? sender.getUsername() : "未知用户")
-                .senderAvatar(sender != null && sender.getAvatarUrl() != null ? sender.getAvatarUrl() : null)
-                .receiverId(msg.getReceiverId())
-                .content(msg.getContent())
-                .isRead(msg.getIsRead())
-                .createTime(msg.getCreateTime())
-                .build();
+    @Override
+    @Transactional
+    public void markAsRead(String userId, String otherUserId) {
+        LambdaUpdateWrapper<Message> wrapper = new LambdaUpdateWrapper<Message>()
+                .eq(Message::getReceiverId, userId)
+                .eq(Message::getSenderId, otherUserId)
+                .eq(Message::getIsRead, 0)
+                .set(Message::getIsRead, 1);
+        update(wrapper);
+    }
+
+    @Override
+    @Transactional
+    public void hideConversation(String userId, String otherUserId) {
+        // Mark messages sent by userId as sender_hidden
+        LambdaUpdateWrapper<Message> sentWrapper = new LambdaUpdateWrapper<Message>()
+                .eq(Message::getSenderId, userId)
+                .eq(Message::getReceiverId, otherUserId)
+                .set(Message::getSenderHidden, 1);
+        update(sentWrapper);
+
+        // Mark messages received by userId as receiver_hidden
+        LambdaUpdateWrapper<Message> receivedWrapper = new LambdaUpdateWrapper<Message>()
+                .eq(Message::getSenderId, otherUserId)
+                .eq(Message::getReceiverId, userId)
+                .set(Message::getReceiverHidden, 1);
+        update(receivedWrapper);
+    }
+
+    private MessageDTO convertToDTO(Message msg) {
+        MessageDTO dto = new MessageDTO();
+        BeanUtils.copyProperties(msg, dto);
+        dto.setIsMine(msg.getSenderId().equals(getCurrentUserId()));
+
+        User sender = userService.getById(msg.getSenderId());
+        if (sender != null) {
+            dto.setSenderName(sender.getUsername());
+            dto.setSenderAvatar(sender.getAvatarUrl());
+        }
+        User receiver = userService.getById(msg.getReceiverId());
+        if (receiver != null) {
+            dto.setReceiverName(receiver.getUsername());
+            dto.setReceiverAvatar(receiver.getAvatarUrl());
+        }
+        return dto;
+    }
+
+    private String getCurrentUserId() {
+        return (String) org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
     }
 }

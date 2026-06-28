@@ -17,7 +17,10 @@ public class MessageDTO {
     private String senderName;
     private String senderAvatar;
     private String receiverId;
+    private String receiverName;
+    private String receiverAvatar;
     private String content;
     private Integer isRead;
+    private Boolean isMine;
     private LocalDateTime createTime;
 }

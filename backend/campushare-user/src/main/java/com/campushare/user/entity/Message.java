@@ -29,6 +29,10 @@ public class Message implements Serializable {
 
     private Integer isRead;
 
+    private Integer senderHidden;
+
+    private Integer receiverHidden;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 }

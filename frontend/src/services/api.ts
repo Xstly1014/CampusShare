@@ -251,6 +251,8 @@ export const messageApi = {
   getList: () => api.get('/messages/list'),
 
   canSend: (otherUserId: string) => api.get(`/messages/can-send/${otherUserId}`),
+
+  hideConversation: (otherUserId: string) => api.delete(`/messages/conversation/${otherUserId}`),
 }
 
 export const notificationApi = {

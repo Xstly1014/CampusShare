@@ -169,6 +169,8 @@ CREATE TABLE IF NOT EXISTS messages (
     receiver_id VARCHAR(36) NOT NULL COMMENT '接收者ID',
     content TEXT NOT NULL COMMENT '消息内容',
     is_read TINYINT DEFAULT 0 COMMENT '是否已读：0-未读，1-已读',
+    sender_hidden TINYINT DEFAULT 0 COMMENT '发送方是否隐藏：0-显示，1-隐藏',
+    receiver_hidden TINYINT DEFAULT 0 COMMENT '接收方是否隐藏：0-显示，1-隐藏',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     INDEX idx_sender (sender_id),
     INDEX idx_receiver (receiver_id),

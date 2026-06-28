@@ -6,7 +6,10 @@ import java.util.List;
 
 public interface MessageService {
 
-    /** Send a message. Restriction: if receiver hasn't followed sender and hasn't replied, only 1 message allowed. */
+    /**
+     * Send a message. Restriction: if receiver hasn't followed sender and hasn't
+     * replied, only 1 message allowed.
+     */
     MessageDTO sendMessage(String senderId, String receiverId, String content);
 
     /** Get conversation between two users */
@@ -20,4 +23,10 @@ public interface MessageService {
 
     /** Mark all messages from otherUserId as read */
     void markAsRead(String userId, String otherUserId);
+
+    /**
+     * Hide conversation with otherUserId (messages remain but are hidden from this
+     * user's list)
+     */
+    void hideConversation(String userId, String otherUserId);
 }

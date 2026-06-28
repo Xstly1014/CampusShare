@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, Send, MessageSquare } from 'lucide-react'
+import { ChevronLeft, Send, MessageSquare, Trash2 } from 'lucide-react'
 import { messageApi, userApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
@@ -12,8 +12,11 @@ interface MessageItem {
   senderName: string
   senderAvatar?: string
   receiverId: string
+  receiverName?: string
+  receiverAvatar?: string
   content: string
   isRead: number
+  isMine?: boolean
   createTime: string
 }
 
@@ -34,6 +37,21 @@ export default function MessagePage() {
   const msgCountRef = useRef(0)
 
   const hasSentMessage = messages.some(m => m.senderId === currentUser?.id)
+
+  const handleHideConversation = async (e: React.MouseEvent, otherId: string) => {
+    e.stopPropagation()
+    if (!confirm('确定要隐藏这个会话吗？消息不会被删除，对方发送新消息后会重新显示。')) return
+    try {
+      await messageApi.hideConversation(otherId)
+      setConversations(prev => prev.filter(conv => {
+        const isMe = conv.senderId === currentUser?.id
+        return (isMe ? conv.receiverId : conv.senderId) !== otherId
+      }))
+      toast.success('会话已隐藏')
+    } catch {
+      toast.error('隐藏失败')
+    }
+  }
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -139,20 +157,27 @@ export default function MessagePage() {
               {conversations.map((conv) => {
                 const isMe = conv.senderId === currentUser?.id
                 const otherId = isMe ? conv.receiverId : conv.senderId
-                const otherName = isMe ? '对方' : conv.senderName
-                const otherAvatar = isMe ? null : conv.senderAvatar
+                const otherName = isMe ? conv.receiverName : conv.senderName
+                const otherAvatar = isMe ? conv.receiverAvatar : conv.senderAvatar
+                const unread = !isMe && conv.isRead === 0
                 return (
-                  <div key={conv.id} onClick={() => navigate(`/messages/${otherId}`)} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {otherAvatar ? <img src={otherAvatar.startsWith('/files/') ? `/api${otherAvatar}` : otherAvatar} alt={otherName} className="w-full h-full object-cover" /> : <span className="text-white font-bold">{otherName?.substring(0, 1).toUpperCase()}</span>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-gray-900">{otherName}</p>
-                        <span className="text-xs text-gray-400">{formatTime(conv.createTime)}</span>
+                  <div key={conv.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 hover:border-gray-200 transition-colors group">
+                    <div onClick={() => navigate(`/messages/${otherId}`)} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0 relative">
+                        {otherAvatar ? <img src={otherAvatar.startsWith('/files/') ? `/api${otherAvatar}` : otherAvatar} alt={otherName} className="w-full h-full object-cover" /> : <span className="text-white font-bold">{(otherName || '?').substring(0, 1).toUpperCase()}</span>}
+                        {unread && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
                       </div>
-                      <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{isMe ? '我: ' : ''}{conv.content}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-900">{otherName || '用户'}</p>
+                          <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{formatTime(conv.createTime)}</span>
+                        </div>
+                        <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{isMe ? '我: ' : ''}{conv.content}</p>
+                      </div>
                     </div>
+                    <button onClick={(e) => handleHideConversation(e, otherId)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="隐藏会话">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 )
               })}
