@@ -8,8 +8,8 @@ import com.campushare.user.dto.MessageDTO;
 import com.campushare.user.entity.Follow;
 import com.campushare.user.entity.Message;
 import com.campushare.user.entity.User;
+import com.campushare.user.mapper.FollowMapper;
 import com.campushare.user.mapper.MessageMapper;
-import com.campushare.user.service.FollowService;
 import com.campushare.user.service.MessageService;
 import com.campushare.user.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> implements MessageService {
 
     private final UserService userService;
-    private final FollowService followService;
+    private final FollowMapper followMapper;
 
     @Override
     @Transactional
@@ -34,7 +34,7 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
             throw new BusinessException(4001, "不能给自己发私信");
         }
 
-        User receiver = userService.getById(receiverId);
+        User receiver = userService.getUserById(receiverId);
         if (receiver == null) {
             throw new BusinessException(4040, "接收者不存在");
         }
@@ -116,12 +116,11 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
 
     @Override
     public boolean canSendMessage(String senderId, String receiverId) {
-        Follow receiverFollowSender = followService.getOne(
+        Follow receiverFollowSender = followMapper.selectOne(
                 new LambdaQueryWrapper<Follow>()
                         .eq(Follow::getFollowerId, receiverId)
                         .eq(Follow::getFollowingId, senderId)
-                        .last("LIMIT 1"),
-                false);
+                        .last("LIMIT 1"));
         if (receiverFollowSender != null) {
             return true;
         }
@@ -173,12 +172,12 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
         BeanUtils.copyProperties(msg, dto);
         dto.setIsMine(msg.getSenderId().equals(getCurrentUserId()));
 
-        User sender = userService.getById(msg.getSenderId());
+        User sender = userService.getUserById(msg.getSenderId());
         if (sender != null) {
             dto.setSenderName(sender.getUsername());
             dto.setSenderAvatar(sender.getAvatarUrl());
         }
-        User receiver = userService.getById(msg.getReceiverId());
+        User receiver = userService.getUserById(msg.getReceiverId());
         if (receiver != null) {
             dto.setReceiverName(receiver.getUsername());
             dto.setReceiverAvatar(receiver.getAvatarUrl());

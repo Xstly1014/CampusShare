@@ -32,15 +32,21 @@ export default function MessagePage() {
   const [canSend, setCanSend] = useState(true)
   const [otherUser, setOtherUser] = useState<{ id: string; username: string; avatarUrl?: string } | null>(null)
   const [sending, setSending] = useState(false)
+  const [hideConfirm, setHideConfirm] = useState<{ otherId: string; otherName: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const msgCountRef = useRef(0)
 
   const hasSentMessage = messages.some(m => m.senderId === currentUser?.id)
 
-  const handleHideConversation = async (e: React.MouseEvent, otherId: string) => {
+  const handleHideConversation = (e: React.MouseEvent, otherId: string, otherName: string) => {
     e.stopPropagation()
-    if (!confirm('确定要隐藏这个会话吗？消息不会被删除，对方发送新消息后会重新显示。')) return
+    setHideConfirm({ otherId, otherName })
+  }
+
+  const confirmHideConversation = async () => {
+    if (!hideConfirm) return
+    const { otherId } = hideConfirm
     try {
       await messageApi.hideConversation(otherId)
       setConversations(prev => prev.filter(conv => {
@@ -50,6 +56,8 @@ export default function MessagePage() {
       toast.success('会话已隐藏')
     } catch {
       toast.error('隐藏失败')
+    } finally {
+      setHideConfirm(null)
     }
   }
 
@@ -175,7 +183,7 @@ export default function MessagePage() {
                         <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{isMe ? '我: ' : ''}{conv.content}</p>
                       </div>
                     </div>
-                    <button onClick={(e) => handleHideConversation(e, otherId)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="隐藏会话">
+                    <button onClick={(e) => handleHideConversation(e, otherId, otherName || '用户')} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="隐藏会话">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -189,6 +197,19 @@ export default function MessagePage() {
             </div>
           )}
         </div>
+
+        {hideConfirm && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setHideConfirm(null)}>
+            <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-bold text-gray-900 mb-2">隐藏会话</h3>
+              <p className="text-sm text-gray-500 mb-5">确定要隐藏与「{hideConfirm.otherName}」的会话吗？消息不会被删除，对方发送新消息后会重新显示。</p>
+              <div className="flex gap-3">
+                <button onClick={() => setHideConfirm(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors">取消</button>
+                <button onClick={confirmHideConversation} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors">隐藏</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
