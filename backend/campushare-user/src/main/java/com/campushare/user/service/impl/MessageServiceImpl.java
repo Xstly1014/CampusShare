@@ -41,7 +41,7 @@ public class MessageServiceImpl implements MessageService {
 
         // Check restriction
         if (!canSendMessage(senderId, receiverId)) {
-            throw new BusinessException(4001, "对方未关注你或未回复你，暂时只能发送一条消息");
+            throw new BusinessException(4001, "你已发送过消息，请等待对方回复后再发送");
         }
 
         Message msg = Message.builder()
@@ -62,14 +62,16 @@ public class MessageServiceImpl implements MessageService {
                 new LambdaQueryWrapper<Follow>()
                         .eq(Follow::getFollowerId, receiverId)
                         .eq(Follow::getFollowingId, senderId));
-        if (receiverFollowsSender) return true;
+        if (receiverFollowsSender)
+            return true;
 
         // If receiver has ever replied to sender, no restriction
         boolean receiverReplied = messageMapper.exists(
                 new LambdaQueryWrapper<Message>()
                         .eq(Message::getSenderId, receiverId)
                         .eq(Message::getReceiverId, senderId));
-        if (receiverReplied) return true;
+        if (receiverReplied)
+            return true;
 
         // Otherwise, check if sender already sent a message (only 1 allowed)
         long sentCount = messageMapper.selectCount(

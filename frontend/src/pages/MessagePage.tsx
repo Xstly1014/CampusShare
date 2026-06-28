@@ -28,7 +28,12 @@ export default function MessagePage() {
   const [loading, setLoading] = useState(true)
   const [canSend, setCanSend] = useState(true)
   const [otherUser, setOtherUser] = useState<{ id: string; username: string; avatarUrl?: string } | null>(null)
+  const [sending, setSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const msgCountRef = useRef(0)
+
+  const hasSentMessage = messages.some(m => m.senderId === currentUser?.id)
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -42,10 +47,11 @@ export default function MessagePage() {
     if (!userId) return
     try {
       const res = await messageApi.getConversation(userId)
-      setMessages(res.data || [])
+      const msgs = res.data || []
+      setMessages(msgs)
+      msgCountRef.current = msgs.length
       const canRes = await messageApi.canSend(userId)
       setCanSend(canRes.data)
-      // Get other user info
       const profileRes = await userApi.getUserProfile(userId)
       if (profileRes.data) {
         setOtherUser({ id: profileRes.data.id, username: profileRes.data.username, avatarUrl: profileRes.data.avatarUrl })
@@ -53,30 +59,67 @@ export default function MessagePage() {
     } catch { /* ignore */ }
   }, [userId])
 
+  const pollCanSend = useCallback(async () => {
+    if (!userId) return
+    try {
+      const [canRes, convRes] = await Promise.all([
+        messageApi.canSend(userId),
+        messageApi.getConversation(userId),
+      ])
+      setCanSend(canRes.data)
+      const newMsgs = convRes.data || []
+      if (newMsgs.length !== msgCountRef.current) {
+        msgCountRef.current = newMsgs.length
+        setMessages(newMsgs)
+      }
+    } catch { /* ignore */ }
+  }, [userId])
+
   useEffect(() => {
-    if (userId) fetchMessages()
-    else fetchConversations()
-  }, [userId, fetchMessages, fetchConversations])
+    if (userId) {
+      fetchMessages()
+      pollTimerRef.current = setInterval(pollCanSend, 5000)
+      return () => {
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+      }
+    } else {
+      fetchConversations()
+    }
+  }, [userId, fetchMessages, fetchConversations, pollCanSend])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   const handleSend = async () => {
-    if (!newMessage.trim() || !userId) return
+    const content = newMessage.trim()
+    if (!content || !userId || sending) return
+    if (!canSend && hasSentMessage) {
+      toast.error('对方未关注你且未回复，等待对方回复后可继续发送')
+      return
+    }
+    setSending(true)
     try {
-      const res = await messageApi.send(userId, newMessage.trim())
-      setMessages((prev) => [...prev, res.data])
+      const res = await messageApi.send(userId, content)
+      setMessages((prev) => {
+        const updated = [...prev, res.data]
+        msgCountRef.current = updated.length
+        return updated
+      })
       setNewMessage('')
-      setCanSend(false) // After sending, recheck
       const canRes = await messageApi.canSend(userId)
       setCanSend(canRes.data)
     } catch (err) {
       toast.error((err as Error).message || '发送失败')
+      const canRes = await messageApi.canSend(userId)
+      setCanSend(canRes.data)
+    } finally {
+      setSending(false)
     }
   }
 
-  // Conversation list view
+  const isInputDisabled = !canSend && hasSentMessage
+
   if (!userId) {
     return (
       <div className="min-h-screen bg-gray-50 pb-16">
@@ -125,7 +168,6 @@ export default function MessagePage() {
     )
   }
 
-  // Chat view
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
@@ -164,7 +206,7 @@ export default function MessagePage() {
             <div ref={messagesEndRef} />
           </div>
         ) : (
-          <div className="text-center py-16"><p className="text-gray-400 text-sm">开始对话吧</p></div>
+          <div className="text-center py-16"><p className="text-gray-400 text-sm">打个招呼吧~</p></div>
         )}
       </div>
 
@@ -174,20 +216,20 @@ export default function MessagePage() {
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={canSend ? '发送消息...' : '对方未关注你或未回复，你只能发送一条消息'}
-            disabled={!canSend && messages.some(m => m.senderId === currentUser?.id)}
-            className="flex-1 px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all disabled:opacity-60"
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            placeholder={isInputDisabled ? '等待对方回复后可继续发送消息' : (canSend ? '发送消息...' : '发送一条打招呼消息...')}
+            disabled={isInputDisabled || sending}
+            className="flex-1 px-4 py-2.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           />
           <button
             onClick={handleSend}
-            disabled={!newMessage.trim() || (!canSend && messages.some(m => m.senderId === currentUser?.id))}
+            disabled={!newMessage.trim() || isInputDisabled || sending}
             className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
           </button>
         </div>
-        {!canSend && messages.some(m => m.senderId === currentUser?.id) && (
+        {isInputDisabled && (
           <p className="text-xs text-gray-400 text-center pb-2">对方未关注你且未回复，等待对方回复后可继续发送</p>
         )}
       </div>
