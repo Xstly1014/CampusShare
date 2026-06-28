@@ -23,14 +23,15 @@ spring:
     default-encoding: UTF-8
     properties:
       mail:
+        debug: true  # 开启JavaMail调试日志，排查SMTP通信问题
         smtp:
           auth: true
           starttls:
             enable: true
             required: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
+          connectiontimeout: 30000
+          timeout: 30000
+          writetimeout: 30000
 
 # JWT配置
 jwt:
