@@ -54,7 +54,7 @@ public class NotificationServiceImpl implements NotificationService {
         List<NotificationItemDTO> items = new ArrayList<>();
 
         try {
-            for (String type : Arrays.asList("LIKE", "STAR", "FOLLOW", "COMMENT", "REPLY")) {
+            for (String type : Arrays.asList("LIKE", "COMMENT_LIKE", "STAR", "FOLLOW", "COMMENT", "REPLY")) {
                 List<Notification> notifs = notificationMapper.selectList(
                         new LambdaQueryWrapper<Notification>()
                                 .eq(Notification::getUserId, userId)
@@ -68,6 +68,7 @@ public class NotificationServiceImpl implements NotificationService {
                     String title;
                     switch (type) {
                         case "LIKE": title = "赞"; break;
+                        case "COMMENT_LIKE": title = "评论获赞"; break;
                         case "STAR": title = "收藏"; break;
                         case "FOLLOW": title = "新增粉丝"; break;
                         case "COMMENT": title = "评论"; break;
@@ -259,12 +260,14 @@ public class NotificationServiceImpl implements NotificationService {
 
         if (notifs.size() == 1) {
             if ("LIKE".equals(type)) return name + " 赞了你的帖子";
+            if ("COMMENT_LIKE".equals(type)) return name + " 赞了你的评论";
             if ("STAR".equals(type)) return name + " 收藏了你的帖子";
             if ("FOLLOW".equals(type)) return name + " 关注了你";
             if ("COMMENT".equals(type)) return name + " 评论了你的帖子";
             if ("REPLY".equals(type)) return name + " 回复了你的评论";
         } else {
             if ("LIKE".equals(type)) return name + " 等" + notifs.size() + "人赞了你的帖子";
+            if ("COMMENT_LIKE".equals(type)) return name + " 等" + notifs.size() + "人赞了你的评论";
             if ("STAR".equals(type)) return name + " 等" + notifs.size() + "人收藏了你的帖子";
             if ("FOLLOW".equals(type)) return name + " 等" + notifs.size() + "人关注了你";
             if ("COMMENT".equals(type)) return name + " 等" + notifs.size() + "人评论了你的帖子";

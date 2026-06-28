@@ -176,6 +176,21 @@ public class CommentServiceImpl implements CommentService {
             commentMapper.update(null, new LambdaUpdateWrapper<Comment>()
                     .eq(Comment::getId, commentId)
                     .setSql("like_count = like_count + 1"));
+            try {
+                if (!comment.getUserId().equals(userId)) {
+                    String commentContent = comment.getContent();
+                    String targetTitle = commentContent.length() > 20 ? commentContent.substring(0, 20) + "..." : commentContent;
+                    UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
+                    req.setUserId(comment.getUserId());
+                    req.setSenderId(userId);
+                    req.setType("COMMENT_LIKE");
+                    req.setTargetId(comment.getPostId());
+                    req.setTargetTitle(targetTitle);
+                    userFeignClient.createNotification(req);
+                }
+            } catch (Exception e) {
+                log.warn("Feign调用创建评论点赞通知失败: {}", e.getMessage());
+            }
             return true;
         }
     }
