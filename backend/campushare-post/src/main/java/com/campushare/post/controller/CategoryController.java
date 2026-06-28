@@ -3,7 +3,6 @@ package com.campushare.post.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.result.Result;
-import com.campushare.common.utils.JwtUtils;
 import com.campushare.post.dto.CategoryDTO;
 import com.campushare.post.dto.PostListDTO;
 import com.campushare.post.entity.Category;
@@ -14,12 +13,18 @@ import com.campushare.post.mapper.CategoryMapper;
 import com.campushare.post.mapper.PostMapper;
 import com.campushare.post.mapper.SubCategoryMapper;
 import com.campushare.post.service.CategoryService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @RestController
 @RequestMapping("/categories")
 @RequiredArgsConstructor
@@ -30,8 +35,11 @@ public class CategoryController {
     private final SubCategoryMapper subCategoryMapper;
     private final PostMapper postMapper;
     private final UserFeignClient userFeignClient;
+    private final RedisTemplate<String, String> redisTemplate;
+    private final ObjectMapper objectMapper;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String CACHE_CATEGORY_COUNTS = "cache:category:post:counts";
 
     @GetMapping
     public Result<List<CategoryDTO>> getAllCategories() {
@@ -52,7 +60,12 @@ public class CategoryController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String keyword) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Post::getSubCategoryId, subCategoryId)
+        wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
+                        Post::getAuthorId, Post::getPostType, Post::getTitle,
+                        Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
+                        Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
+                        Post::getCreateTime)
+                .eq(Post::getSubCategoryId, subCategoryId)
                 .eq(Post::getStatus, 1)
                 .eq(Post::getDeleted, false);
 
@@ -61,7 +74,7 @@ public class CategoryController {
         }
 
         if (keyword != null && !keyword.trim().isEmpty()) {
-            wrapper.and(w -> w.like(Post::getTitle, keyword).or().like(Post::getContent, keyword));
+            wrapper.and(w -> w.like(Post::getTitle, keyword));
         }
 
         if ("hottest".equals(sortType)) {
@@ -84,7 +97,12 @@ public class CategoryController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Post::getCategoryId, categoryId)
+        wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
+                        Post::getAuthorId, Post::getPostType, Post::getTitle,
+                        Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
+                        Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
+                        Post::getCreateTime)
+                .eq(Post::getCategoryId, categoryId)
                 .eq(Post::getStatus, 1)
                 .eq(Post::getDeleted, false);
 
@@ -106,18 +124,38 @@ public class CategoryController {
 
     @GetMapping("/counts")
     public Result<Map<String, Long>> getCategoryPostCounts() {
-        List<Post> allPosts = postMapper.selectList(
-                new LambdaQueryWrapper<Post>()
-                        .eq(Post::getDeleted, false)
-                        .eq(Post::getStatus, 1));
+        try {
+            String cached = redisTemplate.opsForValue().get(CACHE_CATEGORY_COUNTS);
+            if (cached != null) {
+                Map<String, Long> cachedMap = objectMapper.readValue(cached, new TypeReference<Map<String, Long>>() {});
+                return Result.success(cachedMap);
+            }
+        } catch (Exception e) {
+            log.warn("读取分类帖子数缓存失败: {}", e.getMessage());
+        }
+
         Map<String, Long> counts = new HashMap<>();
-        for (Post p : allPosts) {
-            if (p.getCategoryId() != null) {
-                counts.merge(p.getCategoryId(), 1L, Long::sum);
+        List<Map<String, Object>> catRows = postMapper.countGroupByCategory();
+        for (Map<String, Object> row : catRows) {
+            Object cid = row.get("categoryId");
+            Object cnt = row.get("cnt");
+            if (cid != null && cnt != null) {
+                counts.put(cid.toString(), ((Number) cnt).longValue());
             }
-            if (p.getSubCategoryId() != null) {
-                counts.merge("sub_" + p.getSubCategoryId(), 1L, Long::sum);
+        }
+        List<Map<String, Object>> subRows = postMapper.countGroupBySubCategory();
+        for (Map<String, Object> row : subRows) {
+            Object sid = row.get("subCategoryId");
+            Object cnt = row.get("cnt");
+            if (sid != null && cnt != null) {
+                counts.put("sub_" + sid, ((Number) cnt).longValue());
             }
+        }
+
+        try {
+            redisTemplate.opsForValue().set(CACHE_CATEGORY_COUNTS, objectMapper.writeValueAsString(counts), 5, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("写入分类帖子数缓存失败: {}", e.getMessage());
         }
         return Result.success(counts);
     }
@@ -126,16 +164,19 @@ public class CategoryController {
         if (posts.isEmpty()) {
             return new ArrayList<>();
         }
-        List<String> authorIds = new ArrayList<>();
+
+        Set<String> authorIds = new HashSet<>();
+        Set<String> catIds = new HashSet<>();
+        Set<String> subCatIds = new HashSet<>();
         for (Post p : posts) {
-            if (!authorIds.contains(p.getAuthorId())) {
-                authorIds.add(p.getAuthorId());
-            }
+            if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
+            if (p.getCategoryId() != null) catIds.add(p.getCategoryId());
+            if (p.getSubCategoryId() != null) subCatIds.add(p.getSubCategoryId());
         }
 
         Map<String, UserFeignClient.UserSimpleInfo> authorMap = new HashMap<>();
         try {
-            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(authorIds);
+            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(new ArrayList<>(authorIds));
             if (authors != null) {
                 for (UserFeignClient.UserSimpleInfo u : authors) {
                     authorMap.put(u.getId(), u);
@@ -144,11 +185,31 @@ public class CategoryController {
         } catch (Exception e) {
         }
 
+        Map<String, Category> categoryMap = new HashMap<>();
+        if (!catIds.isEmpty()) {
+            List<Category> cats = categoryMapper.selectBatchIds(catIds);
+            if (cats != null) {
+                for (Category c : cats) {
+                    categoryMap.put(c.getId(), c);
+                }
+            }
+        }
+
+        Map<String, SubCategory> subCategoryMap = new HashMap<>();
+        if (!subCatIds.isEmpty()) {
+            List<SubCategory> subs = subCategoryMapper.selectBatchIds(subCatIds);
+            if (subs != null) {
+                for (SubCategory s : subs) {
+                    subCategoryMap.put(s.getId(), s);
+                }
+            }
+        }
+
         List<PostListDTO> result = new ArrayList<>();
         for (Post p : posts) {
             UserFeignClient.UserSimpleInfo author = authorMap.get(p.getAuthorId());
-            Category cat = p.getCategoryId() != null ? categoryMapper.selectById(p.getCategoryId()) : null;
-            SubCategory sub = p.getSubCategoryId() != null ? subCategoryMapper.selectById(p.getSubCategoryId()) : null;
+            Category cat = p.getCategoryId() != null ? categoryMap.get(p.getCategoryId()) : null;
+            SubCategory sub = p.getSubCategoryId() != null ? subCategoryMap.get(p.getSubCategoryId()) : null;
             PostListDTO dto = new PostListDTO();
             dto.setId(p.getId());
             dto.setSchoolId(p.getSchoolId());

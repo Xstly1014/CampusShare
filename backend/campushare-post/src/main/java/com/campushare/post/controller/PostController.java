@@ -228,16 +228,19 @@ public class PostController {
         if (posts.isEmpty()) {
             return new ArrayList<>();
         }
-        List<String> authorIds = new ArrayList<>();
+
+        Set<String> authorIds = new HashSet<>();
+        Set<String> catIds = new HashSet<>();
+        Set<String> subCatIds = new HashSet<>();
         for (Post p : posts) {
-            if (!authorIds.contains(p.getAuthorId())) {
-                authorIds.add(p.getAuthorId());
-            }
+            if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
+            if (p.getCategoryId() != null) catIds.add(p.getCategoryId());
+            if (p.getSubCategoryId() != null) subCatIds.add(p.getSubCategoryId());
         }
 
         Map<String, UserFeignClient.UserSimpleInfo> authorMap = new HashMap<>();
         try {
-            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(authorIds);
+            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(new ArrayList<>(authorIds));
             if (authors != null) {
                 for (UserFeignClient.UserSimpleInfo u : authors) {
                     authorMap.put(u.getId(), u);
@@ -246,11 +249,31 @@ public class PostController {
         } catch (Exception e) {
         }
 
+        Map<String, Category> categoryMap = new HashMap<>();
+        if (!catIds.isEmpty()) {
+            List<Category> cats = categoryMapper.selectBatchIds(catIds);
+            if (cats != null) {
+                for (Category c : cats) {
+                    categoryMap.put(c.getId(), c);
+                }
+            }
+        }
+
+        Map<String, SubCategory> subCategoryMap = new HashMap<>();
+        if (!subCatIds.isEmpty()) {
+            List<SubCategory> subs = subCategoryMapper.selectBatchIds(subCatIds);
+            if (subs != null) {
+                for (SubCategory s : subs) {
+                    subCategoryMap.put(s.getId(), s);
+                }
+            }
+        }
+
         List<PostListDTO> result = new ArrayList<>();
         for (Post p : posts) {
             UserFeignClient.UserSimpleInfo author = authorMap.get(p.getAuthorId());
-            Category cat = p.getCategoryId() != null ? categoryMapper.selectById(p.getCategoryId()) : null;
-            SubCategory sub = p.getSubCategoryId() != null ? subCategoryMapper.selectById(p.getSubCategoryId()) : null;
+            Category cat = p.getCategoryId() != null ? categoryMap.get(p.getCategoryId()) : null;
+            SubCategory sub = p.getSubCategoryId() != null ? subCategoryMap.get(p.getSubCategoryId()) : null;
             PostListDTO dto = new PostListDTO();
             dto.setId(p.getId());
             dto.setSchoolId(p.getSchoolId());

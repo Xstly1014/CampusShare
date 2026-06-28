@@ -91,6 +91,10 @@ CREATE TABLE IF NOT EXISTS posts (
     INDEX idx_type (post_type),
     INDEX idx_status (status),
     INDEX idx_create_time (create_time),
+    INDEX idx_school_list (school_id, category_id, status, deleted, create_time),
+    INDEX idx_category_list (category_id, status, deleted, create_time),
+    INDEX idx_subcategory_list (sub_category_id, status, deleted, create_time),
+    INDEX idx_author_list (author_id, deleted, create_time),
     FULLTEXT idx_title_content (title, content)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='帖子表';
 

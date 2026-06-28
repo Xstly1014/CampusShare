@@ -5,8 +5,6 @@ import com.campushare.post.dto.PostListDTO;
 import com.campushare.post.dto.UserPostStats;
 import com.campushare.post.entity.Post;
 import com.campushare.post.feign.UserFeignClient;
-import com.campushare.post.mapper.CategoryMapper;
-import com.campushare.post.mapper.SubCategoryMapper;
 import com.campushare.post.service.PostService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -21,8 +19,6 @@ public class InternalPostController {
 
     private final PostService postService;
     private final UserFeignClient userFeignClient;
-    private final CategoryMapper categoryMapper;
-    private final SubCategoryMapper subCategoryMapper;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -71,16 +67,15 @@ public class InternalPostController {
         if (posts.isEmpty()) {
             return new ArrayList<>();
         }
-        List<String> authorIds = new ArrayList<>();
+
+        Set<String> authorIds = new HashSet<>();
         for (Post p : posts) {
-            if (!authorIds.contains(p.getAuthorId())) {
-                authorIds.add(p.getAuthorId());
-            }
+            if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
         }
 
         Map<String, UserFeignClient.UserSimpleInfo> authorMap = new HashMap<>();
         try {
-            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(authorIds);
+            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(new ArrayList<>(authorIds));
             if (authors != null) {
                 for (UserFeignClient.UserSimpleInfo u : authors) {
                     authorMap.put(u.getId(), u);

@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.List;
+import java.util.Map;
+
 @Mapper
 public interface PostMapper extends BaseMapper<Post> {
 
@@ -24,4 +27,19 @@ public interface PostMapper extends BaseMapper<Post> {
 
     @Select("SELECT COUNT(*) FROM posts WHERE author_id = #{userId} AND deleted = 0")
     long countByAuthorId(@Param("userId") String userId);
+
+    @Select("SELECT school_id AS schoolId, COUNT(*) AS cnt FROM posts " +
+            "WHERE deleted = 0 AND status = 1 AND school_id IS NOT NULL AND category_id IS NULL " +
+            "GROUP BY school_id")
+    List<Map<String, Object>> countGroupBySchool();
+
+    @Select("SELECT category_id AS categoryId, COUNT(*) AS cnt FROM posts " +
+            "WHERE deleted = 0 AND status = 1 AND category_id IS NOT NULL " +
+            "GROUP BY category_id")
+    List<Map<String, Object>> countGroupByCategory();
+
+    @Select("SELECT sub_category_id AS subCategoryId, COUNT(*) AS cnt FROM posts " +
+            "WHERE deleted = 0 AND status = 1 AND sub_category_id IS NOT NULL " +
+            "GROUP BY sub_category_id")
+    List<Map<String, Object>> countGroupBySubCategory();
 }

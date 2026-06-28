@@ -16,6 +16,8 @@ import com.campushare.post.mapper.PostMapper;
 import com.campushare.post.mapper.PostStarMapper;
 import com.campushare.post.mapper.ViewHistoryMapper;
 import com.campushare.post.service.PostService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -46,6 +48,7 @@ public class PostServiceImpl implements PostService {
     private final RedisTemplate<String, String> redisTemplate;
     private final MeterRegistry meterRegistry;
     private final UserFeignClient userFeignClient;
+    private final ObjectMapper objectMapper;
 
     private static final String REDIS_KEY_STAR = "post:star:";
     private static final String REDIS_KEY_LIKE = "post:like:";
@@ -150,7 +153,12 @@ public class PostServiceImpl implements PostService {
     @Override
     public List<Post> getPostsBySchool(String schoolId, String postType, String sortType, int page, int size) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Post::getSchoolId, schoolId)
+        wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
+                        Post::getAuthorId, Post::getPostType, Post::getTitle,
+                        Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
+                        Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
+                        Post::getCreateTime)
+                .eq(Post::getSchoolId, schoolId)
                 .isNull(Post::getCategoryId)
                 .eq(Post::getStatus, 1)
                 .eq(Post::getDeleted, false);
@@ -354,17 +362,7 @@ public class PostServiceImpl implements PostService {
             postIds.add(vh.getPostId());
         }
 
-        List<Post> posts = postMapper.selectBatchIds(postIds);
-        List<Post> result = new ArrayList<>();
-        for (String pid : postIds) {
-            for (Post p : posts) {
-                if (p.getId().equals(pid) && !p.getDeleted()) {
-                    result.add(p);
-                    break;
-                }
-            }
-        }
-        return result;
+        return selectPostsByIdsWithoutContent(postIds);
     }
 
     @Override
@@ -384,17 +382,7 @@ public class PostServiceImpl implements PostService {
             postIds.add(ps.getPostId());
         }
 
-        List<Post> posts = postMapper.selectBatchIds(postIds);
-        List<Post> result = new ArrayList<>();
-        for (String pid : postIds) {
-            for (Post p : posts) {
-                if (p.getId().equals(pid) && !p.getDeleted()) {
-                    result.add(p);
-                    break;
-                }
-            }
-        }
-        return result;
+        return selectPostsByIdsWithoutContent(postIds);
     }
 
     @Override
@@ -414,17 +402,7 @@ public class PostServiceImpl implements PostService {
             postIds.add(pl.getPostId());
         }
 
-        List<Post> posts = postMapper.selectBatchIds(postIds);
-        List<Post> result = new ArrayList<>();
-        for (String pid : postIds) {
-            for (Post p : posts) {
-                if (p.getId().equals(pid) && !p.getDeleted()) {
-                    result.add(p);
-                    break;
-                }
-            }
-        }
-        return result;
+        return selectPostsByIdsWithoutContent(postIds);
     }
 
     @Override
@@ -432,6 +410,11 @@ public class PostServiceImpl implements PostService {
         Page<Post> postPage = postMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<Post>()
+                        .select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
+                                Post::getAuthorId, Post::getPostType, Post::getTitle,
+                                Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
+                                Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
+                                Post::getCreateTime)
                         .eq(Post::getAuthorId, userId)
                         .eq(Post::getDeleted, false)
                         .orderByDesc(Post::getCreateTime));
@@ -449,17 +432,59 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public Map<String, Long> getSchoolPostCounts() {
-        List<Post> allPosts = postMapper.selectList(
-                new LambdaQueryWrapper<Post>()
-                        .eq(Post::getDeleted, false)
-                        .eq(Post::getStatus, 1)
-                        .isNotNull(Post::getSchoolId)
-                        .isNull(Post::getCategoryId));
+        String cacheKey = "cache:school:post:counts";
+        try {
+            String cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                return objectMapper.readValue(cached, new TypeReference<Map<String, Long>>() {});
+            }
+        } catch (Exception e) {
+            log.warn("读取学校帖子数缓存失败: {}", e.getMessage());
+        }
+
         Map<String, Long> counts = new HashMap<>();
-        for (Post p : allPosts) {
-            counts.merge(p.getSchoolId(), 1L, Long::sum);
+        List<Map<String, Object>> rows = postMapper.countGroupBySchool();
+        for (Map<String, Object> row : rows) {
+            Object schoolId = row.get("schoolId");
+            Object cnt = row.get("cnt");
+            if (schoolId != null && cnt != null) {
+                counts.put(schoolId.toString(), ((Number) cnt).longValue());
+            }
+        }
+
+        try {
+            redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(counts), 5, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("写入学校帖子数缓存失败: {}", e.getMessage());
         }
         return counts;
+    }
+
+    private List<Post> selectPostsByIdsWithoutContent(List<String> postIds) {
+        if (postIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<Post> posts = postMapper.selectList(
+                new LambdaQueryWrapper<Post>()
+                        .select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
+                                Post::getAuthorId, Post::getPostType, Post::getTitle,
+                                Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
+                                Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
+                                Post::getCreateTime)
+                        .in(Post::getId, postIds)
+                        .eq(Post::getDeleted, false));
+        Map<String, Post> postMap = new HashMap<>();
+        for (Post p : posts) {
+            postMap.put(p.getId(), p);
+        }
+        List<Post> result = new ArrayList<>();
+        for (String pid : postIds) {
+            Post p = postMap.get(pid);
+            if (p != null) {
+                result.add(p);
+            }
+        }
+        return result;
     }
 
     @Override
