@@ -51,67 +51,72 @@ public class AuthController {
     public Result<String> initDefaultUsers() {
         int created = 0;
         int updated = 0;
-
-        String adminPhone = "13068735578";
-        String testPhone = "13068735577";
         String password = "123456";
 
         // 管理员
-        User admin = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, adminPhone));
-        if (admin == null) {
-            admin = new User();
-            admin.setId(UUID.randomUUID().toString());
-            admin.setUsername("admin");
-            admin.setPhone(adminPhone);
-            admin.setEmail("4fYga@PjXkDek.h7v");
-            admin.setPasswordHash(passwordEncoder.encode(password));
-            admin.setBio("系统管理员");
-            admin.setRole("ADMIN");
-            admin.setStatus(1);
-            admin.setDeleted(false);
-            admin.setAvatarUrl("https://api.dicebear.com/7.x/avataaars/svg?seed=admin");
-            userMapper.insert(admin);
+        if (createOrUpdateUser("admin", "13068735578", "4fYga@PjXkDek.h7v", "系统管理员", null, "ADMIN", password, "admin")) {
             created++;
         } else {
-            admin.setPasswordHash(passwordEncoder.encode(password));
-            admin.setRole("ADMIN");
-            admin.setStatus(1);
-            admin.setDeleted(false);
-            userMapper.updateById(admin);
             updated++;
         }
 
-        // 普通用户（默认北京大学）
-        User testuser = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, testPhone));
-        if (testuser == null) {
-            testuser = new User();
-            testuser.setId(UUID.randomUUID().toString());
-            testuser.setUsername("testuser");
-            testuser.setPhone(testPhone);
-            testuser.setEmail("yDIk@oz12GUV.ROY");
-            testuser.setPasswordHash(passwordEncoder.encode(password));
-            testuser.setBio("测试用户");
-            testuser.setSchoolId("3");
-            testuser.setRole("USER");
-            testuser.setStatus(1);
-            testuser.setDeleted(false);
-            testuser.setAvatarUrl("https://api.dicebear.com/7.x/avataaars/svg?seed=testuser");
-            userMapper.insert(testuser);
+        // 创作者（北京大学）
+        if (createOrUpdateUser("creator", "13068735577", "gCyJvX@Ct2SKWG.V2W", "认证创作者", "3", "CREATOR", password, "creator")) {
             created++;
         } else {
-            testuser.setPasswordHash(passwordEncoder.encode(password));
-            testuser.setRole("USER");
-            testuser.setStatus(1);
-            testuser.setDeleted(false);
-            if (testuser.getSchoolId() == null) {
-                testuser.setSchoolId("3");
-            }
-            userMapper.updateById(testuser);
             updated++;
         }
 
-        String msg = String.format("初始化完成：新建%d个账号，更新%d个账号。管理员：%s/%s，测试用户：%s/%s",
-                created, updated, adminPhone, password, testPhone, password);
+        // 普通用户（北京大学）
+        if (createOrUpdateUser("normaluser", "13068735576", "q6nAwHkBC@zNO7.GOx", "普通测试用户", "3", "USER", password, "normaluser")) {
+            created++;
+        } else {
+            updated++;
+        }
+
+        String msg = String.format("初始化完成：新建%d个账号，更新%d个账号。\n管理员：13068735578/%s\n创作者：13068735577/%s\n普通用户：13068735576/%s",
+                created, updated, password, password, password);
         return Result.success(msg, null);
+    }
+
+    @PostMapping("/set-creator")
+    public Result<String> setCreator(@RequestParam String phone) {
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, phone));
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        user.setRole("CREATOR");
+        userMapper.updateById(user);
+        return Result.success(String.format("已将用户 %s（%s）设置为创作者", user.getUsername(), phone), null);
+    }
+
+    private boolean createOrUpdateUser(String username, String phone, String email, String bio, String schoolId, String role, String password, String avatarSeed) {
+        User existing = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, phone));
+        if (existing == null) {
+            User user = new User();
+            user.setId(UUID.randomUUID().toString());
+            user.setUsername(username);
+            user.setPhone(phone);
+            user.setEmail(email);
+            user.setPasswordHash(passwordEncoder.encode(password));
+            user.setBio(bio);
+            user.setSchoolId(schoolId);
+            user.setRole(role);
+            user.setStatus(1);
+            user.setDeleted(false);
+            user.setAvatarUrl("https://api.dicebear.com/7.x/avataaars/svg?seed=" + avatarSeed);
+            userMapper.insert(user);
+            return true;
+        } else {
+            existing.setPasswordHash(passwordEncoder.encode(password));
+            existing.setRole(role);
+            existing.setStatus(1);
+            existing.setDeleted(false);
+            if (schoolId != null && existing.getSchoolId() == null) {
+                existing.setSchoolId(schoolId);
+            }
+            userMapper.updateById(existing);
+            return false;
+        }
     }
 }

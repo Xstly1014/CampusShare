@@ -33,6 +33,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         "/api/auth/reset-password",
         "/api/auth/refresh-token",
         "/api/auth/init-default-users",
+        "/api/auth/set-creator",
         "/api/files/",
         "/api/admin/"
     );
