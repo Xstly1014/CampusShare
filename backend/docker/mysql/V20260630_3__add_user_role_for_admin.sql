@@ -15,12 +15,10 @@ ALTER TABLE creator_verifications ADD COLUMN IF NOT EXISTS reviewer_id VARCHAR(3
 -- 插入默认管理员账号（手机号: NOkT4YYwjyD, 密码: Test123456）
 -- 密码哈希: $2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2
 INSERT IGNORE INTO users (id, username, email, phone, password_hash, bio, role, status, avatar_url) VALUES
-('550e8400-e29b-41d4-a716-446655440000', 'admin', '4fYga@PjXkDek.h7v', 'rLdwD4Vkpa9',
- '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
- '系统管理员', 'ADMIN', 1, 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin');
+('550e8400-e29b-41d4-a716-446655440000', 'admin', '4fYga@PjXkDek.h7v', 'rLdwD4Vkpa9', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '系统管理员', 'ADMIN', 1, 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin');
 
--- 更新已有admin用户的手机号（如果已存在但手机号为空）
-UPDATE users SET phone='rLdwD4Vkpa9', email='4fYga@PjXkDek.h7v' WHERE username='admin' AND (phone IS NULL OR phone='');
+-- 更新已有admin用户：设置手机号、邮箱，重置密码hash（修复前导空格问题）
+UPDATE users SET phone='rLdwD4Vkpa9', email='4fYga@PjXkDek.h7v', password_hash='$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2' WHERE username='admin';
 
--- 更新testuser手机号为有效格式（如果之前是无效手机号）
-UPDATE users SET phone='pv8wl3rkgdE' WHERE username='testuser' AND (phone IS NULL OR phone='NOkT4YYwjyD');
+-- 更新testuser：手机号改为有效格式，重置密码hash（修复前导空格问题）
+UPDATE users SET phone='pv8wl3rkgdE', password_hash='$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2' WHERE username='testuser';

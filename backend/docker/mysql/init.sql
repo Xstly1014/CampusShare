@@ -262,15 +262,11 @@ INSERT INTO schools (id, name, logo_url, region, description, resource_count) VA
 
 -- 插入管理员用户（手机号: NOkT4YYwjyD, 密码: Test123456）
 INSERT INTO users (id, username, email, phone, password_hash, bio, role, status, avatar_url) VALUES
-('550e8400-e29b-41d4-a716-446655440000', 'admin', '4fYga@PjXkDek.h7v', 'rLdwD4Vkpa9',
- '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
- '系统管理员', 'ADMIN', 1, 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin');
+('550e8400-e29b-41d4-a716-446655440000', 'admin', '4fYga@PjXkDek.h7v', 'rLdwD4Vkpa9', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '系统管理员', 'ADMIN', 1, 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin');
 
 -- 插入测试用户数据（手机号: pv8wl3rkgdE, 密码: Test123456）
 INSERT INTO users (id, username, email, phone, password_hash, bio, school_id, role, status) VALUES
-('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'yDIk@oz12GUV.ROY', 'pv8wl3rkgdE',
- '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
- '这是一名测试用户', '3', 'USER', 1);
+('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'yDIk@oz12GUV.ROY', 'pv8wl3rkgdE', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '这是一名测试用户', '3', 'USER', 1);
 
 -- 插入主分类数据（收纳袋）
 INSERT INTO categories (id, name, icon, color, type, description, sort_order) VALUES
