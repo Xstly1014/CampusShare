@@ -56,9 +56,6 @@ public class AuthController {
         String testPhone = "13068735577";
         String password = "123456";
 
-        // 删除可能存在的错误字母手机号账号，避免冲突
-        userMapper.delete(new LambdaQueryWrapper<User>().in(User::getPhone, "NOkT4YYwjyD", "tlZmmRD4L1f"));
-
         // 管理员
         User admin = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, adminPhone));
         if (admin == null) {
