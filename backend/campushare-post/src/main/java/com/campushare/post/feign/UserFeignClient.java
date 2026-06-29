@@ -26,6 +26,7 @@ public interface UserFeignClient {
         private String id;
         private String username;
         private String avatarUrl;
+        private String role;
     }
 
     @lombok.Data

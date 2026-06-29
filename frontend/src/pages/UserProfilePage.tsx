@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare } from 'lucide-react'
+import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare, BadgeCheck } from 'lucide-react'
 import { userApi, postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
@@ -29,6 +29,8 @@ interface BackendPost {
   authorId: string
   authorName?: string
   authorAvatar?: string
+  authorRole?: string
+  isCreator?: boolean
   postType: string
   title: string
   content: string
@@ -103,7 +105,10 @@ export default function UserProfilePage() {
       else if (activeTab === 'starred') res = await userApi.getUserStarred(userId)
       else if (activeTab === 'liked') res = await userApi.getUserLiked(userId)
       else res = await userApi.getUserHistory(userId)
-      setPosts(res.data || [])
+      setPosts((res.data || []).map((p: any) => ({
+        ...p,
+        isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN'
+      })))
     } catch { setPosts([]) }
     finally { setListLoading(false) }
   }, [userId, activeTab])
@@ -247,7 +252,10 @@ export default function UserProfilePage() {
                     <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2">{post.title}</h3>
                     {post.content && <p className="text-xs text-gray-500 mb-2 line-clamp-2">{post.content}</p>}
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-gray-500">{post.authorName || post.authorId.slice(0, 8)}</span>
+                      <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                        {post.authorName || post.authorId.slice(0, 8)}
+                        {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-3.5 h-3.5 text-blue-500" /></span>}
+                      </span>
                       <div className="flex items-center gap-3 text-gray-400">
                         <span className="text-xs">{post.viewCount} 浏览</span>
                         <span className="text-xs">{post.starCount} 收藏</span>

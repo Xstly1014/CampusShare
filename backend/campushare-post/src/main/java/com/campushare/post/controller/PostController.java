@@ -66,6 +66,7 @@ public class PostController {
 
         String authorName = "未知用户";
         String authorAvatar = null;
+        String authorRole = null;
         try {
             List<UserFeignClient.UserSimpleInfo> users = userFeignClient.getBatchUserInfo(
                     Collections.singletonList(post.getAuthorId()));
@@ -73,6 +74,7 @@ public class PostController {
                 UserFeignClient.UserSimpleInfo author = users.get(0);
                 authorName = author.getUsername();
                 authorAvatar = author.getAvatarUrl();
+                authorRole = author.getRole();
             }
         } catch (Exception e) {
         }
@@ -89,6 +91,7 @@ public class PostController {
         dto.setAuthorId(post.getAuthorId());
         dto.setAuthorName(authorName);
         dto.setAuthorAvatar(authorAvatar);
+        dto.setAuthorRole(authorRole);
         dto.setPostType(post.getPostType());
         dto.setTitle(post.getTitle());
         dto.setContent(post.getContent());
@@ -262,6 +265,7 @@ public class PostController {
             dto.setAuthorId(p.getAuthorId());
             dto.setAuthorName(author != null ? author.getUsername() : "未知用户");
             dto.setAuthorAvatar(author != null ? author.getAvatarUrl() : null);
+            dto.setAuthorRole(author != null ? author.getRole() : null);
             dto.setPostType(p.getPostType());
             dto.setTitle(p.getTitle());
             dto.setViewCount(p.getViewCount());

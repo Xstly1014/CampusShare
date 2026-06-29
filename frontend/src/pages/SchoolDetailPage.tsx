@@ -13,6 +13,7 @@ import {
   X,
   Upload,
   File,
+  BadgeCheck,
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
@@ -27,6 +28,7 @@ interface BackendPost {
   authorId: string
   authorName?: string
   authorAvatar?: string
+  authorRole?: string
   postType: string
   title: string
   content: string
@@ -50,6 +52,7 @@ interface PostView {
     id: string
     username: string
     avatar?: string
+    isCreator?: boolean
   }
   createdAt: string
   stars: number
@@ -174,7 +177,12 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
 
           {/* 作者信息 */}
           <div className="flex items-center justify-between mt-2">
-            <span className="text-xs text-gray-500">{post.author.username}</span>
+            <span className="text-xs text-gray-500 flex items-center gap-1">
+              {post.author.username}
+              {post.author.isCreator && (
+                <BadgeCheck className="w-3.5 h-3.5 text-blue-500" title="认证创作者" />
+              )}
+            </span>
 
             <div className="flex items-center gap-3 text-gray-400">
               <span className="flex items-center gap-1 text-xs">
@@ -239,6 +247,7 @@ export default function SchoolDetailPage() {
           avatar: p.authorAvatar
             ? (p.authorAvatar.startsWith('/files/') ? `/api${p.authorAvatar}` : p.authorAvatar)
             : `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
+          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN',
         },
         createdAt: p.createTime,
         stars: p.starCount || 0,

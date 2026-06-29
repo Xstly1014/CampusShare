@@ -51,6 +51,7 @@ public class InternalUserController {
             map.put("id", user.getId());
             map.put("username", user.getUsername());
             map.put("avatarUrl", user.getAvatarUrl());
+            map.put("role", user.getRole());
             result.add(map);
         }
         return result;

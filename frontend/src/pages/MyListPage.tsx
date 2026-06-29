@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText } from 'lucide-react'
+import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText, BadgeCheck } from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
@@ -12,6 +12,8 @@ interface BackendPost {
   authorId: string
   authorName?: string
   authorAvatar?: string
+  authorRole?: string
+  isCreator?: boolean
   postType: string
   title: string
   content: string
@@ -96,7 +98,10 @@ export default function MyListPage() {
         setComments(res.data || [])
         setPosts([])
       } else {
-        setPosts(res.data || [])
+        setPosts((res.data || []).map((p: any) => ({
+          ...p,
+          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN'
+        })))
         setComments([])
       }
     } catch (err) {
@@ -212,7 +217,10 @@ export default function MyListPage() {
 
                     {/* 作者信息 */}
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-gray-500">{post.authorName || post.authorId.slice(0, 8)}</span>
+                      <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                        {post.authorName || post.authorId.slice(0, 8)}
+                        {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-3.5 h-3.5 text-blue-500" /></span>}
+                      </span>
 
                       <div className="flex items-center gap-3 text-gray-400">
                         <span className="flex items-center gap-1 text-xs">

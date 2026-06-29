@@ -16,7 +16,7 @@ import {
   Map, Compass, BedDouble,
   User, Mountain, Focus, SlidersHorizontal,
   BookCopy, Code2, Scroll, Target,
-  Hash, Search
+  Hash, Search, BadgeCheck
 } from 'lucide-react'
 import { categoryApi, postApi, fileApi, Category, SubCategory } from '../services/api'
 import SchoolCard from '../components/home/SchoolCard'
@@ -92,6 +92,8 @@ interface PostItem {
   authorId: string
   authorName: string
   authorAvatar?: string
+  authorRole?: string
+  isCreator?: boolean
   postType: string
   title: string
   content: string
@@ -172,7 +174,10 @@ export default function CategoryDetailPage() {
         size: 20,
         keyword: keyword || undefined,
       })
-      const newPosts = res.data || []
+      const newPosts = (res.data || []).map((p: any) => ({
+        ...p,
+        isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN'
+      }))
       setPosts(reset ? newPosts : [...posts, ...newPosts])
       setHasMore(newPosts.length === 20)
       setPage(currentPage + 1)
@@ -480,7 +485,10 @@ export default function CategoryDetailPage() {
                         <span className="text-white text-xs font-bold">{post.authorName?.substring(0, 1).toUpperCase()}</span>
                       )}
                     </div>
-                    <span className="text-xs text-gray-500">{post.authorName}</span>
+                    <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                      {post.authorName}
+                      {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-3.5 h-3.5 text-blue-500" /></span>}
+                    </span>
                     {post.subCategoryName && (
                       <span className={`text-xs px-1.5 py-0.5 rounded ${colors.light} ${colors.text}`}>{post.subCategoryName}</span>
                     )}

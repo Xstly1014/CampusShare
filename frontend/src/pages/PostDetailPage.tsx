@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight } from 'lucide-react'
+import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight, BadgeCheck } from 'lucide-react'
 import schoolsData from '../data/schools.json'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
@@ -67,6 +67,8 @@ interface BackendPost {
   authorId: string
   authorName?: string
   authorAvatar?: string
+  authorRole?: string
+  isCreator?: boolean
   postType: string
   title: string
   content: string
@@ -125,7 +127,10 @@ export default function PostDetailPage() {
     setLoading(true)
     try {
       const res = await postApi.getDetail(postId)
-      const p: BackendPost = res.data
+      const p: BackendPost = {
+        ...res.data,
+        isCreator: res.data.authorRole === 'CREATOR' || res.data.authorRole === 'ADMIN'
+      }
       setPost(p)
       setStarCount(p.starCount || 0)
       setLikeCount(p.likeCount || 0)
@@ -435,7 +440,10 @@ export default function PostDetailPage() {
                 className="w-10 h-10 rounded-full cursor-pointer"
               />
               <div>
-                <p className="text-sm font-medium text-gray-900">{post.authorName || post.authorId.slice(0, 8)}</p>
+                <p className="text-sm font-medium text-gray-900 flex items-center gap-0.5">
+                  {post.authorName || post.authorId.slice(0, 8)}
+                  {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-4 h-4 text-blue-500" /></span>}
+                </p>
                 <p className="text-xs text-gray-400">{formatTime(post.createTime)}</p>
               </div>
             </div>
