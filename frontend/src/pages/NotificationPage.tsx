@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, Heart, Star, UserPlus, MessageSquare, MessageCircle, Pin, ChevronRight } from 'lucide-react'
+import { ChevronLeft, Heart, Star, UserPlus, MessageSquare, MessageCircle, Pin, ChevronRight, Bell } from 'lucide-react'
 import { notificationApi } from '../services/api'
 import type { NotificationItem, NotificationDetail } from '../services/api'
 import { formatTime } from '../utils/time'
@@ -8,6 +8,7 @@ import { toast } from '../stores/toastStore'
 import NavBar from '../components/common/NavBar'
 
 const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
+  SYSTEM: { icon: <Bell className="w-5 h-5" />, color: 'bg-amber-50 text-amber-500' },
   LIKE: { icon: <Heart className="w-5 h-5" />, color: 'bg-red-50 text-red-500' },
   COMMENT_LIKE: { icon: <Heart className="w-5 h-5" />, color: 'bg-pink-50 text-pink-500' },
   STAR: { icon: <Star className="w-5 h-5" />, color: 'bg-orange-50 text-orange-500' },
@@ -163,31 +164,44 @@ export default function NotificationPage() {
                           <div
                             key={d.id}
                             onClick={() => {
+                              if (d.type === 'SYSTEM') return;
                               if (d.targetId && d.schoolId) {
                                 navigate(`/school/${d.schoolId}/post/${d.targetId}`)
                               } else {
                                 navigate(`/user/${d.senderId}`)
                               }
                             }}
-                            className="bg-gray-50 rounded-lg p-2.5 flex items-center gap-2.5 cursor-pointer hover:bg-gray-100 transition-colors"
+                            className={`bg-gray-50 rounded-lg p-2.5 flex items-center gap-2.5 ${d.type === 'SYSTEM' ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100'} transition-colors`}
                           >
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
-                              {d.senderAvatar
-                                ? <img src={d.senderAvatar.startsWith('/files/') ? `/api${d.senderAvatar}` : d.senderAvatar} alt={d.senderName} className="w-full h-full object-cover" />
-                                : <span className="text-white text-xs font-bold">{d.senderName?.substring(0, 1).toUpperCase()}</span>
-                              }
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 ${d.type === 'SYSTEM' ? 'bg-amber-50 text-amber-500' : 'bg-gradient-to-br from-blue-500 to-blue-600'}`}>
+                              {d.type === 'SYSTEM' ? (
+                                <Bell className="w-4 h-4" />
+                              ) : d.senderAvatar ? (
+                                <img src={d.senderAvatar.startsWith('/files/') ? `/api${d.senderAvatar}` : d.senderAvatar} alt={d.senderName} className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-white text-xs font-bold">{d.senderName?.substring(0, 1).toUpperCase()}</span>
+                              )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs text-gray-700">
-                                <span className="font-medium">{d.senderName}</span>
-                                {d.type === 'LIKE' && ` 赞了你的帖子`}
-                                {d.type === 'COMMENT_LIKE' && ` 赞了你的评论`}
-                                {d.type === 'STAR' && ` 收藏了你的帖子`}
-                                {d.type === 'FOLLOW' && ` 关注了你`}
-                                {d.type === 'COMMENT' && ` 评论了你的帖子`}
-                                {d.type === 'REPLY' && ` 回复了你的评论`}
-                              </p>
-                              {d.targetTitle && <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{d.targetTitle}</p>}
+                              {d.type === 'SYSTEM' ? (
+                                <>
+                                  <p className="text-xs font-medium text-gray-900">{d.targetId || '系统通知'}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5">{d.targetTitle}</p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-xs text-gray-700">
+                                    <span className="font-medium">{d.senderName}</span>
+                                    {d.type === 'LIKE' && ` 赞了你的帖子`}
+                                    {d.type === 'COMMENT_LIKE' && ` 赞了你的评论`}
+                                    {d.type === 'STAR' && ` 收藏了你的帖子`}
+                                    {d.type === 'FOLLOW' && ` 关注了你`}
+                                    {d.type === 'COMMENT' && ` 评论了你的帖子`}
+                                    {d.type === 'REPLY' && ` 回复了你的评论`}
+                                  </p>
+                                  {d.targetTitle && <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{d.targetTitle}</p>}
+                                </>
+                              )}
                             </div>
                             <span className="text-xs text-gray-400 flex-shrink-0">{formatTime(d.createTime)}</span>
                           </div>

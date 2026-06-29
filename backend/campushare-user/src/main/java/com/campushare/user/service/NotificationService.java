@@ -10,6 +10,9 @@ public interface NotificationService {
     /** Create a notification (for likes/stars/follows) */
     void createNotification(String userId, String senderId, String type, String targetId, String targetTitle);
 
+    /** Create a system notification */
+    void createSystemNotification(String userId, String title, String content);
+
     /** Get unified notification feed (groups + conversations), sorted by pinned then latest time */
     List<NotificationItemDTO> getNotificationFeed(String userId);
 

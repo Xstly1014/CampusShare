@@ -16,6 +16,7 @@ import com.campushare.user.feign.UserPostStats;
 import com.campushare.user.mapper.CreatorVerificationMapper;
 import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.CreatorService;
+import com.campushare.user.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ public class CreatorServiceImpl implements CreatorService {
     private final CreatorVerificationMapper creatorVerificationMapper;
     private final UserMapper userMapper;
     private final PostFeignClient postFeignClient;
+    private final NotificationService notificationService;
 
     @Override
     public CreatorStatsDTO getStats(String userId) {
@@ -187,9 +189,24 @@ public class CreatorServiceImpl implements CreatorService {
         if (request.isApproved()) {
             verification.setStatus("APPROVED");
             verification.setRejectReason(null);
+            User applicant = userMapper.selectById(verification.getUserId());
+            if (applicant != null) {
+                applicant.setRole("CREATOR");
+                userMapper.updateById(applicant);
+            }
+            notificationService.createSystemNotification(
+                    verification.getUserId(),
+                    "创作者认证通过",
+                    "恭喜你！你的创作者认证申请已通过，现在可以享受创作者专属权益了。"
+            );
         } else {
             verification.setStatus("REJECTED");
             verification.setRejectReason(request.getRejectReason());
+            notificationService.createSystemNotification(
+                    verification.getUserId(),
+                    "创作者认证被驳回",
+                    "你的创作者认证申请未通过，原因：" + request.getRejectReason()
+            );
         }
         verification.setReviewerId(adminId);
         verification.setReviewTime(LocalDateTime.now());

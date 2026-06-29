@@ -158,9 +158,9 @@ export default function AdminCreatorPage() {
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0 overflow-hidden">
                       {app.avatarUrl ? (
-                        <img src={`/api${app.avatarUrl}`} alt="" className="w-full h-full object-cover" />
+                        <img src={app.avatarUrl.startsWith('/files/') ? `/api${app.avatarUrl}` : app.avatarUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <User className="w-5 h-5 text-white" />
+                        <span className="text-white font-medium">{app.username?.substring(0, 1).toUpperCase()}</span>
                       )}
                     </div>
                     <div>

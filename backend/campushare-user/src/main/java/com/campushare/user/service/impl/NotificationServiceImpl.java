@@ -50,11 +50,28 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    public void createSystemNotification(String userId, String title, String content) {
+        try {
+            Notification notif = Notification.builder()
+                    .userId(userId)
+                    .senderId(null)
+                    .type("SYSTEM")
+                    .targetId(title)
+                    .targetTitle(content)
+                    .isRead(0)
+                    .build();
+            notificationMapper.insert(notif);
+        } catch (Exception e) {
+            log.warn("Failed to create system notification: {}", e.getMessage());
+        }
+    }
+
+    @Override
     public List<NotificationItemDTO> getNotificationFeed(String userId) {
         List<NotificationItemDTO> items = new ArrayList<>();
 
         try {
-            for (String type : Arrays.asList("LIKE", "COMMENT_LIKE", "STAR", "FOLLOW", "COMMENT", "REPLY")) {
+            for (String type : Arrays.asList("SYSTEM", "LIKE", "COMMENT_LIKE", "STAR", "FOLLOW", "COMMENT", "REPLY")) {
                 List<Notification> notifs = notificationMapper.selectList(
                         new LambdaQueryWrapper<Notification>()
                                 .eq(Notification::getUserId, userId)
@@ -67,6 +84,7 @@ public class NotificationServiceImpl implements NotificationService {
 
                     String title;
                     switch (type) {
+                        case "SYSTEM": title = "系统通知"; break;
                         case "LIKE": title = "赞"; break;
                         case "COMMENT_LIKE": title = "评论获赞"; break;
                         case "STAR": title = "收藏"; break;
@@ -188,12 +206,21 @@ public class NotificationServiceImpl implements NotificationService {
 
             List<NotificationDetailDTO> result = new ArrayList<>();
             for (Notification n : notifs) {
-                User sender = userMapper.selectById(n.getSenderId());
+                User sender = n.getSenderId() != null ? userMapper.selectById(n.getSenderId()) : null;
+                String senderName;
+                String senderAvatar;
+                if ("SYSTEM".equals(type)) {
+                    senderName = "系统通知";
+                    senderAvatar = null;
+                } else {
+                    senderName = sender != null ? sender.getUsername() : "未知用户";
+                    senderAvatar = sender != null ? sender.getAvatarUrl() : null;
+                }
                 result.add(NotificationDetailDTO.builder()
                         .id(String.valueOf(n.getId()))
                         .senderId(n.getSenderId())
-                        .senderName(sender != null ? sender.getUsername() : "未知用户")
-                        .senderAvatar(sender != null ? sender.getAvatarUrl() : null)
+                        .senderName(senderName)
+                        .senderAvatar(senderAvatar)
                         .type(n.getType())
                         .targetId(n.getTargetId())
                         .targetTitle(n.getTargetTitle())
@@ -255,6 +282,17 @@ public class NotificationServiceImpl implements NotificationService {
 
     private String buildPreview(List<Notification> notifs, String type) {
         Notification latest = notifs.get(0);
+
+        if ("SYSTEM".equals(type)) {
+            String title = latest.getTargetId() != null ? latest.getTargetId() : "系统通知";
+            String content = latest.getTargetTitle() != null ? latest.getTargetTitle() : "";
+            if (notifs.size() == 1) {
+                return title + "：" + content;
+            } else {
+                return title + "：" + content + " 等" + notifs.size() + "条通知";
+            }
+        }
+
         User sender = userMapper.selectById(latest.getSenderId());
         String name = sender != null ? sender.getUsername() : "未知用户";
 
