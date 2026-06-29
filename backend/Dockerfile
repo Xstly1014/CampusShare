@@ -55,7 +55,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:8081/actuator/health || exit 1
 
 # Run the application
-ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=docker", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.profiles.active=docker -jar app.jar"]
 
 # ========================================
 # Stage 3: Post Service
@@ -83,7 +83,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:8082/actuator/health || exit 1
 
 # Run the application
-ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=docker", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.profiles.active=docker -jar app.jar"]
 
 # ========================================
 # Stage 4: Gateway Service
@@ -111,4 +111,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:8080/actuator/health || exit 1
 
 # Run the application
-ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=docker", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.profiles.active=docker -jar app.jar"]

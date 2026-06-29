@@ -19,50 +19,39 @@ public class JwtUtils {
     private static final String CLAIMS_TOKEN_TYPE = "tokenType";
     
     private final SecretKey secretKey;
+    private final JwtParser jwtParser;
     
     public JwtUtils() {
         this.secretKey = Keys.hmacShaKeyFor(JWT_SECRET.getBytes(StandardCharsets.UTF_8));
+        this.jwtParser = Jwts.parser()
+                .verifyWith(secretKey)
+                .build();
     }
     
-    public boolean validateToken(String token) {
+    public Claims parseToken(String token) {
+        return jwtParser.parseSignedClaims(token).getPayload();
+    }
+    
+    public Claims validateAndParse(String token) {
         try {
-            Jwts.parser()
-                    .verifyWith(secretKey)
-                    .build()
-                    .parseSignedClaims(token);
-            return true;
+            return parseToken(token);
         } catch (ExpiredJwtException e) {
             log.error("Token已过期: {}", e.getMessage());
         } catch (JwtException e) {
             log.error("Token验证失败: {}", e.getMessage());
         }
-        return false;
+        return null;
     }
     
-    public Claims parseToken(String token) {
-        return Jwts.parser()
-                .verifyWith(secretKey)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+    public boolean isAccessToken(Claims claims) {
+        return TOKEN_TYPE_ACCESS.equals(claims.get(CLAIMS_TOKEN_TYPE, String.class));
     }
     
-    public String getTokenType(String token) {
-        Claims claims = parseToken(token);
-        return claims.get(CLAIMS_TOKEN_TYPE, String.class);
-    }
-    
-    public boolean isAccessToken(String token) {
-        return TOKEN_TYPE_ACCESS.equals(getTokenType(token));
-    }
-    
-    public String getUserId(String token) {
-        Claims claims = parseToken(token);
+    public String getUserId(Claims claims) {
         return claims.get(CLAIMS_USER_ID, String.class);
     }
     
-    public String getUsername(String token) {
-        Claims claims = parseToken(token);
+    public String getUsername(Claims claims) {
         return claims.get(CLAIMS_USERNAME, String.class);
     }
 }

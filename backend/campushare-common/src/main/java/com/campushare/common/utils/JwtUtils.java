@@ -13,41 +13,32 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * JWT工具类
- */
 @Slf4j
 @Component
 public class JwtUtils {
     
     private final SecretKey secretKey;
+    private final JwtParser jwtParser;
     
     public JwtUtils() {
-        // 使用HS256算法初始化密钥
         this.secretKey = Keys.hmacShaKeyFor(JwtConstants.JWT_SECRET.getBytes(StandardCharsets.UTF_8));
+        this.jwtParser = Jwts.parser()
+                .verifyWith(secretKey)
+                .build();
     }
     
-    /**
-     * 生成访问令牌
-     */
     public String generateAccessToken(String userId, String username) {
         return generateToken(userId, username, JwtConstants.TOKEN_TYPE_ACCESS, 
                            JwtConstants.USER_TOKEN_EXPIRE_TIME);
     }
     
-    /**
-     * 生成刷新令牌
-     */
     public String generateRefreshToken(String userId) {
         return generateToken(userId, null, JwtConstants.TOKEN_TYPE_REFRESH, 
                            JwtConstants.REFRESH_TOKEN_EXPIRE_TIME);
     }
     
-    /**
-     * 生成令牌
-     */
     private String generateToken(String userId, String username, String tokenType, long expiration) {
-        Map<String, Object> claims = new HashMap<>();
+        Map<String, Object> claims = new HashMap<>(4);
         claims.put(JwtConstants.CLAIMS_USER_ID, userId);
         claims.put(JwtConstants.CLAIMS_TOKEN_TYPE, tokenType);
         if (StrUtil.isNotBlank(username)) {
@@ -67,16 +58,9 @@ public class JwtUtils {
                 .compact();
     }
     
-    /**
-     * 解析Token
-     */
     public Claims parseToken(String token) {
         try {
-            return Jwts.parser()
-                    .verifyWith(secretKey)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
+            return jwtParser.parseSignedClaims(token).getPayload();
         } catch (ExpiredJwtException e) {
             log.error("Token已过期: {}", e.getMessage());
             throw e;
@@ -86,15 +70,9 @@ public class JwtUtils {
         }
     }
     
-    /**
-     * 验证Token
-     */
     public boolean validateToken(String token) {
         try {
-            Jwts.parser()
-                    .verifyWith(secretKey)
-                    .build()
-                    .parseSignedClaims(token);
+            jwtParser.parseSignedClaims(token);
             return true;
         } catch (Exception e) {
             log.error("Token验证失败: {}", e.getMessage());
@@ -102,47 +80,29 @@ public class JwtUtils {
         }
     }
     
-    /**
-     * 获取用户ID
-     */
     public String getUserId(String token) {
         Claims claims = parseToken(token);
         return claims.get(JwtConstants.CLAIMS_USER_ID, String.class);
     }
     
-    /**
-     * 获取用户名
-     */
     public String getUsername(String token) {
         Claims claims = parseToken(token);
         return claims.get(JwtConstants.CLAIMS_USERNAME, String.class);
     }
     
-    /**
-     * 获取Token类型
-     */
     public String getTokenType(String token) {
         Claims claims = parseToken(token);
         return claims.get(JwtConstants.CLAIMS_TOKEN_TYPE, String.class);
     }
     
-    /**
-     * 判断是否是访问令牌
-     */
     public boolean isAccessToken(String token) {
         return JwtConstants.TOKEN_TYPE_ACCESS.equals(getTokenType(token));
     }
     
-    /**
-     * 判断是否是刷新令牌
-     */
     public boolean isRefreshToken(String token) {
         return JwtConstants.TOKEN_TYPE_REFRESH.equals(getTokenType(token));
     }
     
-    /**
-     * 获取Token过期时间（秒）
-     */
     public long getExpiration() {
         return JwtConstants.USER_TOKEN_EXPIRE_TIME / 1000;
     }

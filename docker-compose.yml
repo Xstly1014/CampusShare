@@ -66,6 +66,7 @@ services:
     image: campusshare/user-service:latest
     container_name: campushare-user-service
     restart: unless-stopped
+    mem_limit: 1536m
     ports:
       - "8081:8081"
     environment:
@@ -111,6 +112,7 @@ services:
     image: campusshare/post-service:latest
     container_name: campushare-post-service
     restart: unless-stopped
+    mem_limit: 1536m
     ports:
       - "8082:8082"
     environment:
@@ -153,6 +155,7 @@ services:
     image: campusshare/gateway-service:latest
     container_name: campushare-gateway-service
     restart: unless-stopped
+    mem_limit: 768m
     ports:
       - "8080:8080"
     environment:

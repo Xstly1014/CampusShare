@@ -2,7 +2,7 @@ package com.campushare.gateway.filter;
 
 import cn.hutool.core.util.StrUtil;
 import com.campushare.gateway.utils.JwtUtils;
-import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -61,29 +61,24 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return unauthorized(exchange.getResponse(), "未提供认证令牌");
         }
         
-        try {
-            if (!jwtUtils.validateToken(token)) {
-                return unauthorized(exchange.getResponse(), "令牌无效或已过期");
-            }
-            
-            if (!jwtUtils.isAccessToken(token)) {
-                return unauthorized(exchange.getResponse(), "无效的令牌类型");
-            }
-            
-            String userId = jwtUtils.getUserId(token);
-            String username = jwtUtils.getUsername(token);
-            
-            ServerHttpRequest modifiedRequest = request.mutate()
-                    .header("X-User-Id", userId)
-                    .header("X-Username", username)
-                    .build();
-            
-            return chain.filter(exchange.mutate().request(modifiedRequest).build());
-            
-        } catch (JwtException e) {
-            log.error("JWT验证失败: {}", e.getMessage());
-            return unauthorized(exchange.getResponse(), "令牌验证失败");
+        Claims claims = jwtUtils.validateAndParse(token);
+        if (claims == null) {
+            return unauthorized(exchange.getResponse(), "令牌无效或已过期");
         }
+        
+        if (!jwtUtils.isAccessToken(claims)) {
+            return unauthorized(exchange.getResponse(), "无效的令牌类型");
+        }
+        
+        String userId = jwtUtils.getUserId(claims);
+        String username = jwtUtils.getUsername(claims);
+        
+        ServerHttpRequest modifiedRequest = request.mutate()
+                .header("X-User-Id", userId)
+                .header("X-Username", username)
+                .build();
+        
+        return chain.filter(exchange.mutate().request(modifiedRequest).build());
     }
     
     private boolean isWhiteListed(String path) {
