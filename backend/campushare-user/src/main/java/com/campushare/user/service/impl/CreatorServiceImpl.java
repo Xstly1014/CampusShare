@@ -120,6 +120,17 @@ public class CreatorServiceImpl implements CreatorService {
                 .build();
 
         creatorVerificationMapper.insert(verification);
+
+        User applicant = userMapper.selectById(userId);
+        String applicantName = applicant != null ? applicant.getUsername() : "用户";
+        List<User> admins = userMapper.selectList(new LambdaQueryWrapper<User>().eq(User::getRole, "ADMIN"));
+        for (User admin : admins) {
+            notificationService.createSystemNotification(
+                    admin.getId(),
+                    "新的创作者认证申请",
+                    applicantName + " 提交了创作者认证申请，请及时审核。"
+            );
+        }
     }
 
     @Override
