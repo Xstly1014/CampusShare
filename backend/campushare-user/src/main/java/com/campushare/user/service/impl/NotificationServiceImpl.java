@@ -54,15 +54,16 @@ public class NotificationServiceImpl implements NotificationService {
         try {
             Notification notif = Notification.builder()
                     .userId(userId)
-                    .senderId(null)
+                    .senderId("system")
                     .type("SYSTEM")
                     .targetId(title)
                     .targetTitle(content)
                     .isRead(0)
                     .build();
             notificationMapper.insert(notif);
+            log.info("系统通知已发送给用户 {}: {} - {}", userId, title, content);
         } catch (Exception e) {
-            log.warn("Failed to create system notification: {}", e.getMessage());
+            log.error("创建系统通知失败: userId={}, title={}, error={}", userId, title, e.getMessage(), e);
         }
     }
 
@@ -206,14 +207,15 @@ public class NotificationServiceImpl implements NotificationService {
 
             List<NotificationDetailDTO> result = new ArrayList<>();
             for (Notification n : notifs) {
-                User sender = n.getSenderId() != null ? userMapper.selectById(n.getSenderId()) : null;
+                boolean isSystem = "SYSTEM".equals(type) || "system".equals(n.getSenderId());
+                User sender = (!isSystem && n.getSenderId() != null) ? userMapper.selectById(n.getSenderId()) : null;
                 String senderName;
                 String senderAvatar;
-                if ("SYSTEM".equals(type)) {
+                if (isSystem) {
                     senderName = "系统通知";
                     senderAvatar = null;
                 } else {
-                    senderName = sender != null ? sender.getUsername() : "未知用户";
+                    senderName = sender != null ? sender.getUsername() : "系统通知";
                     senderAvatar = sender != null ? sender.getAvatarUrl() : null;
                 }
                 result.add(NotificationDetailDTO.builder()
@@ -294,7 +296,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         User sender = userMapper.selectById(latest.getSenderId());
-        String name = sender != null ? sender.getUsername() : "未知用户";
+        String name = (sender != null) ? sender.getUsername() : "系统通知";
 
         if (notifs.size() == 1) {
             if ("LIKE".equals(type)) return name + " 赞了你的帖子";
