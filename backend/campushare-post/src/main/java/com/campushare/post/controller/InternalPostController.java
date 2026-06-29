@@ -1,9 +1,12 @@
 package com.campushare.post.controller;
 
 import com.campushare.common.result.Result;
+import com.campushare.post.cache.CategoryCache;
 import com.campushare.post.dto.PostListDTO;
 import com.campushare.post.dto.UserPostStats;
+import com.campushare.post.entity.Category;
 import com.campushare.post.entity.Post;
+import com.campushare.post.entity.SubCategory;
 import com.campushare.post.feign.UserFeignClient;
 import com.campushare.post.service.PostService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +22,7 @@ public class InternalPostController {
 
     private final PostService postService;
     private final UserFeignClient userFeignClient;
+    private final CategoryCache categoryCache;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -64,42 +68,48 @@ public class InternalPostController {
     }
 
     private List<PostListDTO> enrichWithAuthor(List<Post> posts) {
-        if (posts.isEmpty()) {
-            return new ArrayList<>();
+        int size = posts.size();
+        if (size == 0) {
+            return Collections.emptyList();
         }
 
-        Set<String> authorIds = new HashSet<>();
+        Set<String> authorIds = new HashSet<>(size);
         for (Post p : posts) {
-            if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
-        }
-
-        Map<String, UserFeignClient.UserSimpleInfo> authorMap = new HashMap<>();
-        try {
-            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(new ArrayList<>(authorIds));
-            if (authors != null) {
-                for (UserFeignClient.UserSimpleInfo u : authors) {
-                    authorMap.put(u.getId(), u);
-                }
+            if (p.getAuthorId() != null) {
+                authorIds.add(p.getAuthorId());
             }
-        } catch (Exception e) {
         }
 
-        List<PostListDTO> result = new ArrayList<>();
+        Map<String, UserFeignClient.UserSimpleInfo> authorMap = new HashMap<>(authorIds.size());
+        if (!authorIds.isEmpty()) {
+            try {
+                List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(new ArrayList<>(authorIds));
+                if (authors != null) {
+                    for (UserFeignClient.UserSimpleInfo u : authors) {
+                        authorMap.put(u.getId(), u);
+                    }
+                }
+            } catch (Exception e) {
+            }
+        }
+
+        List<PostListDTO> result = new ArrayList<>(size);
         for (Post p : posts) {
             UserFeignClient.UserSimpleInfo author = authorMap.get(p.getAuthorId());
+            Category cat = categoryCache.getCategory(p.getCategoryId());
+            SubCategory sub = categoryCache.getSubCategory(p.getSubCategoryId());
             PostListDTO dto = new PostListDTO();
             dto.setId(p.getId());
             dto.setSchoolId(p.getSchoolId());
             dto.setCategoryId(p.getCategoryId());
             dto.setSubCategoryId(p.getSubCategoryId());
-            dto.setCategoryName(null);
-            dto.setSubCategoryName(null);
+            dto.setCategoryName(cat != null ? cat.getName() : null);
+            dto.setSubCategoryName(sub != null ? sub.getName() : null);
             dto.setAuthorId(p.getAuthorId());
             dto.setAuthorName(author != null ? author.getUsername() : "未知用户");
             dto.setAuthorAvatar(author != null ? author.getAvatarUrl() : null);
             dto.setPostType(p.getPostType());
             dto.setTitle(p.getTitle());
-            dto.setContent(p.getContent());
             dto.setFileUrl(p.getFileUrl());
             dto.setFileName(p.getFileName());
             dto.setFileType(p.getFileType());

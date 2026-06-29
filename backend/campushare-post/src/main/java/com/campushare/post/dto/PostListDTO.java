@@ -19,7 +19,6 @@ public class PostListDTO {
     private String authorAvatar;
     private String postType;
     private String title;
-    private String content;
     private String fileUrl;
     private String fileName;
     private String fileType;

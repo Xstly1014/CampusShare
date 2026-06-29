@@ -2,20 +2,18 @@ package com.campushare.post.controller;
 
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
+import com.campushare.post.cache.CategoryCache;
 import com.campushare.post.dto.*;
 import com.campushare.post.entity.Category;
 import com.campushare.post.entity.Post;
 import com.campushare.post.entity.SubCategory;
 import com.campushare.post.feign.UserFeignClient;
-import com.campushare.post.mapper.CategoryMapper;
-import com.campushare.post.mapper.SubCategoryMapper;
 import com.campushare.post.service.PostService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/posts")
@@ -24,8 +22,7 @@ public class PostController {
 
     private final PostService postService;
     private final JwtUtils jwtUtils;
-    private final CategoryMapper categoryMapper;
-    private final SubCategoryMapper subCategoryMapper;
+    private final CategoryCache categoryCache;
     private final UserFeignClient userFeignClient;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -80,8 +77,8 @@ public class PostController {
         } catch (Exception e) {
         }
 
-        Category cat = post.getCategoryId() != null ? categoryMapper.selectById(post.getCategoryId()) : null;
-        SubCategory sub = post.getSubCategoryId() != null ? subCategoryMapper.selectById(post.getSubCategoryId()) : null;
+        Category cat = categoryCache.getCategory(post.getCategoryId());
+        SubCategory sub = categoryCache.getSubCategory(post.getSubCategoryId());
         PostDetailDTO dto = new PostDetailDTO();
         dto.setId(post.getId());
         dto.setSchoolId(post.getSchoolId());
@@ -225,55 +222,36 @@ public class PostController {
     }
 
     private List<PostListDTO> enrichWithAuthor(List<Post> posts) {
-        if (posts.isEmpty()) {
-            return new ArrayList<>();
+        int size = posts.size();
+        if (size == 0) {
+            return Collections.emptyList();
         }
 
-        Set<String> authorIds = new HashSet<>();
-        Set<String> catIds = new HashSet<>();
-        Set<String> subCatIds = new HashSet<>();
+        Set<String> authorIds = new HashSet<>(size);
         for (Post p : posts) {
-            if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
-            if (p.getCategoryId() != null) catIds.add(p.getCategoryId());
-            if (p.getSubCategoryId() != null) subCatIds.add(p.getSubCategoryId());
-        }
-
-        Map<String, UserFeignClient.UserSimpleInfo> authorMap = new HashMap<>();
-        try {
-            List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(new ArrayList<>(authorIds));
-            if (authors != null) {
-                for (UserFeignClient.UserSimpleInfo u : authors) {
-                    authorMap.put(u.getId(), u);
-                }
-            }
-        } catch (Exception e) {
-        }
-
-        Map<String, Category> categoryMap = new HashMap<>();
-        if (!catIds.isEmpty()) {
-            List<Category> cats = categoryMapper.selectBatchIds(catIds);
-            if (cats != null) {
-                for (Category c : cats) {
-                    categoryMap.put(c.getId(), c);
-                }
+            if (p.getAuthorId() != null) {
+                authorIds.add(p.getAuthorId());
             }
         }
 
-        Map<String, SubCategory> subCategoryMap = new HashMap<>();
-        if (!subCatIds.isEmpty()) {
-            List<SubCategory> subs = subCategoryMapper.selectBatchIds(subCatIds);
-            if (subs != null) {
-                for (SubCategory s : subs) {
-                    subCategoryMap.put(s.getId(), s);
+        Map<String, UserFeignClient.UserSimpleInfo> authorMap = new HashMap<>(authorIds.size());
+        if (!authorIds.isEmpty()) {
+            try {
+                List<UserFeignClient.UserSimpleInfo> authors = userFeignClient.getBatchUserInfo(new ArrayList<>(authorIds));
+                if (authors != null) {
+                    for (UserFeignClient.UserSimpleInfo u : authors) {
+                        authorMap.put(u.getId(), u);
+                    }
                 }
+            } catch (Exception e) {
             }
         }
 
-        List<PostListDTO> result = new ArrayList<>();
+        List<PostListDTO> result = new ArrayList<>(size);
         for (Post p : posts) {
             UserFeignClient.UserSimpleInfo author = authorMap.get(p.getAuthorId());
-            Category cat = p.getCategoryId() != null ? categoryMap.get(p.getCategoryId()) : null;
-            SubCategory sub = p.getSubCategoryId() != null ? subCategoryMap.get(p.getSubCategoryId()) : null;
+            Category cat = categoryCache.getCategory(p.getCategoryId());
+            SubCategory sub = categoryCache.getSubCategory(p.getSubCategoryId());
             PostListDTO dto = new PostListDTO();
             dto.setId(p.getId());
             dto.setSchoolId(p.getSchoolId());
@@ -286,7 +264,6 @@ public class PostController {
             dto.setAuthorAvatar(author != null ? author.getAvatarUrl() : null);
             dto.setPostType(p.getPostType());
             dto.setTitle(p.getTitle());
-            dto.setContent(p.getContent());
             dto.setFileUrl(p.getFileUrl());
             dto.setFileName(p.getFileName());
             dto.setFileType(p.getFileType());
