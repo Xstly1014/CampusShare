@@ -35,4 +35,13 @@ public class DataInitController {
         String result = dataInitService.clearAllPosts();
         return Result.success(result);
     }
+
+    @PostMapping("/init-targeted")
+    public Result<String> initTargetedSchoolData(
+            @RequestParam(defaultValue = "1000") int userCount,
+            @RequestParam(defaultValue = "10") int postsPerUser,
+            @RequestParam(defaultValue = "1") String schoolId) {
+        String result = dataInitService.initTargetedSchoolData(userCount, postsPerUser, schoolId);
+        return Result.success(result);
+    }
 }

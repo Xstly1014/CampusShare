@@ -220,6 +220,77 @@ public class DataInitServiceImpl implements DataInitService {
         return result;
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public String initTargetedSchoolData(int userCount, int postsPerUser, String schoolId) {
+        log.info("========== 开始精准数据初始化: {} 用户 × {} 帖/人, 学校={} ==========", userCount, postsPerUser, schoolId);
+
+        int batchSize = 200;
+        int totalUsers = 0;
+        int totalPosts = 0;
+        int totalBatches = (int) Math.ceil((double) userCount / batchSize);
+
+        for (int batch = 0; batch < totalBatches; batch++) {
+            int currentBatchSize = Math.min(batchSize, userCount - batch * batchSize);
+            log.info("===== 处理第 {}/{} 批，创建 {} 个用户(学校={}) =====", batch + 1, totalBatches, currentBatchSize, schoolId);
+
+            List<Map<String, String>> users;
+            try {
+                Map<String, Object> request = new HashMap<>();
+                request.put("count", currentBatchSize);
+                request.put("schoolId", schoolId);
+                Object response = userFeignClient.batchCreateTestUsers(request);
+
+                if (response instanceof Map) {
+                    Map<String, Object> respMap = (Map<String, Object>) response;
+                    Object data = respMap.get("data");
+                    if (data instanceof List) {
+                        users = (List<Map<String, String>>) data;
+                    } else {
+                        log.error("Feign返回数据格式异常: {}", respMap);
+                        continue;
+                    }
+                } else {
+                    log.error("Feign返回类型异常: {}", response);
+                    continue;
+                }
+            } catch (Exception e) {
+                log.error("第 {} 批创建用户失败: {}", batch + 1, e.getMessage(), e);
+                continue;
+            }
+
+            totalUsers += users.size();
+            log.info("第 {} 批用户创建成功: {} 个", batch + 1, users.size());
+
+            List<Post> posts = new ArrayList<>();
+            for (Map<String, String> userInfo : users) {
+                String userId = userInfo.get("id");
+                if (userId == null) continue;
+
+                for (int p = 0; p < postsPerUser; p++) {
+                    posts.add(buildRandomPost(schoolId, userId));
+                    totalPosts++;
+
+                    if (posts.size() >= 200) {
+                        batchInsertPosts(posts);
+                        posts.clear();
+                    }
+                }
+            }
+
+            if (!posts.isEmpty()) {
+                batchInsertPosts(posts);
+            }
+
+            log.info("第 {} 批完成，累计: {} 用户, {} 帖子", batch + 1, totalUsers, totalPosts);
+        }
+
+        String result = String.format("精准数据初始化完成！学校=%s，共创建 %d 个用户，%d 条帖子",
+                schoolId, totalUsers, totalPosts);
+        log.info(result);
+        return result;
+    }
+
     private Post buildRandomPost(String schoolId, String authorId) {
         String postType = getRandomPostType();
         String title = generateTitle();

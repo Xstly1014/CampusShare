@@ -456,7 +456,7 @@ export default function SchoolDetailPage() {
         <div className="max-w-5xl mx-auto px-4 pt-3 pb-2">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/home')}
+              onClick={() => navigate(-1)}
               className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors"
             >
               <ChevronLeft className="w-5 h-5 text-gray-600" />

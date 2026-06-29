@@ -80,17 +80,18 @@ public class InternalUserController {
     @PostMapping("/batch-create-test")
     public Result<List<Map<String, String>>> batchCreateTestUsers(@RequestBody Map<String, Object> request) {
         int count = (int) request.getOrDefault("count", 100);
+        String fixedSchoolId = (String) request.get("schoolId");
         Random random = new Random();
         List<Map<String, String>> users = new ArrayList<>();
         String defaultPasswordHash = passwordEncoder.encode("123456");
 
-        log.info("开始批量创建 {} 个测试用户", count);
+        log.info("开始批量创建 {} 个测试用户, schoolId={}", count, fixedSchoolId != null ? fixedSchoolId : "random");
 
         for (int i = 0; i < count; i++) {
             String surname = SURNAMES[random.nextInt(SURNAMES.length)];
             String givenName = GIVEN_NAMES[random.nextInt(GIVEN_NAMES.length)];
             String username = surname + givenName + (random.nextInt(9000) + 1000);
-            String schoolId = SCHOOL_IDS[random.nextInt(SCHOOL_IDS.length)];
+            String schoolId = fixedSchoolId != null ? fixedSchoolId : SCHOOL_IDS[random.nextInt(SCHOOL_IDS.length)];
             String avatarUrl = "https://api.dicebear.com/7.x/avataaars/svg?seed=" + UUID.randomUUID();
 
             String[] bios = {
