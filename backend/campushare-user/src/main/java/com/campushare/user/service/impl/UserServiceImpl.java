@@ -318,15 +318,20 @@ public class UserServiceImpl implements UserService {
     }
     
     private User findByAccount(String account) {
+        log.info("尝试登录，账号: {}", account);
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        if (account.contains("@")) {
-            wrapper.eq(User::getEmail, account);
-        } else if (account.matches("^1[3-9]\\d{9}$")) {
-            wrapper.eq(User::getPhone, account);
+        wrapper.eq(User::getPhone, account)
+               .or()
+               .eq(User::getUsername, account)
+               .or()
+               .eq(User::getEmail, account);
+        User user = userMapper.selectOne(wrapper);
+        if (user != null) {
+            log.info("登录查询成功，用户: {}, phone: {}, role: {}", user.getUsername(), user.getPhone(), user.getRole());
         } else {
-            throw new BusinessException(ResultCode.USER_ACCOUNT_NOT_EXIST);
+            log.warn("登录查询失败，未找到账号: {}", account);
         }
-        return userMapper.selectOne(wrapper);
+        return user;
     }
     
     private void saveTokenToRedis(String userId, String token) {
