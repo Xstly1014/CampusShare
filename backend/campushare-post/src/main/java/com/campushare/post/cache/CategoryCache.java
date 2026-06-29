@@ -6,10 +6,11 @@ import com.campushare.post.mapper.CategoryMapper;
 import com.campushare.post.mapper.SubCategoryMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,7 +26,7 @@ public class CategoryCache {
     private final Map<String, Category> categoryMap = new ConcurrentHashMap<>();
     private final Map<String, SubCategory> subCategoryMap = new ConcurrentHashMap<>();
 
-    @PostConstruct
+    @EventListener(ApplicationReadyEvent.class)
     public void init() {
         refresh();
     }
