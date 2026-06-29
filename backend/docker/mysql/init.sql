@@ -260,15 +260,15 @@ INSERT INTO schools (id, name, logo_url, region, description, resource_count) VA
 ('7', '武汉大学', 'https://example.com/whu-logo.png', '湖北省武汉市', '综合性大学', 1456),
 ('8', '中山大学', 'https://example.com/sysu-logo.png', '广东省广州市', '教育部直属高校', 1789);
 
--- 插入管理员用户（用户名: admin, 密码: Test123456）
-INSERT INTO users (id, username, email, password_hash, bio, role, status, avatar_url) VALUES
-('550e8400-e29b-41d4-a716-446655440000', 'admin', 'T1T2c@PjXkDek.47v',
+-- 插入管理员用户（手机号: NOkT4YYwjyD, 密码: Test123456）
+INSERT INTO users (id, username, email, phone, password_hash, bio, role, status, avatar_url) VALUES
+('550e8400-e29b-41d4-a716-446655440000', 'admin', '4fYga@PjXkDek.h7v', 'rLdwD4Vkpa9',
  '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
  '系统管理员', 'ADMIN', 1, 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin');
 
--- 插入测试用户数据（用户名: testuser, 密码: Test123456）
+-- 插入测试用户数据（手机号: pv8wl3rkgdE, 密码: Test123456）
 INSERT INTO users (id, username, email, phone, password_hash, bio, school_id, role, status) VALUES
-('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'yDIk@oz12GUV.ROY', 'NOkT4YYwjyD',
+('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'yDIk@oz12GUV.ROY', 'pv8wl3rkgdE',
  '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
  '这是一名测试用户', '3', 'USER', 1);
 
