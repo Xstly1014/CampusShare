@@ -1,6 +1,10 @@
 spring:
   cloud:
     gateway:
+      httpclient:
+        pool:
+          max-connections: 50
+          max-idle-time: 30s
       routes:
         - id: post-service
           uri: http://post-service:8082
@@ -35,6 +39,10 @@ server:
     max-initial-line-length: 4096
     max-header-size: 4096
     max-content-length: 104857600
+
+reactor:
+  netty:
+    ioWorkerCount: 1
 
 logging:
   level:

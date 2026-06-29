@@ -5,8 +5,8 @@ spring:
     password: root123456
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
+      maximum-pool-size: 8
+      minimum-idle: 2
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
@@ -17,6 +17,11 @@ spring:
       port: 6379
       password: ""
       database: 0
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 2
+          min-idle: 1
 
   mail:
     host: ${MAIL_HOST:smtp.qq.com}
@@ -39,8 +44,8 @@ spring:
 feign:
   httpclient:
     enabled: true
-    max-connections: 200
-    max-connections-per-route: 50
+    max-connections: 50
+    max-connections-per-route: 20
 
 service:
   post:
@@ -66,10 +71,10 @@ server:
   port: 8081
   tomcat:
     threads:
-      max: 200
-      min-spare: 10
-    accept-count: 100
-    max-connections: 10000
+      max: 32
+      min-spare: 4
+    accept-count: 50
+    max-connections: 200
 
 file:
   upload-path: /app/uploads/

@@ -24,7 +24,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backend/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    command: --default-authentication-plugin=mysql_native_password --skip-mysqlx
+    command: --default-authentication-plugin=mysql_native_password --skip-mysqlx --innodb-buffer-pool-size=64M --innodb-log-buffer-size=8M --max-connections=50 --table-open-cache=64 --thread-cache-size=4 --performance-schema=OFF
     healthcheck:
       test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD" ]
       interval: 10s
@@ -66,19 +66,13 @@ services:
     image: campusshare/user-service:latest
     container_name: campushare-user-service
     restart: unless-stopped
-    mem_limit: 1536m
+    mem_limit: 384m
     ports:
       - "8081:8081"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms512m -Xmx1024m -Dotel.traces.exporter=none
-      - OTEL_SERVICE_NAME=campushare-user
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_LOGS_EXPORTER=none
-      - OTEL_METRICS_EXPORTER=none
-      - OTEL_TRACES_SAMPLER=parentbased_always_off
+      - JAVA_OPTS=-Xms192m -Xmx256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -XX:CICompilerCount=2 -Djava.util.concurrent.ForkJoinPool.common.parallelism=1 -Dotel.traces.exporter=none
       # 邮件 SMTP 配置（在 .env 文件中设置真实值）
       - MAIL_HOST=${MAIL_HOST:-smtp.qq.com}
       - MAIL_PORT=${MAIL_PORT:-587}
@@ -96,10 +90,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8081/actuator/health" ]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
     networks:
       - campushare-network
 
@@ -112,19 +106,13 @@ services:
     image: campusshare/post-service:latest
     container_name: campushare-post-service
     restart: unless-stopped
-    mem_limit: 1536m
+    mem_limit: 384m
     ports:
       - "8082:8082"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms512m -Xmx1024m -Dotel.traces.exporter=none
-      - OTEL_SERVICE_NAME=campushare-post
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_LOGS_EXPORTER=none
-      - OTEL_METRICS_EXPORTER=none
-      - OTEL_TRACES_SAMPLER=parentbased_always_off
+      - JAVA_OPTS=-Xms192m -Xmx256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -XX:CICompilerCount=2 -Djava.util.concurrent.ForkJoinPool.common.parallelism=1 -Dotel.traces.exporter=none
     dns:
       - 8.8.8.8
       - 114.114.114.114
@@ -139,10 +127,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8082/actuator/health" ]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
     networks:
       - campushare-network
 
@@ -155,19 +143,13 @@ services:
     image: campusshare/gateway-service:latest
     container_name: campushare-gateway-service
     restart: unless-stopped
-    mem_limit: 768m
+    mem_limit: 256m
     ports:
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms256m -Xmx512m -Dotel.traces.exporter=none
-      - OTEL_SERVICE_NAME=campushare-gateway
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
-      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-      - OTEL_LOGS_EXPORTER=none
-      - OTEL_METRICS_EXPORTER=none
-      - OTEL_TRACES_SAMPLER=parentbased_always_off
+      - JAVA_OPTS=-Xms96m -Xmx160m -XX:+UseSerialGC -XX:MaxMetaspaceSize=96m -XX:CICompilerCount=2 -Dreactor.netty.ioWorkerCount=1 -Djava.util.concurrent.ForkJoinPool.common.parallelism=1 -Dotel.traces.exporter=none
     depends_on:
       user-service:
         condition: service_healthy
@@ -175,10 +157,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/actuator/health" ]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     networks:
       - campushare-network
 
