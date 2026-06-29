@@ -361,4 +361,50 @@ public class DataInitServiceImpl implements DataInitService {
         int minutesBack = random.nextInt(60);
         return now.minusDays(daysBack).minusHours(hoursBack).minusMinutes(minutesBack);
     }
+
+    @Override
+    public String initCreatorTestData(String userId, String schoolId) {
+        log.info("========== 开始为用户 {} 初始化创作者测试数据（学校={}） ==========", userId, schoolId);
+
+        int postCount = 60;
+        int minLikesPerPost = 180;
+        int maxLikesPerPost = 220;
+        List<Post> posts = new ArrayList<>();
+
+        for (int i = 0; i < postCount; i++) {
+            String postType = getRandomPostType();
+            String title = generateTitle();
+            String content = generateContent();
+            LocalDateTime randomTime = generateRandomTime();
+            int likeCount = minLikesPerPost + random.nextInt(maxLikesPerPost - minLikesPerPost + 1);
+            int viewCount = likeCount * 5 + random.nextInt(200);
+
+            Post post = Post.builder()
+                    .schoolId(schoolId)
+                    .authorId(userId)
+                    .postType(postType)
+                    .title(title)
+                    .content(content)
+                    .viewCount(viewCount)
+                    .starCount(random.nextInt(50))
+                    .likeCount(likeCount)
+                    .commentCount(random.nextInt(20))
+                    .status(1)
+                    .deleted(false)
+                    .createTime(randomTime)
+                    .updateTime(randomTime)
+                    .build();
+            posts.add(post);
+        }
+
+        batchInsertPosts(posts);
+
+        long totalLikes = posts.stream().mapToLong(Post::getLikeCount).sum();
+        long totalViews = posts.stream().mapToLong(Post::getViewCount).sum();
+
+        String result = String.format("创作者测试数据初始化完成：用户ID=%s，共创建%d篇帖子，总获赞%d，总浏览%d（满足：帖≥50，赞≥10000）",
+                userId, postCount, totalLikes, totalViews);
+        log.info(result);
+        return result;
+    }
 }

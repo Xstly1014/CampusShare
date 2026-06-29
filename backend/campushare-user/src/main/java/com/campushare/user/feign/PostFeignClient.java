@@ -4,9 +4,11 @@ import com.campushare.common.result.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
+import java.util.Map;
 
 @FeignClient(name = "post-service", url = "${service.post.url:http://localhost:8082}")
 public interface PostFeignClient {
@@ -37,4 +39,9 @@ public interface PostFeignClient {
 
     @GetMapping("/internal/posts/user/{userId}/stats")
     Result<UserPostStats> getUserStats(@PathVariable("userId") String userId);
+
+    @PostMapping("/admin/init-creator-data")
+    Result<String> initCreatorTestData(
+            @RequestParam("userId") String userId,
+            @RequestParam(value = "schoolId", defaultValue = "3") String schoolId);
 }

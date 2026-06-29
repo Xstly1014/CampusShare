@@ -4,15 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.common.result.Result;
 import com.campushare.user.dto.*;
 import com.campushare.user.entity.User;
+import com.campushare.user.feign.PostFeignClient;
 import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -21,6 +24,7 @@ public class AuthController {
     private final UserService userService;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final PostFeignClient postFeignClient;
 
     @PostMapping("/login")
     public Result<LoginResponse> login(@RequestBody @Valid LoginRequest request) {
@@ -53,28 +57,25 @@ public class AuthController {
         int updated = 0;
         String password = "123456";
 
-        // 管理员
         if (createOrUpdateUser("admin", "13068735578", "4fYga@PjXkDek.h7v", "系统管理员", null, "ADMIN", password, "admin")) {
             created++;
         } else {
             updated++;
         }
 
-        // 创作者（北京大学）
-        if (createOrUpdateUser("creator", "13068735577", "gCyJvX@Ct2SKWG.V2W", "认证创作者", "3", "CREATOR", password, "creator")) {
+        if (createOrUpdateUser("testuser", "13068735577", "Xgvj7C@my6946a.nFf", "测试用户", "3", "USER", password, "testuser")) {
             created++;
         } else {
             updated++;
         }
 
-        // 普通用户（北京大学）
-        if (createOrUpdateUser("normaluser", "13068735576", "q6nAwHkBC@zNO7.GOx", "普通测试用户", "3", "USER", password, "normaluser")) {
+        if (createOrUpdateUser("normaluser", "13068735576", "q6nAwHkBC@zNO7.GOx", "普通用户", "3", "USER", password, "normaluser")) {
             created++;
         } else {
             updated++;
         }
 
-        String msg = String.format("初始化完成：新建%d个账号，更新%d个账号。\n管理员：13068735578/%s\n创作者：13068735577/%s\n普通用户：13068735576/%s",
+        String msg = String.format("初始化完成：新建%d个账号，更新%d个账号。\n管理员：130******78/%s\n测试用户：130******77/%s\n普通用户：130******76/%s\n\n使用POST /api/auth/prepare-creator?phone=130******77 可让测试用户满足创作者申请条件",
                 created, updated, password, password, password);
         return Result.success(msg, null);
     }
@@ -88,6 +89,25 @@ public class AuthController {
         user.setRole("CREATOR");
         userMapper.updateById(user);
         return Result.success(String.format("已将用户 %s（%s）设置为创作者", user.getUsername(), phone), null);
+    }
+
+    @PostMapping("/prepare-creator")
+    public Result<String> prepareCreator(@RequestParam String phone) {
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, phone));
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        String schoolId = user.getSchoolId() != null ? user.getSchoolId() : "3";
+        try {
+            Result<String> feignResult = postFeignClient.initCreatorTestData(user.getId(), schoolId);
+            String data = feignResult.getData();
+            String msg = String.format("已为用户 %s（%s）生成创作者申请数据：%s", user.getUsername(), phone, data);
+            log.info(msg);
+            return Result.success(msg, null);
+        } catch (Exception e) {
+            log.error("调用post-service生成创作者数据失败", e);
+            return Result.error("生成数据失败：" + e.getMessage());
+        }
     }
 
     private boolean createOrUpdateUser(String username, String phone, String email, String bio, String schoolId, String role, String password, String avatarSeed) {

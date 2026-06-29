@@ -44,4 +44,12 @@ public class DataInitController {
         String result = dataInitService.initTargetedSchoolData(userCount, postsPerUser, schoolId);
         return Result.success(result);
     }
+
+    @PostMapping("/init-creator-data")
+    public Result<String> initCreatorTestData(
+            @RequestParam String userId,
+            @RequestParam(defaultValue = "3") String schoolId) {
+        String result = dataInitService.initCreatorTestData(userId, schoolId);
+        return Result.success(result);
+    }
 }
