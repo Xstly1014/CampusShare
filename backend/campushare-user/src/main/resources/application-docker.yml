@@ -4,6 +4,12 @@ spring:
     username: root
     password: root123456
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   data:
     redis:
@@ -20,7 +26,7 @@ spring:
     default-encoding: UTF-8
     properties:
       mail:
-        debug: true
+        debug: false
         smtp:
           auth: true
           starttls:
@@ -29,6 +35,12 @@ spring:
           connectiontimeout: 30000
           timeout: 30000
           writetimeout: 30000
+
+feign:
+  httpclient:
+    enabled: true
+    max-connections: 200
+    max-connections-per-route: 50
 
 service:
   post:
@@ -43,7 +55,7 @@ mail:
 
 mybatis-plus:
   configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
   global-config:
     db-config:
       logic-delete-field: deleted
@@ -52,6 +64,12 @@ mybatis-plus:
 
 server:
   port: 8081
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    accept-count: 100
+    max-connections: 10000
 
 file:
   upload-path: /app/uploads/

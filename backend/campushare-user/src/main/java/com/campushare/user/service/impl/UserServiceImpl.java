@@ -97,8 +97,11 @@ public class UserServiceImpl implements UserService {
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .status(1)
                 .build();
-        
+
         userMapper.insert(user);
+
+        user.setAvatarUrl("https://api.dicebear.com/7.x/avataaars/svg?seed=" + user.getId());
+        userMapper.updateById(user);
         
         String token = jwtUtils.generateAccessToken(user.getId(), user.getUsername());
         String refreshToken = jwtUtils.generateRefreshToken(user.getId());
