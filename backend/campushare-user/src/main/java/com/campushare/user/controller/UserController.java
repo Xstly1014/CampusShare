@@ -35,6 +35,7 @@ public class UserController {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         UserDTO user = userService.getCurrentUser(userId);
         user.setCreator(creatorService.isCreator(userId));
+        user.setAdmin(creatorService.isAdmin(userId));
         return Result.success(user);
     }
 
@@ -97,6 +98,7 @@ public class UserController {
             dto.setAvatarUrl(u.getAvatarUrl());
             dto.setBio(u.getBio());
             dto.setCreator(creatorService.isCreator(u.getId()));
+            dto.setAdmin(creatorService.isAdmin(u.getId()));
             result.add(dto);
         }
         return Result.success(result);
@@ -128,9 +130,10 @@ public class UserController {
                 .totalStars(stats.getTotalStars())
                 .followerCount(followerCount)
                 .followingCount(followingCount)
-                .isFollowing(isFollowing)
-                .isSelf(currentUserId.equals(userId))
-                .isCreator(creatorService.isCreator(userId))
+                .following(isFollowing)
+                .self(currentUserId.equals(userId))
+                .creator(creatorService.isCreator(userId))
+                .admin(creatorService.isAdmin(userId))
                 .build();
         return Result.success(dto);
     }

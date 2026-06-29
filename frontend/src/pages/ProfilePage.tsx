@@ -469,6 +469,15 @@ export default function ProfilePage() {
 
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {user?.isAdmin && (
+            <button onClick={() => navigate('/admin/creator')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+              <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
+                <Shield className="w-4 h-4 text-red-600" />
+              </div>
+              <span className="flex-1 text-left text-sm text-gray-700">创作者审核管理</span>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </button>
+          )}
           <button onClick={() => navigate('/notifications')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
             <div className="w-8 h-8 bg-cyan-50 rounded-lg flex items-center justify-center">
               <MessageSquare className="w-4 h-4 text-cyan-600" />

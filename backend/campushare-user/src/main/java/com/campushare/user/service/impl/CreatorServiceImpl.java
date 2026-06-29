@@ -1,18 +1,29 @@
 package com.campushare.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.exception.BusinessException;
+import com.campushare.user.dto.CreatorApplicationItem;
 import com.campushare.user.dto.CreatorApplyRequest;
 import com.campushare.user.dto.CreatorStatsDTO;
 import com.campushare.user.dto.CreatorStatusDTO;
+import com.campushare.user.dto.CreatorVerifyRequest;
 import com.campushare.user.entity.CreatorVerification;
+import com.campushare.user.entity.User;
 import com.campushare.user.feign.PostFeignClient;
 import com.campushare.user.feign.UserPostStats;
 import com.campushare.user.mapper.CreatorVerificationMapper;
+import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.CreatorService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +33,7 @@ public class CreatorServiceImpl implements CreatorService {
     private static final int REQUIRED_POSTS = 50;
 
     private final CreatorVerificationMapper creatorVerificationMapper;
+    private final UserMapper userMapper;
     private final PostFeignClient postFeignClient;
 
     @Override
@@ -106,5 +118,81 @@ public class CreatorServiceImpl implements CreatorService {
                 .build();
 
         creatorVerificationMapper.insert(verification);
+    }
+
+    @Override
+    public boolean isAdmin(String userId) {
+        User user = userMapper.selectById(userId);
+        return user != null && "ADMIN".equals(user.getRole());
+    }
+
+    @Override
+    public IPage<CreatorApplicationItem> getApplicationList(String status, int page, int size) {
+        Page<CreatorVerification> pageParam = new Page<>(page, size);
+        LambdaQueryWrapper<CreatorVerification> wrapper = new LambdaQueryWrapper<>();
+        if (status != null && !status.isEmpty()) {
+            wrapper.eq(CreatorVerification::getStatus, status);
+        }
+        wrapper.orderByDesc(CreatorVerification::getCreateTime);
+
+        IPage<CreatorVerification> verificationPage = creatorVerificationMapper.selectPage(pageParam, wrapper);
+
+        List<String> userIds = verificationPage.getRecords().stream()
+                .map(CreatorVerification::getUserId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<String, User> userMap;
+        if (!userIds.isEmpty()) {
+            List<User> users = userMapper.selectBatchIds(userIds);
+            userMap = users.stream().collect(Collectors.toMap(User::getId, u -> u));
+        } else {
+            userMap = Map.of();
+        }
+
+        return verificationPage.convert(v -> {
+            User user = userMap.get(v.getUserId());
+            return CreatorApplicationItem.builder()
+                    .id(v.getId())
+                    .userId(v.getUserId())
+                    .username(user != null ? user.getUsername() : "未知用户")
+                    .avatarUrl(user != null ? user.getAvatarUrl() : null)
+                    .realName(v.getRealName())
+                    .idCard(v.getIdCard())
+                    .totalLikes(v.getTotalLikes())
+                    .totalPosts(v.getTotalPosts())
+                    .status(v.getStatus())
+                    .rejectReason(v.getRejectReason())
+                    .applyTime(v.getCreateTime())
+                    .reviewTime(v.getReviewTime())
+                    .build();
+        });
+    }
+
+    @Override
+    @Transactional
+    public void verify(String adminId, Integer applicationId, CreatorVerifyRequest request) {
+        if (!isAdmin(adminId)) {
+            throw new BusinessException(4030, "无权限操作");
+        }
+
+        CreatorVerification verification = creatorVerificationMapper.selectById(applicationId);
+        if (verification == null) {
+            throw new BusinessException(4000, "申请不存在");
+        }
+        if (!"PENDING".equals(verification.getStatus())) {
+            throw new BusinessException(4000, "该申请已审核");
+        }
+
+        if (request.isApproved()) {
+            verification.setStatus("APPROVED");
+            verification.setRejectReason(null);
+        } else {
+            verification.setStatus("REJECTED");
+            verification.setRejectReason(request.getRejectReason());
+        }
+        verification.setReviewerId(adminId);
+        verification.setReviewTime(LocalDateTime.now());
+        creatorVerificationMapper.updateById(verification);
     }
 }

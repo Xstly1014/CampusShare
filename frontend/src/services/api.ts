@@ -21,5 +21,7 @@ export type {
   SubCategory,
   CreatorStats,
   CreatorStatus,
+  CreatorApplication,
+  ApplicationListResponse,
   PostType,
 } from './index'

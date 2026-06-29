@@ -61,5 +61,8 @@ public class UserDTO {
     private String createTime;
 
     @JsonProperty("isCreator")
-    private boolean isCreator;
+    private boolean creator;
+
+    @JsonProperty("isAdmin")
+    private boolean admin;
 }

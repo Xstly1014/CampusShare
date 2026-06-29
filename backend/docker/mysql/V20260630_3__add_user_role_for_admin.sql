@@ -1,0 +1,20 @@
+-- 为users表添加role字段，支持管理员角色
+-- 为creator_verifications表添加审核人字段
+-- 执行时间：2026-06-30
+
+-- users表添加role字段
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'USER' COMMENT '用户角色：USER-普通用户，ADMIN-管理员' AFTER school_id;
+ALTER TABLE users ADD INDEX IF NOT EXISTS idx_role (role);
+
+-- 更新现有用户role为USER（防止NULL）
+UPDATE users SET role='USER' WHERE role IS NULL OR role='';
+
+-- creator_verifications表添加审核相关字段（如果不存在）
+ALTER TABLE creator_verifications ADD COLUMN IF NOT EXISTS reviewer_id VARCHAR(36) COMMENT '审核人ID' AFTER review_time;
+
+-- 插入默认管理员账号（用户名: admin, 密码: Test123456）
+-- 密码哈希: $2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2
+INSERT IGNORE INTO users (id, username, email, password_hash, bio, role, status, avatar_url) VALUES
+('550e8400-e29b-41d4-a716-446655440000', 'admin', 'T1T2c@PjXkDek.47v',
+ '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
+ '系统管理员', 'ADMIN', 1, 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin');

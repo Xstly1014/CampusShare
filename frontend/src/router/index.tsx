@@ -14,6 +14,7 @@ import FollowListPage from '../pages/FollowListPage'
 import MessagePage from '../pages/MessagePage'
 import NotificationPage from '../pages/NotificationPage'
 import CreatorVerificationPage from '../pages/CreatorVerificationPage'
+import AdminCreatorPage from '../pages/AdminCreatorPage'
 
 // 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -125,6 +126,10 @@ export default function Router() {
         <Route
           path="/creator-verification"
           element={<PrivateRoute><CreatorVerificationPage /></PrivateRoute>}
+        />
+        <Route
+          path="/admin/creator"
+          element={<PrivateRoute><AdminCreatorPage /></PrivateRoute>}
         />
         <Route
           path="/category/:categoryId"

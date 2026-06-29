@@ -63,6 +63,11 @@ public class User implements Serializable {
     private String schoolId;
     
     /**
+     * 用户角色：USER-普通用户，ADMIN-管理员
+     */
+    private String role;
+    
+    /**
      * 账号状态：1-正常，0-禁用
      */
     private Integer status;

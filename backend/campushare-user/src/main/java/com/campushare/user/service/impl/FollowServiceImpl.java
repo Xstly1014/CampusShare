@@ -141,6 +141,7 @@ public class FollowServiceImpl implements FollowService {
         dto.setAvatarUrl(u.getAvatarUrl());
         dto.setBio(u.getBio());
         dto.setCreator(creatorService.isCreator(u.getId()));
+        dto.setAdmin(creatorService.isAdmin(u.getId()));
         return dto;
     }
 }

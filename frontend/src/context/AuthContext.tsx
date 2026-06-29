@@ -9,6 +9,8 @@ interface User {
   avatarUrl?: string
   bio?: string
   schoolId?: string
+  isCreator?: boolean
+  isAdmin?: boolean
 }
 
 interface AuthContextType {

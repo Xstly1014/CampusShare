@@ -24,9 +24,11 @@ public class UserProfileDTO {
     private long followerCount;
     private long followingCount;
     @JsonProperty("isFollowing")
-    private boolean isFollowing;
+    private boolean following;
     @JsonProperty("isSelf")
-    private boolean isSelf;
+    private boolean self;
     @JsonProperty("isCreator")
-    private boolean isCreator;
+    private boolean creator;
+    @JsonProperty("isAdmin")
+    private boolean admin;
 }

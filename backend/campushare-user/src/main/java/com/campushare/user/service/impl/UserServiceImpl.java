@@ -9,6 +9,7 @@ import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.*;
 import com.campushare.user.entity.User;
 import com.campushare.user.mapper.UserMapper;
+import com.campushare.user.service.CreatorService;
 import com.campushare.user.service.EmailService;
 import com.campushare.user.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class UserServiceImpl implements UserService {
     private final RedisTemplate<String, String> redisTemplate;
     private final JwtUtils jwtUtils;
     private final EmailService emailService;
+    private final CreatorService creatorService;
     
     @Override
     public LoginResponse login(LoginRequest request) {
@@ -95,6 +97,7 @@ public class UserServiceImpl implements UserService {
                 .email("email".equals(request.getRegisterType()) ? request.getAccount() : null)
                 .phone("phone".equals(request.getRegisterType()) ? request.getAccount() : null)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .role("USER")
                 .status(1)
                 .build();
 
@@ -347,6 +350,8 @@ public class UserServiceImpl implements UserService {
                 .schoolId(user.getSchoolId())
                 .createTime(user.getCreateTime() != null ? 
                     user.getCreateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) : null)
+                .admin("ADMIN".equals(user.getRole()))
+                .creator(creatorService.isCreator(user.getId()))
                 .build();
     }
 }

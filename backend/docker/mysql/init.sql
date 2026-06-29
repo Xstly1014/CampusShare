@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url VARCHAR(500) COMMENT '头像URL',
     bio VARCHAR(200) COMMENT '个人简介',
     school_id VARCHAR(36) COMMENT '所属学校ID',
+    role VARCHAR(20) NOT NULL DEFAULT 'USER' COMMENT '用户角色：USER-普通用户，ADMIN-管理员',
     status TINYINT DEFAULT 1 COMMENT '账号状态：1-正常，0-禁用',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -23,28 +24,9 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_username (username),
     INDEX idx_email (email),
     INDEX idx_phone (phone),
-    INDEX idx_school (school_id)
+    INDEX idx_school (school_id),
+    INDEX idx_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
-
--- 创建角色表
-CREATE TABLE IF NOT EXISTS roles (
-    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '角色ID',
-    role_name VARCHAR(50) NOT NULL UNIQUE COMMENT '角色名称',
-    role_code VARCHAR(50) NOT NULL UNIQUE COMMENT '角色编码',
-    description VARCHAR(200) COMMENT '角色描述',
-    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表';
-
--- 创建用户角色关联表
-CREATE TABLE IF NOT EXISTS user_roles (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id VARCHAR(36) NOT NULL,
-    role_id INT NOT NULL,
-    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_user_role (user_id, role_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户角色关联表';
 
 -- 创建学校表
 CREATE TABLE IF NOT EXISTS schools (
@@ -267,11 +249,6 @@ CREATE TABLE IF NOT EXISTS resources (
     FULLTEXT idx_title_desc (title, description)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资源表';
 
--- 插入初始角色数据
-INSERT INTO roles (role_name, role_code, description) VALUES
-('普通用户', 'USER', '普通注册用户'),
-('管理员', 'ADMIN', '系统管理员');
-
 -- 插入示例学校数据
 INSERT INTO schools (id, name, logo_url, region, description, resource_count) VALUES
 ('1', '北京大学', 'https://example.com/pku-logo.png', '北京市', '中国最著名的高等学府之一', 1256),
@@ -283,11 +260,17 @@ INSERT INTO schools (id, name, logo_url, region, description, resource_count) VA
 ('7', '武汉大学', 'https://example.com/whu-logo.png', '湖北省武汉市', '综合性大学', 1456),
 ('8', '中山大学', 'https://example.com/sysu-logo.png', '广东省广州市', '教育部直属高校', 1789);
 
--- 插入测试用户数据（密码为: Test123456）
-INSERT INTO users (id, username, email, phone, password_hash, bio, school_id, status) VALUES
-('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'test@example.com', '13800138000',
+-- 插入管理员用户（用户名: admin, 密码: Test123456）
+INSERT INTO users (id, username, email, password_hash, bio, role, status, avatar_url) VALUES
+('550e8400-e29b-41d4-a716-446655440000', 'admin', 'T1T2c@PjXkDek.47v',
  '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
- '这是一名测试用户', '3', 1);
+ '系统管理员', 'ADMIN', 1, 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin');
+
+-- 插入测试用户数据（用户名: testuser, 密码: Test123456）
+INSERT INTO users (id, username, email, phone, password_hash, bio, school_id, role, status) VALUES
+('550e8400-e29b-41d4-a716-446655440001', 'testuser', 'yDIk@oz12GUV.ROY', 'NOkT4YYwjyD',
+ '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2',
+ '这是一名测试用户', '3', 'USER', 1);
 
 -- 插入主分类数据（收纳袋）
 INSERT INTO categories (id, name, icon, color, type, description, sort_order) VALUES
