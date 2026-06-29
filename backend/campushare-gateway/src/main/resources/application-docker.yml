@@ -36,6 +36,13 @@ server:
     max-header-size: 4096
     max-content-length: 104857600
 
+logging:
+  level:
+    root: WARN
+    com.campushare: INFO
+    org.springframework.cloud.gateway: WARN
+    reactor.netty: WARN
+
 management:
   endpoints:
     web:

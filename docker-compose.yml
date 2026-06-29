@@ -71,13 +71,13 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms256m -Xmx512m -javaagent:/app/opentelemetry-javaagent.jar
+      - JAVA_OPTS=-Xms512m -Xmx1024m -Dotel.traces.exporter=none
       - OTEL_SERVICE_NAME=campushare-user
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_LOGS_EXPORTER=none
       - OTEL_METRICS_EXPORTER=none
-      - OTEL_TRACES_SAMPLER=parentbased_always_on
+      - OTEL_TRACES_SAMPLER=parentbased_always_off
       # 邮件 SMTP 配置（在 .env 文件中设置真实值）
       - MAIL_HOST=${MAIL_HOST:-smtp.qq.com}
       - MAIL_PORT=${MAIL_PORT:-587}
@@ -116,13 +116,13 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms256m -Xmx512m -javaagent:/app/opentelemetry-javaagent.jar
+      - JAVA_OPTS=-Xms512m -Xmx1024m -Dotel.traces.exporter=none
       - OTEL_SERVICE_NAME=campushare-post
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_LOGS_EXPORTER=none
       - OTEL_METRICS_EXPORTER=none
-      - OTEL_TRACES_SAMPLER=parentbased_always_on
+      - OTEL_TRACES_SAMPLER=parentbased_always_off
     dns:
       - 8.8.8.8
       - 114.114.114.114
@@ -158,13 +158,13 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms128m -Xmx256m -javaagent:/app/opentelemetry-javaagent.jar
+      - JAVA_OPTS=-Xms256m -Xmx512m -Dotel.traces.exporter=none
       - OTEL_SERVICE_NAME=campushare-gateway
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_LOGS_EXPORTER=none
       - OTEL_METRICS_EXPORTER=none
-      - OTEL_TRACES_SAMPLER=parentbased_always_on
+      - OTEL_TRACES_SAMPLER=parentbased_always_off
     depends_on:
       user-service:
         condition: service_healthy

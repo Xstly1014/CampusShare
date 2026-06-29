@@ -264,10 +264,6 @@ public class PostController {
             dto.setAuthorAvatar(author != null ? author.getAvatarUrl() : null);
             dto.setPostType(p.getPostType());
             dto.setTitle(p.getTitle());
-            dto.setFileUrl(p.getFileUrl());
-            dto.setFileName(p.getFileName());
-            dto.setFileType(p.getFileType());
-            dto.setFileSize(p.getFileSize());
             dto.setViewCount(p.getViewCount());
             dto.setStarCount(p.getStarCount());
             dto.setLikeCount(p.getLikeCount());

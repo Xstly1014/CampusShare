@@ -60,7 +60,6 @@ public class CategoryController {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
                         Post::getAuthorId, Post::getPostType, Post::getTitle,
-                        Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                         Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                         Post::getCreateTime)
                 .eq(Post::getSubCategoryId, subCategoryId)
@@ -97,7 +96,6 @@ public class CategoryController {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
                         Post::getAuthorId, Post::getPostType, Post::getTitle,
-                        Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                         Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                         Post::getCreateTime)
                 .eq(Post::getCategoryId, categoryId)
@@ -201,10 +199,6 @@ public class CategoryController {
             dto.setAuthorAvatar(author != null ? author.getAvatarUrl() : null);
             dto.setPostType(p.getPostType());
             dto.setTitle(p.getTitle());
-            dto.setFileUrl(p.getFileUrl());
-            dto.setFileName(p.getFileName());
-            dto.setFileType(p.getFileType());
-            dto.setFileSize(p.getFileSize());
             dto.setViewCount(p.getViewCount());
             dto.setStarCount(p.getStarCount());
             dto.setLikeCount(p.getLikeCount());

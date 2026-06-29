@@ -46,6 +46,12 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
+logging:
+  level:
+    root: WARN
+    com.campushare: INFO
+    org.springframework: WARN
+
 management:
   endpoints:
     web:

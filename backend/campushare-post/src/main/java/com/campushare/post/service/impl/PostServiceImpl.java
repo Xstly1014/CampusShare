@@ -155,7 +155,6 @@ public class PostServiceImpl implements PostService {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
                         Post::getAuthorId, Post::getPostType, Post::getTitle,
-                        Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                         Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                         Post::getCreateTime)
                 .eq(Post::getSchoolId, schoolId)
@@ -412,7 +411,6 @@ public class PostServiceImpl implements PostService {
                 new LambdaQueryWrapper<Post>()
                         .select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
                                 Post::getAuthorId, Post::getPostType, Post::getTitle,
-                                Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                                 Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                                 Post::getCreateTime)
                         .eq(Post::getAuthorId, userId)
@@ -468,7 +466,6 @@ public class PostServiceImpl implements PostService {
                 new LambdaQueryWrapper<Post>()
                         .select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
                                 Post::getAuthorId, Post::getPostType, Post::getTitle,
-                                Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                                 Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                                 Post::getCreateTime)
                         .in(Post::getId, postIds)

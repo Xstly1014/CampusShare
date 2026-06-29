@@ -75,6 +75,12 @@ file:
   upload-path: /app/uploads/
   access-url: /files/
 
+logging:
+  level:
+    root: WARN
+    com.campushare: INFO
+    org.springframework: WARN
+
 management:
   endpoints:
     web:
