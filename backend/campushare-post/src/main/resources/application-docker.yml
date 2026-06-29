@@ -5,8 +5,8 @@ spring:
     password: root123456
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 8
-      minimum-idle: 2
+      maximum-pool-size: 20
+      minimum-idle: 5
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
@@ -17,17 +17,12 @@ spring:
       port: 6379
       password: ""
       database: 0
-      lettuce:
-        pool:
-          max-active: 8
-          max-idle: 2
-          min-idle: 1
 
 feign:
   httpclient:
     enabled: true
-    max-connections: 50
-    max-connections-per-route: 20
+    max-connections: 200
+    max-connections-per-route: 50
 
 service:
   user:
@@ -37,10 +32,10 @@ server:
   port: 8082
   tomcat:
     threads:
-      max: 32
-      min-spare: 4
-    accept-count: 50
-    max-connections: 200
+      max: 200
+      min-spare: 10
+    accept-count: 100
+    max-connections: 10000
 
 mybatis-plus:
   configuration:
