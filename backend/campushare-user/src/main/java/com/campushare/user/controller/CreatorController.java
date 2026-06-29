@@ -42,6 +42,13 @@ public class CreatorController {
         return Result.success("申请已提交，请等待审核", null);
     }
 
+    @PostMapping("/apply-authority")
+    public Result<Void> applyAuthority(@RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        creatorService.applyAuthority(userId);
+        return Result.success("权威创作者申请已提交，我们将在七个工作日内完成审核", null);
+    }
+
     @GetMapping("/admin/applications")
     public Result<IPage<CreatorApplicationItem>> getApplications(
             @RequestHeader("Authorization") String token,

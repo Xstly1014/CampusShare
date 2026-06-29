@@ -41,7 +41,11 @@ public class CreatorVerification implements Serializable {
 
     private String status;
 
+    private String verificationType;
+
     private String rejectReason;
+
+    private String reviewNote;
 
     private LocalDateTime reviewTime;
 

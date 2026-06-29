@@ -98,6 +98,7 @@ public class UserServiceImpl implements UserService {
                 .phone("phone".equals(request.getRegisterType()) ? request.getAccount() : null)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .role("USER")
+                .creatorLevel("NONE")
                 .status(1)
                 .build();
 

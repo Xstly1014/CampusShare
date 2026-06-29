@@ -13,6 +13,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class CreatorStatusDTO {
     private String status;
+    private String creatorLevel;
+    private Boolean hasPendingApplication;
     private String rejectReason;
     private LocalDateTime applyTime;
     private LocalDateTime reviewTime;

@@ -63,9 +63,14 @@ public class User implements Serializable {
     private String schoolId;
     
     /**
-     * 用户角色：USER-普通用户，ADMIN-管理员
+     * 用户角色：USER-普通用户，CREATOR-创作者，ADMIN-管理员
      */
     private String role;
+
+    /**
+     * 创作者等级：NONE-无，JUNIOR-初级，INTERMEDIATE-中级，SENIOR-高级，AUTHORITY-权威
+     */
+    private String creatorLevel;
     
     /**
      * 账号状态：1-正常，0-禁用

@@ -14,6 +14,7 @@ import {
   Upload,
   File,
   BadgeCheck,
+  Crown,
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
@@ -29,6 +30,7 @@ interface BackendPost {
   authorName?: string
   authorAvatar?: string
   authorRole?: string
+  authorLevel?: string
   postType: string
   title: string
   content: string
@@ -53,6 +55,7 @@ interface PostView {
     username: string
     avatar?: string
     isCreator?: boolean
+    authorLevel?: string
   }
   createdAt: string
   stars: number
@@ -106,6 +109,25 @@ function timeAgo(dateStr: string): string {
 function formatNumber(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
   return n.toString()
+}
+
+function getCreatorLevelColor(level?: string): string {
+  switch (level) {
+    case 'AUTHORITY': return 'text-yellow-500'
+    case 'SENIOR': return 'text-orange-500'
+    case 'INTERMEDIATE': return 'text-purple-500'
+    case 'JUNIOR': return 'text-blue-500'
+    default: return 'text-blue-500'
+  }
+}
+
+function CreatorLevelIcon({ level }: { level?: string }) {
+  if (!level || level === 'NONE') return null
+  const colorClass = getCreatorLevelColor(level)
+  if (level === 'AUTHORITY' || level === 'SENIOR') {
+    return <Crown className={`w-3.5 h-3.5 ${colorClass}`} />
+  }
+  return <BadgeCheck className={`w-3.5 h-3.5 ${colorClass}`} />
 }
 
 interface PostCardProps {
@@ -179,8 +201,10 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
           <div className="flex items-center justify-between mt-2">
             <span className="text-xs text-gray-500 flex items-center gap-1">
               {post.author.username}
-              {post.author.isCreator && (
-                <BadgeCheck className="w-3.5 h-3.5 text-blue-500" title="认证创作者" />
+              {post.author.authorLevel && post.author.authorLevel !== 'NONE' && (
+                <span title="认证创作者">
+                  <CreatorLevelIcon level={post.author.authorLevel} />
+                </span>
               )}
             </span>
 
@@ -247,7 +271,8 @@ export default function SchoolDetailPage() {
           avatar: p.authorAvatar
             ? (p.authorAvatar.startsWith('/files/') ? `/api${p.authorAvatar}` : p.authorAvatar)
             : `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
-          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN',
+          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE'),
+          authorLevel: p.authorLevel,
         },
         createdAt: p.createTime,
         stars: p.starCount || 0,

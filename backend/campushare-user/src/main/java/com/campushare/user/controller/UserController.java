@@ -134,8 +134,21 @@ public class UserController {
                 .self(currentUserId.equals(userId))
                 .creator(creatorService.isCreator(userId))
                 .admin(creatorService.isAdmin(userId))
+                .creatorLevel(user.getCreatorLevel() != null ? user.getCreatorLevel() : "NONE")
+                .creatorLevelName(getLevelName(user.getCreatorLevel()))
                 .build();
         return Result.success(dto);
+    }
+
+    private String getLevelName(String level) {
+        if (level == null) return "普通用户";
+        switch (level) {
+            case "JUNIOR": return "初级创作者";
+            case "INTERMEDIATE": return "中级创作者";
+            case "SENIOR": return "高级创作者";
+            case "AUTHORITY": return "权威创作者";
+            default: return "普通用户";
+        }
     }
 
     @GetMapping("/{userId}/posts")

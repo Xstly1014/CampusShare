@@ -6,4 +6,5 @@ import lombok.Data;
 public class CreatorVerifyRequest {
     private boolean approved;
     private String rejectReason;
+    private String reviewNote;
 }

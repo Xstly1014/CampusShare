@@ -108,6 +108,8 @@ public class InternalPostController {
             dto.setAuthorId(p.getAuthorId());
             dto.setAuthorName(author != null ? author.getUsername() : "未知用户");
             dto.setAuthorAvatar(author != null ? author.getAvatarUrl() : null);
+            dto.setAuthorRole(author != null ? author.getRole() : null);
+            dto.setAuthorLevel(author != null ? author.getCreatorLevel() : null);
             dto.setPostType(p.getPostType());
             dto.setTitle(p.getTitle());
             dto.setViewCount(p.getViewCount());

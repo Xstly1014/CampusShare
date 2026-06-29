@@ -3,13 +3,25 @@ import { api } from './http'
 export interface CreatorStats {
   totalLikes: number
   totalPosts: number
+  totalViews: number
   requiredLikes: number
   requiredPosts: number
+  requiredViews?: number
   meetsRequirements: boolean
+  creatorLevel: string
+  creatorLevelName: string
+  nextLevel?: string
+  nextLevelName?: string
+  likesToNext: number
+  postsToNext: number
+  viewsToNext: number
+  progressPercent: number
 }
 
 export interface CreatorStatus {
   status: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED'
+  creatorLevel: string
+  hasPendingApplication: boolean
   rejectReason?: string
   applyTime?: string
   reviewTime?: string
@@ -22,12 +34,14 @@ export interface CreatorApplication {
   userId: string
   username: string
   avatarUrl?: string
-  realName: string
-  idCard: string
-  totalLikes: number
-  totalPosts: number
+  realName?: string
+  idCard?: string
+  verificationType?: string
+  totalLikes?: number
+  totalPosts?: number
   status: 'PENDING' | 'APPROVED' | 'REJECTED'
   rejectReason?: string
+  reviewNote?: string
   applyTime: string
   reviewTime?: string
 }
@@ -45,8 +59,10 @@ export const creatorApi = {
 
   getStatus: () => api.get<CreatorStatus>('/creator/status'),
 
-  apply: (data: { realName: string; idCard: string; idCardFront?: string; idCardBack?: string }) =>
+  apply: (data: { realName: string; idCard: string; reason?: string; idCardFront?: string; idCardBack?: string }) =>
     api.post('/creator/apply', data),
+
+  applyAuthority: () => api.post('/creator/apply-authority'),
 
   getApplications: (params: { status?: string; page?: number; size?: number }) => {
     const query = new URLSearchParams()
@@ -57,6 +73,6 @@ export const creatorApi = {
     return api.get<ApplicationListResponse>(`/creator/admin/applications${queryStr ? `?${queryStr}` : ''}`)
   },
 
-  verifyApplication: (id: number, data: { approved: boolean; rejectReason?: string }) =>
+  verifyApplication: (id: number, data: { approved: boolean; rejectReason?: string; reviewNote?: string }) =>
     api.post(`/creator/admin/applications/${id}/verify`, data),
 }

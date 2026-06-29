@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText, BadgeCheck } from 'lucide-react'
+import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText, BadgeCheck, Crown } from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
@@ -13,6 +13,7 @@ interface BackendPost {
   authorName?: string
   authorAvatar?: string
   authorRole?: string
+  authorLevel?: string
   isCreator?: boolean
   postType: string
   title: string
@@ -26,6 +27,25 @@ interface BackendPost {
   likeCount: number
   commentCount: number
   createTime: string
+}
+
+function getCreatorLevelColor(level?: string): string {
+  switch (level) {
+    case 'AUTHORITY': return 'text-yellow-500'
+    case 'SENIOR': return 'text-orange-500'
+    case 'INTERMEDIATE': return 'text-purple-500'
+    case 'JUNIOR': return 'text-blue-500'
+    default: return 'text-blue-500'
+  }
+}
+
+function CreatorLevelIcon({ level }: { level?: string }) {
+  if (!level || level === 'NONE') return null
+  const colorClass = getCreatorLevelColor(level)
+  if (level === 'AUTHORITY' || level === 'SENIOR') {
+    return <Crown className={`w-3.5 h-3.5 ${colorClass}`} />
+  }
+  return <BadgeCheck className={`w-3.5 h-3.5 ${colorClass}`} />
 }
 
 interface CommentItem {
@@ -100,7 +120,7 @@ export default function MyListPage() {
       } else {
         setPosts((res.data || []).map((p: any) => ({
           ...p,
-          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN'
+          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE')
         })))
         setComments([])
       }
@@ -219,7 +239,7 @@ export default function MyListPage() {
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs text-gray-500 flex items-center gap-0.5">
                         {post.authorName || post.authorId.slice(0, 8)}
-                        {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-3.5 h-3.5 text-blue-500" /></span>}
+                        {post.authorLevel && post.authorLevel !== 'NONE' && <span title="认证创作者"><CreatorLevelIcon level={post.authorLevel} /></span>}
                       </span>
 
                       <div className="flex items-center gap-3 text-gray-400">

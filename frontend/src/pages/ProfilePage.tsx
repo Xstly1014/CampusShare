@@ -24,10 +24,48 @@ import {
   ZoomIn,
   ZoomOut,
   Move,
+  BadgeCheck,
+  Crown,
 } from 'lucide-react'
 
 const CROP_SIZE = 280
 const OUTPUT_SIZE = 400
+
+function getCreatorLevelName(level?: string): string {
+  switch (level) {
+    case 'AUTHORITY': return '权威创作者'
+    case 'SENIOR': return '高级创作者'
+    case 'INTERMEDIATE': return '中级创作者'
+    case 'JUNIOR': return '初级创作者'
+    default: return '认证创作者'
+  }
+}
+
+function getCreatorLevelColor(level?: string): string {
+  switch (level) {
+    case 'AUTHORITY': return 'text-yellow-500'
+    case 'SENIOR': return 'text-orange-500'
+    case 'INTERMEDIATE': return 'text-purple-500'
+    case 'JUNIOR': return 'text-blue-500'
+    default: return 'text-amber-500'
+  }
+}
+
+function ProfileCreatorIcon({ level, size = 'w-5 h-5' }: { level?: string; size?: string }) {
+  if (!level || level === 'NONE') {
+    return (
+      <span className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0" title="认证创作者">
+        <span className="text-white text-[10px] font-bold leading-none">V</span>
+      </span>
+    )
+  }
+  const colorClass = getCreatorLevelColor(level)
+  const levelName = getCreatorLevelName(level)
+  if (level === 'AUTHORITY' || level === 'SENIOR') {
+    return <span title={levelName}><Crown className={`${size} ${colorClass}`} /></span>
+  }
+  return <span title={levelName}><BadgeCheck className={`${size} ${colorClass}`} /></span>
+}
 
 function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob: Blob) => void; onCancel: () => void }) {
   const [scale, setScale] = useState(1)
@@ -369,10 +407,8 @@ export default function ProfilePage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-gray-900">{user?.username || '用户'}</h1>
-                {creatorStatus?.status === 'APPROVED' && (
-                  <span className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0" title="认证创作者">
-                    <span className="text-white text-[10px] font-bold leading-none">V</span>
-                  </span>
+                {(creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')) && (
+                  <ProfileCreatorIcon level={creatorStatus?.creatorLevel} size="w-5 h-5" />
                 )}
                 <button onClick={() => setShowEditModal(true)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
                   <Edit3 className="w-3.5 h-3.5 text-gray-400" />
@@ -424,28 +460,47 @@ export default function ProfilePage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 mt-3">
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-100 p-4 flex items-center justify-between">
+        <div
+          className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-100 p-4 flex items-center justify-between cursor-pointer hover:shadow-sm transition-all"
+          onClick={() => navigate('/creator-verification')}
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
               <Award className="w-5 h-5 text-white" />
             </div>
             <div>
               <p className="text-sm font-semibold text-amber-900">
-                {creatorStatus?.status === 'APPROVED' ? '已认证创作者' : creatorStatus?.status === 'PENDING' ? '认证审核中' : '认证创作者'}
+                {creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
+                  ? getCreatorLevelName(creatorStatus?.creatorLevel)
+                  : creatorStatus?.status === 'PENDING'
+                  ? '认证审核中'
+                  : creatorStatus?.status === 'REJECTED'
+                  ? '认证被驳回'
+                  : '认证创作者'}
               </p>
               <p className="text-xs text-amber-600">
-                {creatorStatus?.status === 'APPROVED' ? '你已享受专属激励奖励' : creatorStatus?.status === 'PENDING' ? '申请已提交，请耐心等待' : '申请认证，享受专属激励奖励'}
+                {creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
+                  ? '点击查看等级详情与权益'
+                  : creatorStatus?.status === 'PENDING'
+                  ? '申请已提交，七个工作日内完成审核'
+                  : creatorStatus?.status === 'REJECTED'
+                  ? '点击重新申请'
+                  : '申请认证，享受专属权益'}
               </p>
             </div>
           </div>
-          {creatorStatus?.status !== 'APPROVED' && (
-            <button
-              onClick={() => navigate('/creator-verification')}
-              className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-full hover:bg-amber-600 transition-colors"
-            >
-              {creatorStatus?.status === 'PENDING' ? '查看详情' : creatorStatus?.status === 'REJECTED' ? '重新申请' : '立即申请'}
-            </button>
-          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); navigate('/creator-verification') }}
+            className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-full hover:bg-amber-600 transition-colors flex-shrink-0"
+          >
+            {creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
+              ? '查看详情'
+              : creatorStatus?.status === 'PENDING'
+              ? '查看详情'
+              : creatorStatus?.status === 'REJECTED'
+              ? '重新申请'
+              : '立即申请'}
+          </button>
         </div>
       </div>
 

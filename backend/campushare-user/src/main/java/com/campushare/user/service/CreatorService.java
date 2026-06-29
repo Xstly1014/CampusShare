@@ -13,6 +13,7 @@ public interface CreatorService {
     boolean isCreator(String userId);
     boolean isAdmin(String userId);
     void apply(String userId, CreatorApplyRequest request);
+    void applyAuthority(String userId);
     IPage<CreatorApplicationItem> getApplicationList(String status, int page, int size);
     void verify(String adminId, Integer applicationId, CreatorVerifyRequest request);
 }

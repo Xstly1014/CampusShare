@@ -16,7 +16,7 @@ import {
   Map, Compass, BedDouble,
   User, Mountain, Focus, SlidersHorizontal,
   BookCopy, Code2, Scroll, Target,
-  Hash, Search, BadgeCheck
+  Hash, Search, BadgeCheck, Crown
 } from 'lucide-react'
 import { categoryApi, postApi, fileApi, Category, SubCategory } from '../services/api'
 import SchoolCard from '../components/home/SchoolCard'
@@ -93,6 +93,7 @@ interface PostItem {
   authorName: string
   authorAvatar?: string
   authorRole?: string
+  authorLevel?: string
   isCreator?: boolean
   postType: string
   title: string
@@ -106,6 +107,25 @@ interface PostItem {
   likeCount: number
   commentCount: number
   createTime: string
+}
+
+function getCreatorLevelColor(level?: string): string {
+  switch (level) {
+    case 'AUTHORITY': return 'text-yellow-500'
+    case 'SENIOR': return 'text-orange-500'
+    case 'INTERMEDIATE': return 'text-purple-500'
+    case 'JUNIOR': return 'text-blue-500'
+    default: return 'text-blue-500'
+  }
+}
+
+function CreatorLevelIcon({ level }: { level?: string }) {
+  if (!level || level === 'NONE') return null
+  const colorClass = getCreatorLevelColor(level)
+  if (level === 'AUTHORITY' || level === 'SENIOR') {
+    return <Crown className={`w-3.5 h-3.5 ${colorClass}`} />
+  }
+  return <BadgeCheck className={`w-3.5 h-3.5 ${colorClass}`} />
 }
 
 interface School {
@@ -176,7 +196,7 @@ export default function CategoryDetailPage() {
       })
       const newPosts = (res.data || []).map((p: any) => ({
         ...p,
-        isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN'
+        isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE')
       }))
       setPosts(reset ? newPosts : [...posts, ...newPosts])
       setHasMore(newPosts.length === 20)
@@ -487,7 +507,7 @@ export default function CategoryDetailPage() {
                     </div>
                     <span className="text-xs text-gray-500 flex items-center gap-0.5">
                       {post.authorName}
-                      {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-3.5 h-3.5 text-blue-500" /></span>}
+                      {post.authorLevel && post.authorLevel !== 'NONE' && <span title="认证创作者"><CreatorLevelIcon level={post.authorLevel} /></span>}
                     </span>
                     {post.subCategoryName && (
                       <span className={`text-xs px-1.5 py-0.5 rounded ${colors.light} ${colors.text}`}>{post.subCategoryName}</span>

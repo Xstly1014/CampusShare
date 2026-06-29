@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare, BadgeCheck } from 'lucide-react'
+import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare, BadgeCheck, Crown } from 'lucide-react'
 import { userApi, postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
@@ -21,6 +21,8 @@ interface UserProfile {
   isFollowing: boolean
   isSelf: boolean
   isCreator?: boolean
+  creatorLevel?: string
+  creatorLevelName?: string
 }
 
 interface BackendPost {
@@ -30,6 +32,7 @@ interface BackendPost {
   authorName?: string
   authorAvatar?: string
   authorRole?: string
+  authorLevel?: string
   isCreator?: boolean
   postType: string
   title: string
@@ -39,6 +42,25 @@ interface BackendPost {
   likeCount: number
   commentCount: number
   createTime: string
+}
+
+function getCreatorLevelColor(level?: string): string {
+  switch (level) {
+    case 'AUTHORITY': return 'text-yellow-500'
+    case 'SENIOR': return 'text-orange-500'
+    case 'INTERMEDIATE': return 'text-purple-500'
+    case 'JUNIOR': return 'text-blue-500'
+    default: return 'text-blue-500'
+  }
+}
+
+function CreatorLevelIcon({ level, size = 'w-3.5 h-3.5' }: { level?: string; size?: string }) {
+  if (!level || level === 'NONE') return null
+  const colorClass = getCreatorLevelColor(level)
+  if (level === 'AUTHORITY' || level === 'SENIOR') {
+    return <Crown className={`${size} ${colorClass}`} />
+  }
+  return <BadgeCheck className={`${size} ${colorClass}`} />
 }
 
 function formatTime(dateStr: string): string {
@@ -107,7 +129,7 @@ export default function UserProfilePage() {
       else res = await userApi.getUserHistory(userId)
       setPosts((res.data || []).map((p: any) => ({
         ...p,
-        isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN'
+        isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE')
       })))
     } catch { setPosts([]) }
     finally { setListLoading(false) }
@@ -171,7 +193,12 @@ export default function UserProfilePage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-gray-900">{profile.username}</h1>
-                {profile.isCreator && (
+                {profile.creatorLevel && profile.creatorLevel !== 'NONE' && (
+                  <span title={profile.creatorLevelName || '认证创作者'}>
+                    <CreatorLevelIcon level={profile.creatorLevel} size="w-5 h-5" />
+                  </span>
+                )}
+                {profile.isCreator && !profile.creatorLevel && (
                   <span className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0" title="认证创作者">
                     <span className="text-white text-[10px] font-bold leading-none">V</span>
                   </span>
@@ -254,7 +281,7 @@ export default function UserProfilePage() {
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs text-gray-500 flex items-center gap-0.5">
                         {post.authorName || post.authorId.slice(0, 8)}
-                        {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-3.5 h-3.5 text-blue-500" /></span>}
+                        {post.authorLevel && post.authorLevel !== 'NONE' && <span title="认证创作者"><CreatorLevelIcon level={post.authorLevel} /></span>}
                       </span>
                       <div className="flex items-center gap-3 text-gray-400">
                         <span className="text-xs">{post.viewCount} 浏览</span>

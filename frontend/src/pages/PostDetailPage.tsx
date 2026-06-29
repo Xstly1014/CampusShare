@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight, BadgeCheck } from 'lucide-react'
+import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight, BadgeCheck, Crown } from 'lucide-react'
 import schoolsData from '../data/schools.json'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
@@ -68,6 +68,7 @@ interface BackendPost {
   authorName?: string
   authorAvatar?: string
   authorRole?: string
+  authorLevel?: string
   isCreator?: boolean
   postType: string
   title: string
@@ -81,6 +82,25 @@ interface BackendPost {
   likeCount: number
   commentCount: number
   createTime: string
+}
+
+function getCreatorLevelColor(level?: string): string {
+  switch (level) {
+    case 'AUTHORITY': return 'text-yellow-500'
+    case 'SENIOR': return 'text-orange-500'
+    case 'INTERMEDIATE': return 'text-purple-500'
+    case 'JUNIOR': return 'text-blue-500'
+    default: return 'text-blue-500'
+  }
+}
+
+function CreatorLevelIcon({ level, size = 'w-4 h-4' }: { level?: string; size?: string }) {
+  if (!level || level === 'NONE') return null
+  const colorClass = getCreatorLevelColor(level)
+  if (level === 'AUTHORITY' || level === 'SENIOR') {
+    return <Crown className={`${size} ${colorClass}`} />
+  }
+  return <BadgeCheck className={`${size} ${colorClass}`} />
 }
 
 interface CommentItem {
@@ -129,7 +149,7 @@ export default function PostDetailPage() {
       const res = await postApi.getDetail(postId)
       const p: BackendPost = {
         ...res.data,
-        isCreator: res.data.authorRole === 'CREATOR' || res.data.authorRole === 'ADMIN'
+        isCreator: res.data.authorRole === 'CREATOR' || res.data.authorRole === 'ADMIN' || (res.data.authorLevel && res.data.authorLevel !== 'NONE')
       }
       setPost(p)
       setStarCount(p.starCount || 0)
@@ -442,7 +462,7 @@ export default function PostDetailPage() {
               <div>
                 <p className="text-sm font-medium text-gray-900 flex items-center gap-0.5">
                   {post.authorName || post.authorId.slice(0, 8)}
-                  {post.isCreator && <span title="认证创作者"><BadgeCheck className="w-4 h-4 text-blue-500" /></span>}
+                  {post.authorLevel && post.authorLevel !== 'NONE' && <span title="认证创作者"><CreatorLevelIcon level={post.authorLevel} /></span>}
                 </p>
                 <p className="text-xs text-gray-400">{formatTime(post.createTime)}</p>
               </div>

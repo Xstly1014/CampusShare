@@ -52,6 +52,7 @@ public class InternalUserController {
             map.put("username", user.getUsername());
             map.put("avatarUrl", user.getAvatarUrl());
             map.put("role", user.getRole());
+            map.put("creatorLevel", user.getCreatorLevel() != null ? user.getCreatorLevel() : "NONE");
             result.add(map);
         }
         return result;

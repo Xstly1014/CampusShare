@@ -31,4 +31,6 @@ public class UserProfileDTO {
     private boolean creator;
     @JsonProperty("isAdmin")
     private boolean admin;
+    private String creatorLevel;
+    private String creatorLevelName;
 }

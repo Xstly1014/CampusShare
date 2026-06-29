@@ -18,6 +18,7 @@ public class PostListDTO {
     private String authorName;
     private String authorAvatar;
     private String authorRole;
+    private String authorLevel;
     private String postType;
     private String title;
     private Integer viewCount;

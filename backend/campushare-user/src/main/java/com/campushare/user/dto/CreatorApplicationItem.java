@@ -14,10 +14,12 @@ public class CreatorApplicationItem {
     private String avatarUrl;
     private String realName;
     private String idCard;
+    private String verificationType;
     private Integer totalLikes;
     private Integer totalPosts;
     private String status;
     private String rejectReason;
+    private String reviewNote;
     private LocalDateTime applyTime;
     private LocalDateTime reviewTime;
 }
