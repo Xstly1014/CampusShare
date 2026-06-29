@@ -23,9 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_username (username),
     INDEX idx_email (email),
     INDEX idx_phone (phone),
-    INDEX idx_school (school_id),
-    INDEX idx_status (status),
-    INDEX idx_create_time (create_time)
+    INDEX idx_school (school_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
 -- 创建角色表
@@ -84,13 +82,7 @@ CREATE TABLE IF NOT EXISTS posts (
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted TINYINT DEFAULT 0 COMMENT '逻辑删除标记',
-    INDEX idx_school (school_id),
-    INDEX idx_category (category_id),
-    INDEX idx_sub_category (sub_category_id),
-    INDEX idx_author (author_id),
     INDEX idx_type (post_type),
-    INDEX idx_status (status),
-    INDEX idx_create_time (create_time),
     INDEX idx_school_list (school_id, category_id, status, deleted, create_time),
     INDEX idx_category_list (category_id, status, deleted, create_time),
     INDEX idx_subcategory_list (sub_category_id, status, deleted, create_time),
@@ -111,10 +103,9 @@ CREATE TABLE IF NOT EXISTS comments (
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted TINYINT DEFAULT 0 COMMENT '逻辑删除标记',
-    INDEX idx_post (post_id),
-    INDEX idx_user (user_id),
-    INDEX idx_parent (parent_id),
-    INDEX idx_create_time (create_time)
+    INDEX idx_post_list (post_id, deleted, create_time),
+    INDEX idx_user_list (user_id, deleted, create_time),
+    INDEX idx_parent (parent_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评论表';
 
 -- 创建收藏表
@@ -124,7 +115,7 @@ CREATE TABLE IF NOT EXISTS post_stars (
     user_id VARCHAR(36) NOT NULL,
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_post_user (post_id, user_id),
-    INDEX idx_user (user_id)
+    INDEX idx_user_list (user_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='帖子收藏表';
 
 -- 创建点赞表
@@ -134,7 +125,7 @@ CREATE TABLE IF NOT EXISTS post_likes (
     user_id VARCHAR(36) NOT NULL,
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_post_user (post_id, user_id),
-    INDEX idx_user (user_id)
+    INDEX idx_user_list (user_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='帖子点赞表';
 
 -- 创建评论点赞表
@@ -154,9 +145,8 @@ CREATE TABLE IF NOT EXISTS view_history (
     post_id VARCHAR(36) NOT NULL,
     user_id VARCHAR(36) NOT NULL,
     view_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_user (user_id),
-    INDEX idx_post (post_id),
-    INDEX idx_view_time (view_time)
+    INDEX idx_user_time (user_id, view_time),
+    INDEX idx_post (post_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='浏览历史表';
 
 -- 创建用户关注表
@@ -180,9 +170,9 @@ CREATE TABLE IF NOT EXISTS messages (
     sender_hidden TINYINT DEFAULT 0 COMMENT '发送方是否隐藏：0-显示，1-隐藏',
     receiver_hidden TINYINT DEFAULT 0 COMMENT '接收方是否隐藏：0-显示，1-隐藏',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    INDEX idx_sender (sender_id),
-    INDEX idx_receiver (receiver_id),
-    INDEX idx_create_time (create_time)
+    INDEX idx_sender_list (sender_id, sender_hidden, create_time),
+    INDEX idx_receiver_list (receiver_id, receiver_hidden, create_time),
+    INDEX idx_conversation (sender_id, receiver_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私信消息表';
 
 -- 创建通知表
@@ -195,9 +185,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     target_title VARCHAR(200) COMMENT '目标标题（帖子标题）',
     is_read TINYINT DEFAULT 0 COMMENT '是否已读：0-未读，1-已读',
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    INDEX idx_user (user_id),
-    INDEX idx_user_type (user_id, type),
-    INDEX idx_create_time (create_time)
+    INDEX idx_user_list (user_id, type, is_read, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知表';
 
 -- 创建创作者认证申请表
