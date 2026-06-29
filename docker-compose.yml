@@ -25,7 +25,8 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backend/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    command: --default-authentication-plugin=mysql_native_password --skip-mysqlx --innodb-buffer-pool-size=256M --max-connections=100 --slow-query-log=1 --slow-query-log-file=/var/lib/mysql/slow.log --long-query-time=1
+      - ./backend/docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+    command: --default-authentication-plugin=mysql_native_password --skip-mysqlx --innodb-buffer-pool-size=256M --max-connections=100 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --slow-query-log=1 --slow-query-log-file=/var/lib/mysql/slow.log --long-query-time=1
     healthcheck:
       test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD" ]
       interval: 10s
