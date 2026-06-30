@@ -16,6 +16,7 @@ import {
   BadgeCheck,
   Crown,
   Heart,
+  GraduationCap,
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
@@ -81,6 +82,30 @@ const typeColors: Record<PostType, string> = {
   resource: 'bg-blue-100 text-blue-700',
   discussion: 'bg-orange-100 text-orange-700',
   note: 'bg-green-100 text-green-700',
+}
+
+const SCHOOL_HEADER_COLORS = [
+  { bg: 'bg-rose-50', text: 'text-rose-600' },
+  { bg: 'bg-orange-50', text: 'text-orange-600' },
+  { bg: 'bg-amber-50', text: 'text-amber-600' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+  { bg: 'bg-teal-50', text: 'text-teal-600' },
+  { bg: 'bg-sky-50', text: 'text-sky-600' },
+  { bg: 'bg-indigo-50', text: 'text-indigo-600' },
+  { bg: 'bg-violet-50', text: 'text-violet-600' },
+  { bg: 'bg-pink-50', text: 'text-pink-600' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+  { bg: 'bg-lime-50', text: 'text-lime-600' },
+  { bg: 'bg-fuchsia-50', text: 'text-fuchsia-600' },
+]
+
+function hashSchoolId(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) {
+    h = ((h << 5) - h) + id.charCodeAt(i)
+    h |= 0
+  }
+  return Math.abs(h)
 }
 
 function timeAgo(dateStr: string): string {
@@ -264,6 +289,7 @@ export default function SchoolDetailPage() {
   const [sortType, setSortType] = useState<SortType>('latest')
   const [filterType, setFilterType] = useState<PostType | 'all'>('all')
   const [starredPosts, setStarredPosts] = useState<Set<string>>(new Set())
+  const [logoError, setLogoError] = useState(false)
 
   const PAGE_SIZE = 20
   const [refreshTrigger, setRefreshTrigger] = useState(0)
@@ -597,7 +623,23 @@ export default function SchoolDetailPage() {
             >
               <ChevronLeft className="w-5 h-5 text-gray-600" />
             </button>
-            <img src={school.logo} alt={school.name} className="w-8 h-8" />
+            {(() => {
+              const headerColor = SCHOOL_HEADER_COLORS[hashSchoolId(school.id) % SCHOOL_HEADER_COLORS.length]
+              return (
+                <div className={`w-9 h-9 rounded-xl ${headerColor.bg} flex items-center justify-center flex-shrink-0 overflow-hidden`}>
+                  {!logoError ? (
+                    <img
+                      src={school.logo}
+                      alt={school.name}
+                      className="w-full h-full object-contain"
+                      onError={() => setLogoError(true)}
+                    />
+                  ) : (
+                    <span className={`${headerColor.text} text-xs font-bold`}>{school.name.substring(0, 2)}</span>
+                  )}
+                </div>
+              )
+            })()}
             <div>
               <h1 className="text-base font-semibold text-gray-900">{school.name}</h1>
               <p className="text-xs text-gray-400">{realResourceCount !== null ? realResourceCount : school.resourceCount} 份资料</p>
