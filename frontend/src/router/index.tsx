@@ -13,6 +13,7 @@ import UserProfilePage from '../pages/UserProfilePage'
 import FollowListPage from '../pages/FollowListPage'
 import MessagePage from '../pages/MessagePage'
 import NotificationPage from '../pages/NotificationPage'
+import NotificationBasketPage from '../pages/NotificationBasketPage'
 import CreatorVerificationPage from '../pages/CreatorVerificationPage'
 import AdminCreatorPage from '../pages/AdminCreatorPage'
 
@@ -122,6 +123,10 @@ export default function Router() {
         <Route
           path="/notifications"
           element={<PrivateRoute><NotificationPage /></PrivateRoute>}
+        />
+        <Route
+          path="/notifications/:basketType"
+          element={<PrivateRoute><NotificationBasketPage /></PrivateRoute>}
         />
         <Route
           path="/creator-verification"
