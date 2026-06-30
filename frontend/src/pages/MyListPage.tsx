@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText, BadgeCheck, Crown, Heart, File } from 'lucide-react'
 import { postApi } from '../services/api'
@@ -27,6 +27,14 @@ interface BackendPost {
   likeCount: number
   commentCount: number
   createTime: string
+}
+
+interface PageResponse<T> {
+  records: T[]
+  total: number
+  size: number
+  current: number
+  pages: number
 }
 
 function getCreatorLevelColor(level?: string): string {
@@ -60,12 +68,19 @@ interface CommentItem {
   createTime: string
 }
 
-const listConfig: Record<ListType, { title: string; icon: React.ReactNode; fetcher: (page: number, size: number) => Promise<any> }> = {
+const PAGE_SIZE = 20
+
+const listConfig: Record<ListType, {
+  title: string
+  icon: React.ReactNode
+  fetcher: (page: number, size: number) => Promise<any>
+  isComments?: boolean
+}> = {
   history: { title: '浏览历史', icon: <Clock className="w-5 h-5" />, fetcher: postApi.getHistory },
   starred: { title: '我的收藏', icon: <Star className="w-5 h-5" />, fetcher: postApi.getStarred },
   liked: { title: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, fetcher: postApi.getLiked },
   mine: { title: '我的帖子', icon: <FileText className="w-5 h-5" />, fetcher: postApi.getMyPosts },
-  comments: { title: '我的回复', icon: <MessageSquare className="w-5 h-5" />, fetcher: async () => postApi.getMyComments() },
+  comments: { title: '我的回复', icon: <MessageSquare className="w-5 h-5" />, fetcher: async () => postApi.getMyComments(), isComments: true },
 }
 
 function formatNumber(n: number): string {
@@ -117,41 +132,92 @@ export default function MyListPage() {
 
   const listType = (type as ListType) || 'history'
   const config = listConfig[listType]
+  const isCommentsType = listType === 'comments'
 
   const [posts, setPosts] = useState<BackendPost[]>([])
   const [comments, setComments] = useState<CommentItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const loadingRef = useRef(false)
+  const observerRef = useRef<HTMLDivElement>(null)
 
-  const fetchPosts = useCallback(async () => {
-    setLoading(true)
+  const loadPage = useCallback(async (pageNum: number, isLoadMore = false) => {
+    if (loadingRef.current) return
+    loadingRef.current = true
+
+    if (isLoadMore) {
+      setLoadingMore(true)
+    } else {
+      setLoading(true)
+    }
+
     try {
-      const res = await listConfig[listType].fetcher(1, 50)
-      if (listType === 'comments') {
-        setComments(res.data || [])
-        setPosts([])
+      const res = await config.fetcher(pageNum, PAGE_SIZE)
+      if (isCommentsType) {
+        const list = res.data || []
+        setComments(list)
+        setTotal(list.length)
+        setHasMore(false)
       } else {
-        setPosts((res.data || []).map((p: any) => ({
+        const pageData: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: PAGE_SIZE, current: 1, pages: 0 }
+        const mapped = pageData.records.map((p: any) => ({
           ...p,
           isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE')
-        })))
-        setComments([])
+        }))
+        if (isLoadMore) {
+          setPosts(prev => [...prev, ...mapped])
+        } else {
+          setPosts(mapped)
+        }
+        setTotal(pageData.total)
+        setPage(pageNum)
+        setHasMore(pageNum * PAGE_SIZE < pageData.total)
       }
     } catch (err) {
       toast.error('加载失败')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
+      loadingRef.current = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listType])
 
-  // Fetch on mount, on type change, and on navigation back to this page
   useEffect(() => {
-    fetchPosts()
-  }, [fetchPosts, location.key])
+    setPosts([])
+    setComments([])
+    setTotal(0)
+    setPage(1)
+    setHasMore(false)
+    loadPage(1, false)
+  }, [loadPage, location.key])
+
+  useEffect(() => {
+    if (isCommentsType || !hasMore || loading || loadingMore) return
+    const sentinel = observerRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingRef.current) {
+          loadPage(page + 1, true)
+        }
+      },
+      { rootMargin: '300px' }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore, page, loadPage, loading, loadingMore, isCommentsType, posts.length])
+
+  const displayCount = total
+  const itemCount = isCommentsType ? comments.length : posts.length
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      {/* 顶部导航 */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
@@ -163,21 +229,20 @@ export default function MyListPage() {
           <div className="flex items-center gap-2">
             <span className="text-gray-700">{config.icon}</span>
             <span className="text-sm font-medium text-gray-900">{config.title}</span>
-            {((listType === 'comments' ? comments.length : posts.length) > 0) && (
-              <span className="text-xs text-gray-400">({listType === 'comments' ? comments.length : posts.length})</span>
+            {displayCount > 0 && (
+              <span className="text-xs text-gray-400">({displayCount})</span>
             )}
           </div>
         </div>
       </div>
 
-      {/* 列表内容 */}
       <div className="max-w-5xl mx-auto px-4 py-4">
         {loading ? (
           <div className="text-center py-16">
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
             <p className="text-gray-400 text-sm">加载中...</p>
           </div>
-        ) : listType === 'comments' && comments.length > 0 ? (
+        ) : isCommentsType && comments.length > 0 ? (
           <div className="space-y-3">
             {comments.map((comment) => (
               <div
@@ -206,7 +271,7 @@ export default function MyListPage() {
               </div>
             ))}
           </div>
-        ) : listType !== 'comments' && posts.length > 0 ? (
+        ) : !isCommentsType && posts.length > 0 ? (
           <div className="space-y-3">
             {posts.map((post) => {
               const isImage = post.fileType?.startsWith('image/')
@@ -220,7 +285,6 @@ export default function MyListPage() {
                 onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)}
                 className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
               >
-                {/* 顶部作者栏 */}
                 <div className="flex items-center gap-2 mb-2">
                   <img
                     src={avatarUrl}
@@ -236,12 +300,11 @@ export default function MyListPage() {
                   <span className="text-xs text-gray-400 ml-1">{formatTime(post.createTime)}</span>
                 </div>
 
-                {/* 内容区 */}
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      post.postType === 'resource' 
-                        ? 'bg-blue-50 text-blue-600' 
+                      post.postType === 'resource'
+                        ? 'bg-blue-50 text-blue-600'
                         : 'bg-orange-50 text-orange-600'
                     }`}>
                       {post.postType === 'resource' ? '资料' : '讨论'}
@@ -256,7 +319,6 @@ export default function MyListPage() {
                     </p>
                   )}
 
-                  {/* 图片附件缩略图 */}
                   {isImage && post.fileUrl && (
                     <img
                       src={getFileUrl(post.fileUrl)}
@@ -265,7 +327,6 @@ export default function MyListPage() {
                     />
                   )}
 
-                  {/* 文件附件条 */}
                   {hasFile && (
                     <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
                       <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
@@ -277,7 +338,6 @@ export default function MyListPage() {
                   )}
                 </div>
 
-                {/* 底部数据栏 */}
                 <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
                   <span className="flex items-center gap-1">
                     <Eye className="w-3.5 h-3.5" />
@@ -306,6 +366,27 @@ export default function MyListPage() {
               {config.icon}
             </div>
             <p className="text-gray-400 text-sm">暂无{config.title}记录</p>
+          </div>
+        )}
+
+        {!isCommentsType && hasMore && (
+          <div ref={observerRef} className="py-6 text-center">
+            {loadingMore ? (
+              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            ) : (
+              <button
+                onClick={() => loadPage(page + 1, true)}
+                className="px-5 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+              >
+                加载更多
+              </button>
+            )}
+          </div>
+        )}
+
+        {!isCommentsType && !hasMore && itemCount > 0 && (
+          <div className="py-6 text-center text-xs text-gray-400">
+            共 {total} 条记录
           </div>
         )}
       </div>

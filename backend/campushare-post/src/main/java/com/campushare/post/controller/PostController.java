@@ -1,5 +1,7 @@
 package com.campushare.post.controller;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.post.cache.CategoryCache;
@@ -164,43 +166,43 @@ public class PostController {
     }
 
     @GetMapping("/history")
-    public Result<List<PostListDTO>> getViewHistory(
+    public Result<IPage<PostListDTO>> getViewHistory(
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<Post> posts = postService.getViewHistory(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getViewHistory(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/starred")
-    public Result<List<PostListDTO>> getStarredPosts(
+    public Result<IPage<PostListDTO>> getStarredPosts(
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<Post> posts = postService.getStarredPosts(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getStarredPosts(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/liked")
-    public Result<List<PostListDTO>> getLikedPosts(
+    public Result<IPage<PostListDTO>> getLikedPosts(
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<Post> posts = postService.getLikedPosts(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getLikedPosts(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/mine")
-    public Result<List<PostListDTO>> getMyPosts(
+    public Result<IPage<PostListDTO>> getMyPosts(
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        List<Post> posts = postService.getMyPosts(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/my-stats")
@@ -212,12 +214,12 @@ public class PostController {
     }
 
     @GetMapping("/user/{userId}/posts")
-    public Result<List<PostListDTO>> getUserPosts(
+    public Result<IPage<PostListDTO>> getUserPosts(
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<Post> posts = postService.getMyPosts(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/user/{userId}/stats")
@@ -225,6 +227,12 @@ public class PostController {
             @PathVariable String userId) {
         UserPostStats stats = postService.getUserPostStats(userId);
         return Result.success(stats);
+    }
+
+    private IPage<PostListDTO> enrichPage(IPage<Post> postPage) {
+        Page<PostListDTO> dtoPage = new Page<>(postPage.getCurrent(), postPage.getSize(), postPage.getTotal());
+        dtoPage.setRecords(enrichWithAuthor(postPage.getRecords()));
+        return dtoPage;
     }
 
     private List<PostListDTO> enrichWithAuthor(List<Post> posts) {

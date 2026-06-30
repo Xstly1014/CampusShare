@@ -284,9 +284,9 @@ export default function ProfilePage() {
           creatorApi.getStatus(),
         ])
         setCounts({
-          browse: (historyRes.data || []).length,
-          starred: (starredRes.data || []).length,
-          liked: (likedRes.data || []).length,
+          browse: historyRes.data?.total || 0,
+          starred: starredRes.data?.total || 0,
+          liked: likedRes.data?.total || 0,
         })
         setStats(statsRes.data || { totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
         setCommentCount((commentsRes.data || []).length)

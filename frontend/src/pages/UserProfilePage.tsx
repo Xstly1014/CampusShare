@@ -148,7 +148,7 @@ export default function UserProfilePage() {
       else if (activeTab === 'starred') res = await userApi.getUserStarred(userId)
       else if (activeTab === 'liked') res = await userApi.getUserLiked(userId)
       else res = await userApi.getUserHistory(userId)
-      setPosts((res.data || []).map((p: any) => ({
+      setPosts(((res.data?.records || res.data) || []).map((p: any) => ({
         ...p,
         isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE')
       })))

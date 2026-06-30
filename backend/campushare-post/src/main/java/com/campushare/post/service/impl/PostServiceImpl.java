@@ -2,6 +2,7 @@ package com.campushare.post.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.post.dto.CreatePostRequest;
@@ -346,15 +347,17 @@ public class PostServiceImpl implements PostService {
     }
 
     @Override
-    public List<Post> getViewHistory(String userId, int page, int size) {
+    public IPage<Post> getViewHistory(String userId, int page, int size) {
         Page<ViewHistory> historyPage = viewHistoryMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<ViewHistory>()
                         .eq(ViewHistory::getUserId, userId)
                         .orderByDesc(ViewHistory::getViewTime));
 
+        Page<Post> result = new Page<>(page, size, historyPage.getTotal());
         if (historyPage.getRecords().isEmpty()) {
-            return new ArrayList<>();
+            result.setRecords(new ArrayList<>());
+            return result;
         }
 
         List<String> postIds = new ArrayList<>();
@@ -362,19 +365,22 @@ public class PostServiceImpl implements PostService {
             postIds.add(vh.getPostId());
         }
 
-        return selectPostsByIdsWithoutContent(postIds);
+        result.setRecords(selectPostsByIdsWithoutContent(postIds));
+        return result;
     }
 
     @Override
-    public List<Post> getStarredPosts(String userId, int page, int size) {
+    public IPage<Post> getStarredPosts(String userId, int page, int size) {
         Page<PostStar> starPage = postStarMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<PostStar>()
                         .eq(PostStar::getUserId, userId)
                         .orderByDesc(PostStar::getCreateTime));
 
+        Page<Post> result = new Page<>(page, size, starPage.getTotal());
         if (starPage.getRecords().isEmpty()) {
-            return new ArrayList<>();
+            result.setRecords(new ArrayList<>());
+            return result;
         }
 
         List<String> postIds = new ArrayList<>();
@@ -382,19 +388,22 @@ public class PostServiceImpl implements PostService {
             postIds.add(ps.getPostId());
         }
 
-        return selectPostsByIdsWithoutContent(postIds);
+        result.setRecords(selectPostsByIdsWithoutContent(postIds));
+        return result;
     }
 
     @Override
-    public List<Post> getLikedPosts(String userId, int page, int size) {
+    public IPage<Post> getLikedPosts(String userId, int page, int size) {
         Page<PostLike> likePage = postLikeMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<PostLike>()
                         .eq(PostLike::getUserId, userId)
                         .orderByDesc(PostLike::getCreateTime));
 
+        Page<Post> result = new Page<>(page, size, likePage.getTotal());
         if (likePage.getRecords().isEmpty()) {
-            return new ArrayList<>();
+            result.setRecords(new ArrayList<>());
+            return result;
         }
 
         List<String> postIds = new ArrayList<>();
@@ -402,11 +411,12 @@ public class PostServiceImpl implements PostService {
             postIds.add(pl.getPostId());
         }
 
-        return selectPostsByIdsWithoutContent(postIds);
+        result.setRecords(selectPostsByIdsWithoutContent(postIds));
+        return result;
     }
 
     @Override
-    public List<Post> getMyPosts(String userId, int page, int size) {
+    public IPage<Post> getMyPosts(String userId, int page, int size) {
         Page<Post> postPage = postMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<Post>()
@@ -418,7 +428,7 @@ public class PostServiceImpl implements PostService {
                         .eq(Post::getAuthorId, userId)
                         .eq(Post::getDeleted, false)
                         .orderByDesc(Post::getCreateTime));
-        return postPage.getRecords();
+        return postPage;
     }
 
     @Override

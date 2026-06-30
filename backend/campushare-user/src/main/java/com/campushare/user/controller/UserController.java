@@ -4,6 +4,7 @@ import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
 import com.campushare.user.dto.*;
 import com.campushare.user.entity.User;
+import com.campushare.user.feign.PageData;
 import com.campushare.user.feign.PostFeignClient;
 import com.campushare.user.feign.PostListDTO;
 import com.campushare.user.feign.UserPostStats;
@@ -152,7 +153,7 @@ public class UserController {
     }
 
     @GetMapping("/{userId}/posts")
-    public Result<List<PostListDTO>> getUserPosts(
+    public Result<PageData<PostListDTO>> getUserPosts(
             @RequestHeader("Authorization") String token,
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
@@ -161,7 +162,7 @@ public class UserController {
     }
 
     @GetMapping("/{userId}/starred")
-    public Result<List<PostListDTO>> getUserStarred(
+    public Result<PageData<PostListDTO>> getUserStarred(
             @RequestHeader("Authorization") String token,
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
@@ -170,7 +171,7 @@ public class UserController {
     }
 
     @GetMapping("/{userId}/liked")
-    public Result<List<PostListDTO>> getUserLiked(
+    public Result<PageData<PostListDTO>> getUserLiked(
             @RequestHeader("Authorization") String token,
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
@@ -179,7 +180,7 @@ public class UserController {
     }
 
     @GetMapping("/{userId}/history")
-    public Result<List<PostListDTO>> getUserHistory(
+    public Result<PageData<PostListDTO>> getUserHistory(
             @RequestHeader("Authorization") String token,
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,

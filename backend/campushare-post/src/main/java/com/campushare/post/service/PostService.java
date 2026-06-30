@@ -1,5 +1,6 @@
 package com.campushare.post.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.campushare.post.dto.*;
 import com.campushare.post.entity.Post;
 
@@ -28,13 +29,13 @@ public interface PostService {
 
     boolean isLikedBy(String userId, String postId);
 
-    List<Post> getViewHistory(String userId, int page, int size);
+    IPage<Post> getViewHistory(String userId, int page, int size);
 
-    List<Post> getStarredPosts(String userId, int page, int size);
+    IPage<Post> getStarredPosts(String userId, int page, int size);
 
-    List<Post> getLikedPosts(String userId, int page, int size);
+    IPage<Post> getLikedPosts(String userId, int page, int size);
 
-    List<Post> getMyPosts(String userId, int page, int size);
+    IPage<Post> getMyPosts(String userId, int page, int size);
 
     UserPostStats getMyPostStats(String userId);
 

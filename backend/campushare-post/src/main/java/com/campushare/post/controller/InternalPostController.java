@@ -1,5 +1,7 @@
 package com.campushare.post.controller;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.result.Result;
 import com.campushare.post.cache.CategoryCache;
 import com.campushare.post.dto.PostListDTO;
@@ -27,44 +29,50 @@ public class InternalPostController {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @GetMapping("/user/{userId}/posts")
-    public Result<List<PostListDTO>> getUserPosts(
+    public Result<IPage<PostListDTO>> getUserPosts(
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<Post> posts = postService.getMyPosts(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/user/{userId}/starred")
-    public Result<List<PostListDTO>> getUserStarred(
+    public Result<IPage<PostListDTO>> getUserStarred(
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<Post> posts = postService.getStarredPosts(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getStarredPosts(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/user/{userId}/liked")
-    public Result<List<PostListDTO>> getUserLiked(
+    public Result<IPage<PostListDTO>> getUserLiked(
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<Post> posts = postService.getLikedPosts(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getLikedPosts(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/user/{userId}/history")
-    public Result<List<PostListDTO>> getUserHistory(
+    public Result<IPage<PostListDTO>> getUserHistory(
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        List<Post> posts = postService.getViewHistory(userId, page, size);
-        return Result.success(enrichWithAuthor(posts));
+        IPage<Post> postPage = postService.getViewHistory(userId, page, size);
+        return Result.success(enrichPage(postPage));
     }
 
     @GetMapping("/user/{userId}/stats")
     public Result<UserPostStats> getUserStats(@PathVariable String userId) {
         return Result.success(postService.getUserPostStats(userId));
+    }
+
+    private IPage<PostListDTO> enrichPage(IPage<Post> postPage) {
+        Page<PostListDTO> dtoPage = new Page<>(postPage.getCurrent(), postPage.getSize(), postPage.getTotal());
+        dtoPage.setRecords(enrichWithAuthor(postPage.getRecords()));
+        return dtoPage;
     }
 
     private List<PostListDTO> enrichWithAuthor(List<Post> posts) {
