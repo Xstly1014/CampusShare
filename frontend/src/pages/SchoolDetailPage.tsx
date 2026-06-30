@@ -181,11 +181,22 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
 
       {/* 内容区 */}
       <div>
-        <h3 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+            post.type === 'resource' 
+              ? 'bg-blue-50 text-blue-600' 
+              : 'bg-orange-50 text-orange-600'
+          }`}>
+            {post.type === 'resource' ? '资料' : '讨论'}
+          </span>
+        </div>
+        <h3 className="text-base font-semibold text-gray-900 leading-snug" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
           {post.title}
         </h3>
-        {post.content && (
-          <p className="text-sm text-gray-600 mt-1 line-clamp-2">{post.content}</p>
+        {post.content && post.content.trim() && (
+          <p className="text-sm text-gray-600 mt-1" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+            {post.content.replace(/<[^>]*>/g, '')}
+          </p>
         )}
 
         {/* 图片附件缩略图 */}
