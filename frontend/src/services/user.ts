@@ -8,6 +8,12 @@ export interface PrivacySettings {
   searchable: boolean
 }
 
+export interface NotificationSettings {
+  notifyMessages: boolean
+  notifyReplies: boolean
+  notifyLikes: boolean
+}
+
 export const userApi = {
   getMe: () => api.get('/users/me'),
 
@@ -16,6 +22,9 @@ export const userApi = {
 
   updatePrivacy: (data: Partial<PrivacySettings>) =>
     api.put('/users/me/privacy', data),
+
+  updateNotificationSettings: (data: Partial<NotificationSettings>) =>
+    api.put('/users/me/notification-settings', data),
 
   changePassword: (data: { oldPassword: string; newPassword: string; confirmPassword: string }) =>
     api.put('/users/me/password', data),

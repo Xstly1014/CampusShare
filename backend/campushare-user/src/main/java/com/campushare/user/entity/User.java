@@ -101,6 +101,21 @@ public class User implements Serializable {
      * 隐私：是否允许被搜索
      */
     private Boolean searchable;
+
+    /**
+     * 通知：是否接收新消息通知
+     */
+    private Boolean notifyMessages;
+
+    /**
+     * 通知：是否接收帖子回复通知
+     */
+    private Boolean notifyReplies;
+
+    /**
+     * 通知：是否接收点赞收藏通知
+     */
+    private Boolean notifyLikes;
     
     /**
      * 创建时间

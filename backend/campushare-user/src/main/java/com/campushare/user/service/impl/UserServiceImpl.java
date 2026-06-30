@@ -105,6 +105,9 @@ public class UserServiceImpl implements UserService {
                 .publicLikes(false)
                 .publicHistory(false)
                 .searchable(true)
+                .notifyMessages(true)
+                .notifyReplies(true)
+                .notifyLikes(false)
                 .build();
 
         userMapper.insert(user);
@@ -221,6 +224,24 @@ public class UserServiceImpl implements UserService {
         }
         userMapper.updateById(user);
         log.info("用户 {} 更新隐私设置成功", userId);
+        return convertToUserDTO(user);
+    }
+
+    @Override
+    @Transactional
+    public UserDTO updateNotificationSettings(String userId, UpdateNotificationSettingsRequest request) {
+        User user = getUserById(userId);
+        if (request.getNotifyMessages() != null) {
+            user.setNotifyMessages(request.getNotifyMessages());
+        }
+        if (request.getNotifyReplies() != null) {
+            user.setNotifyReplies(request.getNotifyReplies());
+        }
+        if (request.getNotifyLikes() != null) {
+            user.setNotifyLikes(request.getNotifyLikes());
+        }
+        userMapper.updateById(user);
+        log.info("用户 {} 更新通知设置成功", userId);
         return convertToUserDTO(user);
     }
 
@@ -393,6 +414,9 @@ public class UserServiceImpl implements UserService {
                 .publicLikes(user.getPublicLikes() != null ? user.getPublicLikes() : false)
                 .publicHistory(user.getPublicHistory() != null ? user.getPublicHistory() : false)
                 .searchable(user.getSearchable() != null ? user.getSearchable() : true)
+                .notifyMessages(user.getNotifyMessages() != null ? user.getNotifyMessages() : true)
+                .notifyReplies(user.getNotifyReplies() != null ? user.getNotifyReplies() : true)
+                .notifyLikes(user.getNotifyLikes() != null ? user.getNotifyLikes() : false)
                 .build();
     }
 }

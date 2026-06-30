@@ -21,6 +21,8 @@ public interface UserService {
 
     UserDTO updatePrivacy(String userId, UpdatePrivacyRequest request);
 
+    UserDTO updateNotificationSettings(String userId, UpdateNotificationSettingsRequest request);
+
     void changePassword(String userId, ChangePasswordRequest request);
 
     UserDTO bindEmail(String userId, ChangeAccountRequest request);

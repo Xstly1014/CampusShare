@@ -74,8 +74,18 @@ public class NotificationServiceImpl implements NotificationService {
     public List<NotificationItemDTO> getNotificationFeed(String userId) {
         List<NotificationItemDTO> items = new ArrayList<>();
 
+        User user = userMapper.selectById(userId);
+        boolean notifyMessages = user != null && Boolean.TRUE.equals(user.getNotifyMessages()) || (user != null && user.getNotifyMessages() == null) || user == null;
+        boolean notifyReplies = user != null && Boolean.TRUE.equals(user.getNotifyReplies()) || (user != null && user.getNotifyReplies() == null) || user == null;
+        boolean notifyLikes = Boolean.TRUE.equals(user != null ? user.getNotifyLikes() : null);
+
         try {
+            List<String> likeTypes = Arrays.asList("LIKE", "COMMENT_LIKE", "STAR", "FOLLOW");
+            List<String> replyTypes = Arrays.asList("COMMENT", "REPLY");
             for (String type : Arrays.asList("SYSTEM", "LIKE", "COMMENT_LIKE", "STAR", "FOLLOW", "COMMENT", "REPLY")) {
+                if (!notifyLikes && likeTypes.contains(type)) continue;
+                if (!notifyReplies && replyTypes.contains(type)) continue;
+
                 List<Notification> notifs = notificationMapper.selectList(
                         new LambdaQueryWrapper<Notification>()
                                 .eq(Notification::getUserId, userId)
@@ -114,6 +124,7 @@ public class NotificationServiceImpl implements NotificationService {
             log.warn("Failed to load notification groups: {}", e.getMessage());
         }
 
+        if (notifyMessages) {
         try {
             List<Message> allMessages = messageMapper.selectList(
                     new LambdaQueryWrapper<Message>()
@@ -189,6 +200,7 @@ public class NotificationServiceImpl implements NotificationService {
 
         } catch (Exception e) {
             log.warn("Failed to load message conversations: {}", e.getMessage());
+        }
         }
 
         items.sort((a, b) -> {
@@ -286,15 +298,31 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public int getUnreadCount(String userId) {
         try {
-            long notifUnread = notificationMapper.selectCount(
-                    new LambdaQueryWrapper<Notification>()
-                            .eq(Notification::getUserId, userId)
-                            .eq(Notification::getIsRead, 0));
-            long msgUnread = messageMapper.selectCount(
-                    new LambdaQueryWrapper<Message>()
-                            .eq(Message::getReceiverId, userId)
-                            .eq(Message::getReceiverHidden, 0)
-                            .eq(Message::getIsRead, 0));
+            User user = userMapper.selectById(userId);
+            boolean notifyMessages = user != null && Boolean.TRUE.equals(user.getNotifyMessages()) || (user != null && user.getNotifyMessages() == null) || user == null;
+            boolean notifyReplies = user != null && Boolean.TRUE.equals(user.getNotifyReplies()) || (user != null && user.getNotifyReplies() == null) || user == null;
+            boolean notifyLikes = Boolean.TRUE.equals(user != null ? user.getNotifyLikes() : null);
+
+            List<String> excludedTypes = new ArrayList<>();
+            if (!notifyLikes) excludedTypes.addAll(Arrays.asList("LIKE", "COMMENT_LIKE", "STAR", "FOLLOW"));
+            if (!notifyReplies) excludedTypes.addAll(Arrays.asList("COMMENT", "REPLY"));
+
+            LambdaQueryWrapper<Notification> notifWrapper = new LambdaQueryWrapper<Notification>()
+                    .eq(Notification::getUserId, userId)
+                    .eq(Notification::getIsRead, 0);
+            if (!excludedTypes.isEmpty()) {
+                notifWrapper.notIn(Notification::getType, excludedTypes);
+            }
+            long notifUnread = notificationMapper.selectCount(notifWrapper);
+
+            long msgUnread = 0;
+            if (notifyMessages) {
+                msgUnread = messageMapper.selectCount(
+                        new LambdaQueryWrapper<Message>()
+                                .eq(Message::getReceiverId, userId)
+                                .eq(Message::getReceiverHidden, 0)
+                                .eq(Message::getIsRead, 0));
+            }
             return (int) (notifUnread + msgUnread);
         } catch (Exception e) {
             log.warn("Failed to get unread count: {}", e.getMessage());

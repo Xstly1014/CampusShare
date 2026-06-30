@@ -71,4 +71,7 @@ public class UserDTO {
     private Boolean publicLikes;
     private Boolean publicHistory;
     private Boolean searchable;
+    private Boolean notifyMessages;
+    private Boolean notifyReplies;
+    private Boolean notifyLikes;
 }

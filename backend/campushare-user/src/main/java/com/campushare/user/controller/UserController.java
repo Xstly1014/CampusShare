@@ -59,6 +59,15 @@ public class UserController {
         return Result.success(user);
     }
 
+    @PutMapping("/me/notification-settings")
+    public Result<UserDTO> updateNotificationSettings(
+            @RequestHeader("Authorization") String token,
+            @RequestBody UpdateNotificationSettingsRequest request) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        UserDTO user = userService.updateNotificationSettings(userId, request);
+        return Result.success(user);
+    }
+
     @PutMapping("/me/password")
     public Result<Void> changePassword(
             @RequestHeader("Authorization") String token,

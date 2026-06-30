@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, User, Mail, Ph
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../stores/toastStore'
 import { userApi, authApi } from '../services/api'
-import type { PrivacySettings } from '../services/user'
+import type { PrivacySettings, NotificationSettings } from '../services/user'
 
 type SettingsType = 'account' | 'privacy' | 'general' | 'help'
 
@@ -82,6 +82,11 @@ export default function SettingsPage() {
   const [privacyLoading, setPrivacyLoading] = useState(false)
   const [privacySaving, setPrivacySaving] = useState(false)
 
+  // Notification settings state
+  const [notif, setNotif] = useState<NotificationSettings | null>(null)
+  const [notifLoading, setNotifLoading] = useState(false)
+  const [notifSaving, setNotifSaving] = useState(false)
+
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -127,6 +132,42 @@ export default function SettingsPage() {
       toast.error('设置失败')
     } finally {
       setPrivacySaving(false)
+    }
+  }
+
+  useEffect(() => {
+    const fetchNotif = async () => {
+      setNotifLoading(true)
+      try {
+        const res = await userApi.getMe()
+        const data = res.data
+        setNotif({
+          notifyMessages: data.notifyMessages ?? true,
+          notifyReplies: data.notifyReplies ?? true,
+          notifyLikes: data.notifyLikes ?? false,
+        })
+      } catch {
+        /* ignore */
+      } finally {
+        setNotifLoading(false)
+      }
+    }
+    if (settingsType === 'general') fetchNotif()
+  }, [settingsType])
+
+  const handleNotifToggle = async (field: keyof NotificationSettings, value: boolean) => {
+    if (!notif) return
+    const prev = notif
+    setNotif({ ...notif, [field]: value })
+    setNotifSaving(true)
+    try {
+      await userApi.updateNotificationSettings({ [field]: value })
+      toast.success('设置已更新')
+    } catch {
+      setNotif(prev)
+      toast.error('设置失败')
+    } finally {
+      setNotifSaving(false)
     }
   }
 
@@ -423,9 +464,19 @@ export default function SettingsPage() {
         {settingsType === 'general' && (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-medium text-gray-400">通用设置</p></div>
-            <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="新消息通知" defaultChecked={true} />
-            <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="帖子回复通知" defaultChecked={true} />
-            <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="点赞收藏通知" defaultChecked={false} />
+            {notifLoading ? (
+              <div className="text-center py-8">
+                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              </div>
+            ) : notif ? (
+              <>
+                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="新消息通知" checked={notif.notifyMessages} onChange={(v) => handleNotifToggle('notifyMessages', v)} disabled={notifSaving} />
+                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="帖子回复通知" checked={notif.notifyReplies} onChange={(v) => handleNotifToggle('notifyReplies', v)} disabled={notifSaving} />
+                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="点赞收藏通知" checked={notif.notifyLikes} onChange={(v) => handleNotifToggle('notifyLikes', v)} disabled={notifSaving} />
+              </>
+            ) : (
+              <p className="text-center text-sm text-gray-400 py-8">加载失败</p>
+            )}
             <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-50">
               <Globe className="w-4 h-4 text-gray-400" />
               <span className="flex-1 text-sm text-gray-700">语言</span>
