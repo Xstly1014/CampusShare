@@ -234,10 +234,10 @@ export default function CreatorVerificationPage() {
     )
   }
 
-  const isApproved = status?.status === 'APPROVED' || (status?.creatorLevel && status.creatorLevel !== 'NONE')
+  const isApproved = status?.status === 'APPROVED'
   const isPending = status?.status === 'PENDING' || status?.hasPendingApplication
   const isRejected = status?.status === 'REJECTED'
-  const currentLevel = status?.creatorLevel || stats?.creatorLevel || 'NONE'
+  const currentLevel = isApproved ? (status?.creatorLevel || stats?.creatorLevel || 'NONE') : 'NONE'
   const levelInfo = getCreatorLevelInfo(currentLevel)
   const isSenior = currentLevel === 'SENIOR'
   const isAuthority = currentLevel === 'AUTHORITY'
