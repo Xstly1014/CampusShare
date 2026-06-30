@@ -15,6 +15,8 @@ export type {
   ApiResponse,
   UploadResult,
   PostComment,
+  WarehouseStats,
+  WarehouseCategoryStat,
   NotificationItem,
   NotificationDetail,
   Category,

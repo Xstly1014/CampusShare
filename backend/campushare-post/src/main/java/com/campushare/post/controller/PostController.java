@@ -213,6 +213,14 @@ public class PostController {
         return Result.success(stats);
     }
 
+    @GetMapping("/warehouse-stats")
+    public Result<WarehouseStats> getWarehouseStats(
+            @RequestHeader("Authorization") String token) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        WarehouseStats stats = postService.getWarehouseStats(userId);
+        return Result.success(stats);
+    }
+
     @GetMapping("/user/{userId}/posts")
     public Result<IPage<PostListDTO>> getUserPosts(
             @PathVariable String userId,

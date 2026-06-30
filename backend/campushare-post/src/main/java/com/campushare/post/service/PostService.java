@@ -39,6 +39,8 @@ public interface PostService {
 
     UserPostStats getMyPostStats(String userId);
 
+    WarehouseStats getWarehouseStats(String userId);
+
     Map<String, Long> getSchoolPostCounts();
 
     UserPostStats getUserPostStats(String userId);

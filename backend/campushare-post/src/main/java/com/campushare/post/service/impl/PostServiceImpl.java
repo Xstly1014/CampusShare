@@ -5,8 +5,11 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.exception.BusinessException;
+import com.campushare.post.cache.CategoryCache;
 import com.campushare.post.dto.CreatePostRequest;
 import com.campushare.post.dto.UserPostStats;
+import com.campushare.post.dto.WarehouseStats;
+import com.campushare.post.entity.Category;
 import com.campushare.post.entity.Post;
 import com.campushare.post.entity.PostLike;
 import com.campushare.post.entity.PostStar;
@@ -50,6 +53,7 @@ public class PostServiceImpl implements PostService {
     private final MeterRegistry meterRegistry;
     private final UserFeignClient userFeignClient;
     private final ObjectMapper objectMapper;
+    private final CategoryCache categoryCache;
 
     private static final String REDIS_KEY_STAR = "post:star:";
     private static final String REDIS_KEY_LIKE = "post:like:";
@@ -478,5 +482,51 @@ public class PostServiceImpl implements PostService {
     @Override
     public UserPostStats getUserPostStats(String userId) {
         return getMyPostStats(userId);
+    }
+
+    @Override
+    public WarehouseStats getWarehouseStats(String userId) {
+        long uploadCount = postMapper.countByAuthorId(userId);
+        long viewCount = viewHistoryMapper.countValidByUserId(userId);
+        long totalViews = postMapper.sumViewCountByAuthorId(userId);
+        long totalLikes = postMapper.sumLikeCountByAuthorId(userId);
+        long totalStars = postMapper.sumStarCountByAuthorId(userId);
+
+        java.util.Map<String, Long> uploadsByCategory = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : postMapper.countUploadsByAuthorGroupByCategory(userId)) {
+            uploadsByCategory.put(String.valueOf(row.get("categoryId")), ((Number) row.get("cnt")).longValue());
+        }
+
+        java.util.Map<String, Long> viewsByCategory = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : postMapper.countViewsByUserGroupByCategory(userId)) {
+            viewsByCategory.put(String.valueOf(row.get("categoryId")), ((Number) row.get("cnt")).longValue());
+        }
+
+        java.util.Set<String> allCategoryIds = new java.util.LinkedHashSet<>();
+        allCategoryIds.addAll(uploadsByCategory.keySet());
+        allCategoryIds.addAll(viewsByCategory.keySet());
+
+        List<WarehouseStats.CategoryStat> categoryStats = new ArrayList<>();
+        for (String categoryId : allCategoryIds) {
+            Category cat = categoryCache.getCategory(categoryId);
+            categoryStats.add(WarehouseStats.CategoryStat.builder()
+                    .categoryId(categoryId)
+                    .categoryName(cat != null ? cat.getName() : "未知分类")
+                    .color(cat != null ? cat.getColor() : "blue")
+                    .icon(cat != null ? cat.getIcon() : "FileText")
+                    .uploadCount(uploadsByCategory.getOrDefault(categoryId, 0L))
+                    .viewCount(viewsByCategory.getOrDefault(categoryId, 0L))
+                    .build());
+        }
+        categoryStats.sort((a, b) -> Long.compare(b.getUploadCount() + b.getViewCount(), a.getUploadCount() + a.getViewCount()));
+
+        return WarehouseStats.builder()
+                .uploadCount(uploadCount)
+                .viewCount(viewCount)
+                .totalViews(totalViews)
+                .totalLikes(totalLikes)
+                .totalStars(totalStars)
+                .categoryStats(categoryStats)
+                .build();
     }
 }
