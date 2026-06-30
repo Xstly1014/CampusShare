@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, Heart, Star, UserPlus, MessageSquare, MessageCircle, Pin, ChevronRight, Bell } from 'lucide-react'
+import { Heart, Star, UserPlus, MessageSquare, MessageCircle, Pin, ChevronRight, Bell } from 'lucide-react'
 import { notificationApi } from '../services/api'
 import type { NotificationItem, NotificationDetail } from '../services/api'
 import { formatTime } from '../utils/time'
@@ -94,10 +94,7 @@ export default function NotificationPage() {
     <div className="min-h-screen bg-gray-50 pb-16">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate('/home')} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
-          </button>
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-center">
           <span className="text-sm font-medium text-gray-900">通知</span>
         </div>
       </div>
