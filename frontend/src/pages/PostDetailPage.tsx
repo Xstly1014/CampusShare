@@ -521,7 +521,6 @@ export default function PostDetailPage() {
                         a.click()
                         document.body.removeChild(a)
                         URL.revokeObjectURL(url)
-                        postApi.recordDownload(post.id).catch(() => { /* ignore record failure */ })
                         toast.success('下载成功')
                       } catch (err) {
                         toast.error((err as Error).message || '下载失败')

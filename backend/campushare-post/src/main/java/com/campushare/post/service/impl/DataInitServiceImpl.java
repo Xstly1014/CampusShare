@@ -23,7 +23,6 @@ public class DataInitServiceImpl implements DataInitService {
     private final CommentMapper commentMapper;
     private final CommentLikeMapper commentLikeMapper;
     private final ViewHistoryMapper viewHistoryMapper;
-    private final PostDownloadMapper postDownloadMapper;
     private final RedisTemplate<String, String> redisTemplate;
     private final UserFeignClient userFeignClient;
 
@@ -92,9 +91,6 @@ public class DataInitServiceImpl implements DataInitService {
         viewHistoryMapper.deleteAllPhysical();
         log.info("view_history 表已清空");
 
-        postDownloadMapper.deleteAllPhysical();
-        log.info("post_downloads 表已清空");
-
         postMapper.deleteAllPhysical();
         log.info("posts 表已清空");
 
@@ -102,7 +98,7 @@ public class DataInitServiceImpl implements DataInitService {
         clearRedisKeys("post:star:*");
         clearRedisKeys("post:like:*");
 
-        String result = "所有帖子及相关数据已清空（posts, comments, post_stars, post_likes, comment_likes, view_history, post_downloads, Redis缓存）";
+        String result = "所有帖子及相关数据已清空（posts, comments, post_stars, post_likes, comment_likes, view_history, Redis缓存）";
         log.info(result);
         return result;
     }

@@ -213,33 +213,6 @@ public class PostController {
         return Result.success(stats);
     }
 
-    @GetMapping("/my-downloads")
-    public Result<IPage<PostListDTO>> getMyDownloads(
-            @RequestHeader("Authorization") String token,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        IPage<Post> postPage = postService.getMyDownloads(userId, page, size);
-        return Result.success(enrichPage(postPage));
-    }
-
-    @GetMapping("/warehouse-stats")
-    public Result<WarehouseStats> getWarehouseStats(
-            @RequestHeader("Authorization") String token) {
-        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        WarehouseStats stats = postService.getWarehouseStats(userId);
-        return Result.success(stats);
-    }
-
-    @PostMapping("/{postId}/download")
-    public Result<Void> recordDownload(
-            @RequestHeader("Authorization") String token,
-            @PathVariable String postId) {
-        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        postService.recordDownload(userId, postId);
-        return Result.success(null);
-    }
-
     @GetMapping("/user/{userId}/posts")
     public Result<IPage<PostListDTO>> getUserPosts(
             @PathVariable String userId,

@@ -42,14 +42,4 @@ public interface PostMapper extends BaseMapper<Post> {
             "WHERE deleted = 0 AND status = 1 AND sub_category_id IS NOT NULL " +
             "GROUP BY sub_category_id")
     List<Map<String, Object>> countGroupBySubCategory();
-
-    @Select("SELECT category_id AS categoryId, COUNT(*) AS cnt FROM posts " +
-            "WHERE author_id = #{userId} AND deleted = 0 AND category_id IS NOT NULL " +
-            "GROUP BY category_id")
-    List<Map<String, Object>> countUploadsByAuthorGroupByCategory(@Param("userId") String userId);
-
-    @Select("SELECT school_id AS schoolId, COUNT(*) AS cnt FROM posts " +
-            "WHERE author_id = #{userId} AND deleted = 0 AND school_id IS NOT NULL AND category_id IS NULL " +
-            "GROUP BY school_id")
-    List<Map<String, Object>> countUploadsByAuthorGroupBySchool(@Param("userId") String userId);
 }
