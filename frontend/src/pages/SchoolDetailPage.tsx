@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Search,
@@ -256,23 +256,112 @@ export default function SchoolDetailPage() {
 
   const [posts, setPosts] = useState<PostView[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
   const [realResourceCount, setRealResourceCount] = useState<number | null>(null)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [sortType, setSortType] = useState<SortType>('latest')
   const [filterType, setFilterType] = useState<PostType | 'all'>('all')
   const [starredPosts, setStarredPosts] = useState<Set<string>>(new Set())
 
-  const fetchPosts = useCallback(async () => {
+  const PAGE_SIZE = 20
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  const loadStarStatus = async (postList: BackendPost[]) => {
+    const token = sessionStorage.getItem('campusshare_token')
+    if (!token || postList.length === 0) return
+    Promise.all(
+      postList.map(async (p) => {
+        try {
+          const statusRes = await postApi.getStatus(p.id)
+          return { id: p.id, starred: statusRes.data.starred }
+        } catch {
+          return { id: p.id, starred: false }
+        }
+      })
+    ).then(results => {
+      setStarredPosts(prev => {
+        const next = new Set(prev)
+        results.forEach(r => { if (r.starred) next.add(r.id) })
+        return next
+      })
+    }).catch(() => {})
+  }
+
+  useEffect(() => {
     if (!schoolId) return
-    setLoading(true)
+    let cancelled = false
+
+    const doLoad = async () => {
+      setLoading(true)
+      setPosts([])
+      setPage(1)
+      setHasMore(true)
+      setLoadingMore(false)
+
+      try {
+        const response = await postApi.getBySchool(schoolId, {
+          postType: filterType === 'all' ? undefined : filterType,
+          sortType,
+          page: 1,
+          size: PAGE_SIZE,
+        })
+        if (cancelled) return
+        const postList: BackendPost[] = response.data || []
+        const viewPosts: PostView[] = postList.map((p) => ({
+          id: p.id,
+          schoolId: p.schoolId,
+          type: (p.postType as PostType) || 'discussion',
+          title: p.title,
+          author: {
+            id: p.authorId,
+            username: p.authorName || p.authorId.slice(0, 8),
+            avatar: p.authorAvatar
+              ? (p.authorAvatar.startsWith('/files/') ? `/api${p.authorAvatar}` : p.authorAvatar)
+              : `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
+            isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE'),
+            authorLevel: p.authorLevel,
+          },
+          createdAt: p.createTime,
+          stars: p.starCount || 0,
+          comments: p.commentCount || 0,
+          views: p.viewCount || 0,
+          likes: p.likeCount || 0,
+          isStarred: false,
+          fileUrl: p.fileUrl,
+          fileName: p.fileName,
+          fileType: p.fileType,
+          fileSize: p.fileSize ? (p.fileSize / 1024 / 1024).toFixed(2) + ' MB' : undefined,
+          content: p.content,
+        }))
+
+        setPosts(viewPosts)
+        setPage(1)
+        setHasMore(postList.length === PAGE_SIZE)
+        loadStarStatus(postList)
+      } catch (err) {
+        if (!cancelled) toast.error('加载帖子列表失败')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    doLoad()
+    return () => { cancelled = true }
+  }, [schoolId, filterType, sortType, refreshTrigger])
+
+  const handleLoadMore = async () => {
+    if (!schoolId || loadingMore) return
+    setLoadingMore(true)
+    const nextPage = page + 1
     try {
       const response = await postApi.getBySchool(schoolId, {
         postType: filterType === 'all' ? undefined : filterType,
         sortType,
-        page: 1,
-        size: 50,
+        page: nextPage,
+        size: PAGE_SIZE,
       })
-      // response is ApiResponse, actual post list is in response.data
       const postList: BackendPost[] = response.data || []
       const viewPosts: PostView[] = postList.map((p) => ({
         id: p.id,
@@ -300,40 +389,17 @@ export default function SchoolDetailPage() {
         fileSize: p.fileSize ? (p.fileSize / 1024 / 1024).toFixed(2) + ' MB' : undefined,
         content: p.content,
       }))
-      setPosts(viewPosts)
 
-      // Fetch star status for each post (if logged in)
-      const token = sessionStorage.getItem('campusshare_token')
-      if (token && postList.length > 0) {
-        try {
-          const starredSet = new Set<string>()
-          await Promise.all(
-            postList.map(async (p) => {
-              try {
-                const statusRes = await postApi.getStatus(p.id)
-                if (statusRes.data.starred) {
-                  starredSet.add(p.id)
-                }
-              } catch {
-                // ignore individual errors
-              }
-            })
-          )
-          setStarredPosts(starredSet)
-        } catch {
-          // ignore
-        }
-      }
+      setPosts(prev => [...prev, ...viewPosts])
+      setPage(nextPage)
+      setHasMore(postList.length === PAGE_SIZE)
+      loadStarStatus(postList)
     } catch (err) {
-      toast.error('加载帖子列表失败')
+      toast.error('加载更多失败')
     } finally {
-      setLoading(false)
+      setLoadingMore(false)
     }
-  }, [schoolId, filterType, sortType])
-
-  useEffect(() => {
-    fetchPosts()
-  }, [fetchPosts])
+  }
 
   // Fetch real post count for this school
   useEffect(() => {
@@ -416,7 +482,7 @@ export default function SchoolDetailPage() {
       setPostTitle('')
       setPostContent('')
       setUploadedFile(null)
-      fetchPosts()
+      setRefreshTrigger(n => n + 1)
     } catch (err) {
       toast.error((err as Error).message || '发布失败')
     } finally {
@@ -601,17 +667,78 @@ export default function SchoolDetailPage() {
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             <p className="text-gray-400 text-sm">加载中...</p>
           </div>
-        ) : filteredPosts.length > 0 ? (
-          <div className="space-y-3">
-            {filteredPosts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={{ ...post, isStarred: starredPosts.has(post.id) }}
-                schoolId={schoolId || ''}
-                onStar={handleStar}
-              />
-            ))}
-          </div>
+        ) : posts.length > 0 ? (
+          <>
+            <div className="space-y-3">
+              {filteredPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={{ ...post, isStarred: starredPosts.has(post.id) }}
+                  schoolId={schoolId || ''}
+                  onStar={handleStar}
+                />
+              ))}
+            </div>
+
+            {/* ===== 调试信息面板（黄色背景，非常醒目） ===== */}
+            <div className="bg-yellow-100 border-2 border-yellow-400 rounded-lg p-4 my-4">
+              <p className="text-yellow-800 font-bold text-sm mb-2">🔍 调试信息</p>
+              <div className="text-xs text-yellow-900 space-y-1 font-mono">
+                <p>当前页码 page = {page}</p>
+                <p>已加载帖子数 posts.length = {posts.length}</p>
+                <p>筛选后显示 filteredPosts.length = {filteredPosts.length}</p>
+                <p>hasMore = {String(hasMore)}</p>
+                <p>loading = {String(loading)}</p>
+                <p>loadingMore = {String(loadingMore)}</p>
+              </div>
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="mt-3 w-full py-3 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 text-white font-bold rounded-lg text-sm"
+              >
+                {loadingMore ? '加载中...' : `点击加载第 ${page + 1} 页（测试按钮）`}
+              </button>
+              {!hasMore && !loadingMore && posts.length > 0 && (
+                <p className="text-yellow-700 text-xs mt-2 text-center">已加载完全部帖子</p>
+              )}
+            </div>
+            {/* ===== 调试面板结束 ===== */}
+
+            {/* 加载中状态 */}
+            {loadingMore && (
+              <div className="text-center py-6">
+                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-gray-400 text-xs">加载更多...</p>
+              </div>
+            )}
+
+            {/* 点击加载更多按钮 */}
+            {!loadingMore && hasMore && posts.length > 0 && (
+              <div className="text-center py-4">
+                <button
+                  onClick={handleLoadMore}
+                  className="px-6 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors"
+                >
+                  点击加载更多
+                </button>
+              </div>
+            )}
+
+            {/* 加载到底提示 */}
+            {!hasMore && !loadingMore && posts.length > 0 && (
+              <div className="text-center py-6">
+                <p className="text-gray-300 text-xs">— 已经到底啦 —</p>
+              </div>
+            )}
+
+            {/* 搜索无结果 */}
+            {filteredPosts.length === 0 && posts.length > 0 && searchKeyword && (
+              <div className="text-center py-8">
+                <FileText className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                <p className="text-gray-400 text-sm">没有找到匹配的帖子</p>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-16">
             <FileText className="w-12 h-12 text-gray-200 mx-auto mb-3" />
