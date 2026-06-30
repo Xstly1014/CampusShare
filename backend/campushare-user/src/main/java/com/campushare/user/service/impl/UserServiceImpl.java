@@ -100,6 +100,11 @@ public class UserServiceImpl implements UserService {
                 .role("USER")
                 .creatorLevel("NONE")
                 .status(1)
+                .publicPosts(true)
+                .publicStars(false)
+                .publicLikes(false)
+                .publicHistory(false)
+                .searchable(true)
                 .build();
 
         userMapper.insert(user);
@@ -192,6 +197,30 @@ public class UserServiceImpl implements UserService {
 
         userMapper.updateById(user);
         log.info("用户 {} 更新资料成功", userId);
+        return convertToUserDTO(user);
+    }
+
+    @Override
+    @Transactional
+    public UserDTO updatePrivacy(String userId, UpdatePrivacyRequest request) {
+        User user = getUserById(userId);
+        if (request.getPublicPosts() != null) {
+            user.setPublicPosts(request.getPublicPosts());
+        }
+        if (request.getPublicStars() != null) {
+            user.setPublicStars(request.getPublicStars());
+        }
+        if (request.getPublicLikes() != null) {
+            user.setPublicLikes(request.getPublicLikes());
+        }
+        if (request.getPublicHistory() != null) {
+            user.setPublicHistory(request.getPublicHistory());
+        }
+        if (request.getSearchable() != null) {
+            user.setSearchable(request.getSearchable());
+        }
+        userMapper.updateById(user);
+        log.info("用户 {} 更新隐私设置成功", userId);
         return convertToUserDTO(user);
     }
 
@@ -315,6 +344,7 @@ public class UserServiceImpl implements UserService {
                         .like(User::getUsername, keyword)
                         .eq(User::getDeleted, false)
                         .ne(User::getId, excludeUserId)
+                        .eq(User::getSearchable, true)
                         .last("LIMIT 20"));
     }
     
@@ -354,10 +384,15 @@ public class UserServiceImpl implements UserService {
                 .avatarUrl(user.getAvatarUrl())
                 .bio(user.getBio())
                 .schoolId(user.getSchoolId())
-                .createTime(user.getCreateTime() != null ? 
+                .createTime(user.getCreateTime() != null ?
                     user.getCreateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) : null)
                 .admin("ADMIN".equals(user.getRole()))
                 .creator(creatorService.isCreator(user.getId()))
+                .publicPosts(user.getPublicPosts() != null ? user.getPublicPosts() : true)
+                .publicStars(user.getPublicStars() != null ? user.getPublicStars() : false)
+                .publicLikes(user.getPublicLikes() != null ? user.getPublicLikes() : false)
+                .publicHistory(user.getPublicHistory() != null ? user.getPublicHistory() : false)
+                .searchable(user.getSearchable() != null ? user.getSearchable() : true)
                 .build();
     }
 }

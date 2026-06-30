@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +47,15 @@ public class UserController {
             @RequestBody UpdateProfileRequest request) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         UserDTO user = userService.updateProfile(userId, request);
+        return Result.success(user);
+    }
+
+    @PutMapping("/me/privacy")
+    public Result<UserDTO> updatePrivacy(
+            @RequestHeader("Authorization") String token,
+            @RequestBody UpdatePrivacyRequest request) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        UserDTO user = userService.updatePrivacy(userId, request);
         return Result.success(user);
     }
 
@@ -137,6 +147,10 @@ public class UserController {
                 .admin(creatorService.isAdmin(userId))
                 .creatorLevel(user.getCreatorLevel() != null ? user.getCreatorLevel() : "NONE")
                 .creatorLevelName(getLevelName(user.getCreatorLevel()))
+                .publicPosts(user.getPublicPosts() != null ? user.getPublicPosts() : true)
+                .publicStars(user.getPublicStars() != null ? user.getPublicStars() : false)
+                .publicLikes(user.getPublicLikes() != null ? user.getPublicLikes() : false)
+                .publicHistory(user.getPublicHistory() != null ? user.getPublicHistory() : false)
                 .build();
         return Result.success(dto);
     }
@@ -158,6 +172,10 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String currentUserId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        if (!isContentVisible(currentUserId, userId, "posts")) {
+            return emptyPage(page, size);
+        }
         return postFeignClient.getUserPosts(userId, page, size);
     }
 
@@ -167,6 +185,10 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String currentUserId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        if (!isContentVisible(currentUserId, userId, "stars")) {
+            return emptyPage(page, size);
+        }
         return postFeignClient.getUserStarred(userId, page, size);
     }
 
@@ -176,6 +198,10 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String currentUserId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        if (!isContentVisible(currentUserId, userId, "likes")) {
+            return emptyPage(page, size);
+        }
         return postFeignClient.getUserLiked(userId, page, size);
     }
 
@@ -185,7 +211,34 @@ public class UserController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String currentUserId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        if (!isContentVisible(currentUserId, userId, "history")) {
+            return emptyPage(page, size);
+        }
         return postFeignClient.getUserHistory(userId, page, size);
+    }
+
+    private boolean isContentVisible(String currentUserId, String targetUserId, String fieldName) {
+        if (currentUserId.equals(targetUserId)) return true;
+        User target = userMapper.selectById(targetUserId);
+        if (target == null || Boolean.TRUE.equals(target.getDeleted())) return false;
+        switch (fieldName) {
+            case "posts": return target.getPublicPosts() != null ? target.getPublicPosts() : true;
+            case "stars": return target.getPublicStars() != null ? target.getPublicStars() : false;
+            case "likes": return target.getPublicLikes() != null ? target.getPublicLikes() : false;
+            case "history": return target.getPublicHistory() != null ? target.getPublicHistory() : false;
+            default: return false;
+        }
+    }
+
+    private Result<PageData<PostListDTO>> emptyPage(int page, int size) {
+        PageData<PostListDTO> empty = new PageData<>();
+        empty.setRecords(Collections.emptyList());
+        empty.setTotal(0);
+        empty.setSize(size);
+        empty.setCurrent(page);
+        empty.setPages(0);
+        return Result.success(empty);
     }
 
     @PostMapping("/{userId}/follow")

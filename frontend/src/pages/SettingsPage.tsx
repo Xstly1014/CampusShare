@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, User, Mail, Ph
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../stores/toastStore'
 import { userApi, authApi } from '../services/api'
+import type { PrivacySettings } from '../services/user'
 
 type SettingsType = 'account' | 'privacy' | 'general' | 'help'
 
@@ -14,17 +15,36 @@ const configMap: Record<SettingsType, { title: string; icon: React.ReactNode }> 
   help: { title: '帮助与反馈', icon: <HelpCircle className="w-5 h-5" /> },
 }
 
-function ToggleRow({ icon, label, defaultChecked }: { icon: React.ReactNode; label: string; defaultChecked: boolean }) {
-  const [checked, setChecked] = useState(defaultChecked)
+function ToggleRow({ icon, label, defaultChecked, checked, onChange, disabled }: {
+  icon: React.ReactNode
+  label: string
+  defaultChecked?: boolean
+  checked?: boolean
+  onChange?: (checked: boolean) => void
+  disabled?: boolean
+}) {
+  const [internalChecked, setInternalChecked] = useState(defaultChecked ?? false)
+  const isControlled = checked !== undefined
+  const currentChecked = isControlled ? checked : internalChecked
+
+  const handleToggle = () => {
+    if (disabled) return
+    if (!isControlled) {
+      setInternalChecked(!internalChecked)
+    }
+    onChange?.(!currentChecked)
+  }
+
   return (
     <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 last:border-0">
       {icon}
       <span className="flex-1 text-sm text-gray-700">{label}</span>
       <button
-        onClick={() => setChecked(!checked)}
-        className={`relative w-11 h-6 rounded-full transition-colors ${checked ? 'bg-blue-600' : 'bg-gray-200'}`}
+        onClick={handleToggle}
+        disabled={disabled}
+        className={`relative w-11 h-6 rounded-full transition-colors ${currentChecked ? 'bg-blue-600' : 'bg-gray-200'} disabled:opacity-40`}
       >
-        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : ''}`} />
+        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${currentChecked ? 'translate-x-5' : ''}`} />
       </button>
     </div>
   )
@@ -57,6 +77,11 @@ export default function SettingsPage() {
   const [sendingCode, setSendingCode] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Privacy settings state
+  const [privacy, setPrivacy] = useState<PrivacySettings | null>(null)
+  const [privacyLoading, setPrivacyLoading] = useState(false)
+  const [privacySaving, setPrivacySaving] = useState(false)
+
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -66,6 +91,44 @@ export default function SettingsPage() {
     }
     if (settingsType === 'account') fetchUser()
   }, [settingsType])
+
+  useEffect(() => {
+    const fetchPrivacy = async () => {
+      setPrivacyLoading(true)
+      try {
+        const res = await userApi.getMe()
+        const data = res.data
+        setPrivacy({
+          publicPosts: data.publicPosts ?? true,
+          publicStars: data.publicStars ?? false,
+          publicLikes: data.publicLikes ?? false,
+          publicHistory: data.publicHistory ?? false,
+          searchable: data.searchable ?? true,
+        })
+      } catch {
+        /* ignore */
+      } finally {
+        setPrivacyLoading(false)
+      }
+    }
+    if (settingsType === 'privacy') fetchPrivacy()
+  }, [settingsType])
+
+  const handlePrivacyToggle = async (field: keyof PrivacySettings, value: boolean) => {
+    if (!privacy) return
+    const prev = privacy
+    setPrivacy({ ...privacy, [field]: value })
+    setPrivacySaving(true)
+    try {
+      await userApi.updatePrivacy({ [field]: value })
+      toast.success('设置已更新')
+    } catch {
+      setPrivacy(prev)
+      toast.error('设置失败')
+    } finally {
+      setPrivacySaving(false)
+    }
+  }
 
   const handleSendCode = async (account: string, type: 'phone' | 'email') => {
     if (!account.trim()) {
@@ -339,11 +402,21 @@ export default function SettingsPage() {
         {settingsType === 'privacy' && (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-medium text-gray-400">隐私设置</p></div>
-            <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的帖子" defaultChecked={true} />
-            <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的收藏" defaultChecked={false} />
-            <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的点赞" defaultChecked={false} />
-            <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开浏览历史" defaultChecked={false} />
-            <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="允许他人搜索到我" defaultChecked={true} />
+            {privacyLoading ? (
+              <div className="text-center py-8">
+                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              </div>
+            ) : privacy ? (
+              <>
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的帖子" checked={privacy.publicPosts} onChange={(v) => handlePrivacyToggle('publicPosts', v)} disabled={privacySaving} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的收藏" checked={privacy.publicStars} onChange={(v) => handlePrivacyToggle('publicStars', v)} disabled={privacySaving} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的点赞" checked={privacy.publicLikes} onChange={(v) => handlePrivacyToggle('publicLikes', v)} disabled={privacySaving} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开浏览历史" checked={privacy.publicHistory} onChange={(v) => handlePrivacyToggle('publicHistory', v)} disabled={privacySaving} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="允许他人搜索到我" checked={privacy.searchable} onChange={(v) => handlePrivacyToggle('searchable', v)} disabled={privacySaving} />
+              </>
+            ) : (
+              <p className="text-center text-sm text-gray-400 py-8">加载失败</p>
+            )}
           </div>
         )}
 

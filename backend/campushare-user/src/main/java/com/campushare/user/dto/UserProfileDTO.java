@@ -33,4 +33,8 @@ public class UserProfileDTO {
     private boolean admin;
     private String creatorLevel;
     private String creatorLevelName;
+    private Boolean publicPosts;
+    private Boolean publicStars;
+    private Boolean publicLikes;
+    private Boolean publicHistory;
 }

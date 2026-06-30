@@ -76,6 +76,31 @@ public class User implements Serializable {
      * 账号状态：1-正常，0-禁用
      */
     private Integer status;
+
+    /**
+     * 隐私：是否公开帖子
+     */
+    private Boolean publicPosts;
+
+    /**
+     * 隐私：是否公开收藏
+     */
+    private Boolean publicStars;
+
+    /**
+     * 隐私：是否公开点赞
+     */
+    private Boolean publicLikes;
+
+    /**
+     * 隐私：是否公开浏览历史
+     */
+    private Boolean publicHistory;
+
+    /**
+     * 隐私：是否允许被搜索
+     */
+    private Boolean searchable;
     
     /**
      * 创建时间

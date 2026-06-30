@@ -1,10 +1,21 @@
 import { api } from './http'
 
+export interface PrivacySettings {
+  publicPosts: boolean
+  publicStars: boolean
+  publicLikes: boolean
+  publicHistory: boolean
+  searchable: boolean
+}
+
 export const userApi = {
   getMe: () => api.get('/users/me'),
 
   updateProfile: (data: { username?: string; bio?: string; avatarUrl?: string }) =>
     api.put('/users/me', data),
+
+  updatePrivacy: (data: Partial<PrivacySettings>) =>
+    api.put('/users/me/privacy', data),
 
   changePassword: (data: { oldPassword: string; newPassword: string; confirmPassword: string }) =>
     api.put('/users/me/password', data),

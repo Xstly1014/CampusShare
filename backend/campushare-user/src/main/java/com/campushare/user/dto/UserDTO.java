@@ -65,4 +65,10 @@ public class UserDTO {
 
     @JsonProperty("isAdmin")
     private boolean admin;
+
+    private Boolean publicPosts;
+    private Boolean publicStars;
+    private Boolean publicLikes;
+    private Boolean publicHistory;
+    private Boolean searchable;
 }
