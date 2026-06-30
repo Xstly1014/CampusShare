@@ -83,8 +83,7 @@ public class NotificationServiceImpl implements NotificationService {
             List<String> likeTypes = Arrays.asList("LIKE", "COMMENT_LIKE", "STAR", "FOLLOW");
             List<String> replyTypes = Arrays.asList("COMMENT", "REPLY");
             for (String type : Arrays.asList("SYSTEM", "LIKE", "COMMENT_LIKE", "STAR", "FOLLOW", "COMMENT", "REPLY")) {
-                if (!notifyLikes && likeTypes.contains(type)) continue;
-                if (!notifyReplies && replyTypes.contains(type)) continue;
+                boolean typeNotifies = !(!notifyLikes && likeTypes.contains(type)) && !(!notifyReplies && replyTypes.contains(type));
 
                 List<Notification> notifs = notificationMapper.selectList(
                         new LambdaQueryWrapper<Notification>()
@@ -94,7 +93,7 @@ public class NotificationServiceImpl implements NotificationService {
 
                 if (!notifs.isEmpty()) {
                     Notification latest = notifs.get(0);
-                    int unread = (int) notifs.stream().filter(n -> n.getIsRead() == 0).count();
+                    int unread = typeNotifies ? (int) notifs.stream().filter(n -> n.getIsRead() == 0).count() : 0;
 
                     String title;
                     switch (type) {
@@ -124,7 +123,6 @@ public class NotificationServiceImpl implements NotificationService {
             log.warn("Failed to load notification groups: {}", e.getMessage());
         }
 
-        if (notifyMessages) {
         try {
             List<Message> allMessages = messageMapper.selectList(
                     new LambdaQueryWrapper<Message>()
@@ -162,7 +160,7 @@ public class NotificationServiceImpl implements NotificationService {
                         .collect(Collectors.toList());
 
                 if (!strangerMsgs.isEmpty()) {
-                    int unread = (int) strangerMsgs.stream().filter(m -> m.getIsRead() == 0).count();
+                    int unread = notifyMessages ? (int) strangerMsgs.stream().filter(m -> m.getIsRead() == 0).count() : 0;
                     Message latest = strangerMsgs.get(0);
                     User sender = userMapper.selectById(latest.getSenderId());
 
@@ -200,7 +198,6 @@ public class NotificationServiceImpl implements NotificationService {
 
         } catch (Exception e) {
             log.warn("Failed to load message conversations: {}", e.getMessage());
-        }
         }
 
         items.sort((a, b) -> {
