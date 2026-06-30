@@ -348,69 +348,45 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public IPage<Post> getViewHistory(String userId, int page, int size) {
-        Page<ViewHistory> historyPage = viewHistoryMapper.selectPage(
-                new Page<>(page, size),
-                new LambdaQueryWrapper<ViewHistory>()
-                        .eq(ViewHistory::getUserId, userId)
-                        .orderByDesc(ViewHistory::getViewTime));
-
-        Page<Post> result = new Page<>(page, size, historyPage.getTotal());
-        if (historyPage.getRecords().isEmpty()) {
+        long total = viewHistoryMapper.countValidByUserId(userId);
+        Page<Post> result = new Page<>(page, size, total);
+        if (total == 0) {
             result.setRecords(new ArrayList<>());
             return result;
         }
 
-        List<String> postIds = new ArrayList<>();
-        for (ViewHistory vh : historyPage.getRecords()) {
-            postIds.add(vh.getPostId());
-        }
-
+        int offset = (page - 1) * size;
+        List<String> postIds = viewHistoryMapper.selectValidPostIdsPage(userId, offset, size);
         result.setRecords(selectPostsByIdsWithoutContent(postIds));
         return result;
     }
 
     @Override
     public IPage<Post> getStarredPosts(String userId, int page, int size) {
-        Page<PostStar> starPage = postStarMapper.selectPage(
-                new Page<>(page, size),
-                new LambdaQueryWrapper<PostStar>()
-                        .eq(PostStar::getUserId, userId)
-                        .orderByDesc(PostStar::getCreateTime));
-
-        Page<Post> result = new Page<>(page, size, starPage.getTotal());
-        if (starPage.getRecords().isEmpty()) {
+        long total = postStarMapper.countValidByUserId(userId);
+        Page<Post> result = new Page<>(page, size, total);
+        if (total == 0) {
             result.setRecords(new ArrayList<>());
             return result;
         }
 
-        List<String> postIds = new ArrayList<>();
-        for (PostStar ps : starPage.getRecords()) {
-            postIds.add(ps.getPostId());
-        }
-
+        int offset = (page - 1) * size;
+        List<String> postIds = postStarMapper.selectValidPostIdsPage(userId, offset, size);
         result.setRecords(selectPostsByIdsWithoutContent(postIds));
         return result;
     }
 
     @Override
     public IPage<Post> getLikedPosts(String userId, int page, int size) {
-        Page<PostLike> likePage = postLikeMapper.selectPage(
-                new Page<>(page, size),
-                new LambdaQueryWrapper<PostLike>()
-                        .eq(PostLike::getUserId, userId)
-                        .orderByDesc(PostLike::getCreateTime));
-
-        Page<Post> result = new Page<>(page, size, likePage.getTotal());
-        if (likePage.getRecords().isEmpty()) {
+        long total = postLikeMapper.countValidByUserId(userId);
+        Page<Post> result = new Page<>(page, size, total);
+        if (total == 0) {
             result.setRecords(new ArrayList<>());
             return result;
         }
 
-        List<String> postIds = new ArrayList<>();
-        for (PostLike pl : likePage.getRecords()) {
-            postIds.add(pl.getPostId());
-        }
-
+        int offset = (page - 1) * size;
+        List<String> postIds = postLikeMapper.selectValidPostIdsPage(userId, offset, size);
         result.setRecords(selectPostsByIdsWithoutContent(postIds));
         return result;
     }
