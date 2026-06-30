@@ -21,6 +21,7 @@ public class NotificationDetailDTO {
     private String targetTitle;
     private String schoolId;
     private String commentId;
+    private String content;
     private Integer isRead;
     private LocalDateTime createTime;
 }

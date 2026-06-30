@@ -39,5 +39,6 @@ public interface UserFeignClient {
         private String targetTitle;
         private String schoolId;
         private String commentId;
+        private String content;
     }
 }

@@ -208,8 +208,9 @@ export default function NotificationPage() {
                                     {d.type === 'FOLLOW' && ` 关注了你`}
                                     {d.type === 'COMMENT' && ` 评论了你的帖子`}
                                     {d.type === 'REPLY' && ` 回复了你的评论`}
+                                    {d.targetTitle && `：${d.targetTitle}`}
                                   </p>
-                                  {d.targetTitle && <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{d.targetTitle}</p>}
+                                  {d.content && <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{d.content}</p>}
                                 </>
                               )}
                             </div>

@@ -46,6 +46,9 @@ public class Notification implements Serializable {
     /** Target comment id (for COMMENT/REPLY/COMMENT_LIKE navigation) */
     private String commentId;
 
+    /** Comment content preview (for COMMENT/REPLY/COMMENT_LIKE display) */
+    private String content;
+
     /** Whether the notification has been read */
     private Integer isRead;
 

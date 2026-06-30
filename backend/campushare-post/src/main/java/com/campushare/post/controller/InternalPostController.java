@@ -69,6 +69,18 @@ public class InternalPostController {
         return Result.success(postService.getUserPostStats(userId));
     }
 
+    @GetMapping("/{postId}/meta")
+    public Result<Map<String, String>> getPostMeta(@PathVariable String postId) {
+        Post post = postService.getPostById(postId);
+        if (post == null || post.getDeleted()) {
+            return Result.success(null);
+        }
+        Map<String, String> meta = new HashMap<>();
+        meta.put("schoolId", post.getSchoolId());
+        meta.put("title", post.getTitle());
+        return Result.success(meta);
+    }
+
     private IPage<PostListDTO> enrichPage(IPage<Post> postPage) {
         Page<PostListDTO> dtoPage = new Page<>(postPage.getCurrent(), postPage.getSize(), postPage.getTotal());
         dtoPage.setRecords(enrichWithAuthor(postPage.getRecords()));

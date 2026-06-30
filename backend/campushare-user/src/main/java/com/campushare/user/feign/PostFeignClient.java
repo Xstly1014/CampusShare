@@ -39,6 +39,9 @@ public interface PostFeignClient {
     @GetMapping("/internal/posts/user/{userId}/stats")
     Result<UserPostStats> getUserStats(@PathVariable("userId") String userId);
 
+    @GetMapping("/internal/posts/{postId}/meta")
+    Result<Map<String, String>> getPostMeta(@PathVariable("postId") String postId);
+
     @PostMapping("/admin/init-creator-data")
     Result<String> initCreatorTestData(
             @RequestParam("userId") String userId,

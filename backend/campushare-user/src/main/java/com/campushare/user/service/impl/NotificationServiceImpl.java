@@ -7,11 +7,13 @@ import com.campushare.user.dto.NotificationItemDTO;
 import com.campushare.user.entity.Message;
 import com.campushare.user.entity.Notification;
 import com.campushare.user.entity.User;
+import com.campushare.user.feign.PostFeignClient;
 import com.campushare.user.mapper.FollowMapper;
 import com.campushare.user.mapper.MessageMapper;
 import com.campushare.user.mapper.NotificationMapper;
 import com.campushare.user.mapper.UserMapper;
 import com.campushare.user.service.NotificationService;
+import com.campushare.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final MessageMapper messageMapper;
     private final UserMapper userMapper;
     private final FollowMapper followMapper;
+    private final PostFeignClient postFeignClient;
 
     @Override
     public void createNotification(String userId, String senderId, String type, String targetId, String targetTitle) {
@@ -218,6 +221,21 @@ public class NotificationServiceImpl implements NotificationService {
                     senderName = sender != null ? sender.getUsername() : "系统通知";
                     senderAvatar = sender != null ? sender.getAvatarUrl() : null;
                 }
+                String schoolId = n.getSchoolId();
+                String targetTitle = n.getTargetTitle();
+                if (schoolId == null && n.getTargetId() != null && !isSystem) {
+                    try {
+                        Result<Map<String, String>> metaRes = postFeignClient.getPostMeta(n.getTargetId());
+                        if (metaRes != null && metaRes.getCode() == 2000 && metaRes.getData() != null) {
+                            schoolId = metaRes.getData().get("schoolId");
+                            if (targetTitle == null || targetTitle.isEmpty()) {
+                                targetTitle = metaRes.getData().get("title");
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.debug("Failed to fetch post meta for notification: {}", e.getMessage());
+                    }
+                }
                 result.add(NotificationDetailDTO.builder()
                         .id(String.valueOf(n.getId()))
                         .senderId(n.getSenderId())
@@ -225,9 +243,10 @@ public class NotificationServiceImpl implements NotificationService {
                         .senderAvatar(senderAvatar)
                         .type(n.getType())
                         .targetId(n.getTargetId())
-                        .targetTitle(n.getTargetTitle())
-                        .schoolId(n.getSchoolId())
+                        .targetTitle(targetTitle)
+                        .schoolId(schoolId)
                         .commentId(n.getCommentId())
+                        .content(n.getContent())
                         .isRead(n.getIsRead())
                         .createTime(n.getCreateTime())
                         .build());

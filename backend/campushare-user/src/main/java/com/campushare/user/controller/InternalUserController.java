@@ -67,6 +67,7 @@ public class InternalUserController {
         String targetTitle = request.get("targetTitle");
         String schoolId = request.get("schoolId");
         String commentId = request.get("commentId");
+        String content = request.get("content");
 
         Notification notification = Notification.builder()
                 .userId(userId)
@@ -76,6 +77,7 @@ public class InternalUserController {
                 .targetTitle(targetTitle)
                 .schoolId(schoolId)
                 .commentId(commentId)
+                .content(content)
                 .isRead(0)
                 .build();
         notificationMapper.insert(notification);

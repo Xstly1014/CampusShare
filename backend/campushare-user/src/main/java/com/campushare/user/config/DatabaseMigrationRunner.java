@@ -23,6 +23,7 @@ public class DatabaseMigrationRunner {
         updateExistingCreatorsLevel();
         addNotificationSchoolIdColumn();
         addNotificationCommentIdColumn();
+        addNotificationContentColumn();
         log.info("Database migrations completed");
     }
 
@@ -41,6 +42,15 @@ public class DatabaseMigrationRunner {
             log.info("Added comment_id column to notifications table");
         } catch (Exception e) {
             log.debug("comment_id column may already exist: {}", e.getMessage());
+        }
+    }
+
+    private void addNotificationContentColumn() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE notifications ADD COLUMN content TEXT");
+            log.info("Added content column to notifications table");
+        } catch (Exception e) {
+            log.debug("content column may already exist: {}", e.getMessage());
         }
     }
 

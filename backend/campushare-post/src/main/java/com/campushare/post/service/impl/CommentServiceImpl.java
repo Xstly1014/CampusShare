@@ -74,6 +74,7 @@ public class CommentServiceImpl implements CommentService {
                 req.setTargetTitle(postTitle);
                 req.setSchoolId(post.getSchoolId());
                 req.setCommentId(comment.getId());
+                req.setContent(comment.getContent());
                 userFeignClient.createNotification(req);
             } else if (!post.getAuthorId().equals(userId)) {
                 UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
@@ -84,6 +85,7 @@ public class CommentServiceImpl implements CommentService {
                 req.setTargetTitle(postTitle);
                 req.setSchoolId(post.getSchoolId());
                 req.setCommentId(comment.getId());
+                req.setContent(comment.getContent());
                 userFeignClient.createNotification(req);
             }
         } catch (Exception e) {
@@ -193,6 +195,7 @@ public class CommentServiceImpl implements CommentService {
                     req.setTargetTitle(targetTitle);
                     req.setSchoolId(postForLike != null ? postForLike.getSchoolId() : null);
                     req.setCommentId(commentId);
+                    req.setContent(comment.getContent());
                     userFeignClient.createNotification(req);
                 }
             } catch (Exception e) {
