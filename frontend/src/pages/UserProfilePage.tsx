@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare, BadgeCheck, Crown } from 'lucide-react'
+import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare, BadgeCheck, Crown, Eye, Heart, File } from 'lucide-react'
 import { userApi, postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
@@ -37,6 +37,10 @@ interface BackendPost {
   postType: string
   title: string
   content: string
+  fileUrl?: string
+  fileName?: string
+  fileType?: string
+  fileSize?: number
   viewCount: number
   starCount: number
   likeCount: number
@@ -81,6 +85,23 @@ function formatTime(dateStr: string): string {
   if (date.toDateString() === yesterday.toDateString()) return '昨天'
   if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function formatNumber(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return n.toString()
+}
+
+function formatFileSize(bytes?: number): string | undefined {
+  if (!bytes) return undefined
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
+function getFileUrl(url?: string): string | undefined {
+  if (!url) return undefined
+  return url.startsWith('/files/') ? `/api${url}` : url
 }
 
 const tabs: { key: TabType; label: string; icon: React.ReactNode }[] = [
@@ -267,32 +288,82 @@ export default function UserProfilePage() {
           <div className="text-center py-12"><div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
         ) : posts.length > 0 ? (
           <div className="space-y-3">
-            {posts.map((post) => (
+            {posts.map((post) => {
+              const isImage = post.fileType?.startsWith('image/')
+              const hasFile = !!post.fileUrl && !isImage
+              const avatarUrl = post.authorAvatar
+                ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
+                : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
+              return (
               <div key={post.id} onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)} className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all p-4 cursor-pointer">
-                <div className="flex items-start gap-3">
-                  <img src={post.authorAvatar ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar) : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`} alt={post.authorName} className="w-10 h-10 rounded-full flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${post.postType === 'resource' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{post.postType === 'resource' ? '资料' : '讨论'}</span>
-                      <span className="text-xs text-gray-400">{formatTime(post.createTime)}</span>
+                {/* 顶部作者栏 */}
+                <div className="flex items-center gap-2 mb-2">
+                  <img
+                    src={avatarUrl}
+                    alt={post.authorName}
+                    className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
+                  />
+                  <span className="text-sm text-gray-700 font-medium flex items-center gap-1">
+                    {post.authorName || post.authorId.slice(0, 8)}
+                    {post.authorLevel && post.authorLevel !== 'NONE' && (
+                      <CreatorLevelIcon level={post.authorLevel} />
+                    )}
+                  </span>
+                  <span className="text-xs text-gray-400 ml-1">{formatTime(post.createTime)}</span>
+                </div>
+
+                {/* 内容区 */}
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
+                    {post.title}
+                  </h3>
+                  {post.content && (
+                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">{post.content}</p>
+                  )}
+
+                  {/* 图片附件缩略图 */}
+                  {isImage && post.fileUrl && (
+                    <img
+                      src={getFileUrl(post.fileUrl)}
+                      alt={post.fileName || '附件'}
+                      className="w-16 h-16 object-cover rounded mt-2"
+                    />
+                  )}
+
+                  {/* 文件附件条 */}
+                  {hasFile && (
+                    <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
+                      <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                      <span className="text-sm text-gray-700 truncate flex-1">{post.fileName || '附件'}</span>
+                      {formatFileSize(post.fileSize) && (
+                        <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(post.fileSize)}</span>
+                      )}
                     </div>
-                    <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2">{post.title}</h3>
-                    {post.content && <p className="text-xs text-gray-500 mb-2 line-clamp-2">{post.content}</p>}
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-gray-500 flex items-center gap-0.5">
-                        {post.authorName || post.authorId.slice(0, 8)}
-                        {post.authorLevel && post.authorLevel !== 'NONE' && <span title="认证创作者"><CreatorLevelIcon level={post.authorLevel} /></span>}
-                      </span>
-                      <div className="flex items-center gap-3 text-gray-400">
-                        <span className="text-xs">{post.viewCount} 浏览</span>
-                        <span className="text-xs">{post.starCount} 收藏</span>
-                        <span className="text-xs">{post.commentCount} 评论</span>
-                      </div>
-                    </div>
-                  </div>
+                  )}
+                </div>
+
+                {/* 底部数据栏 */}
+                <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                  <span className="flex items-center gap-1">
+                    <Eye className="w-3.5 h-3.5" />
+                    {formatNumber(post.viewCount)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    {post.commentCount}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5" />
+                    {formatNumber(post.starCount)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Heart className="w-3.5 h-3.5" />
+                    {formatNumber(post.likeCount)}
+                  </span>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <div className="text-center py-12"><p className="text-gray-400 text-sm">暂无内容</p></div>

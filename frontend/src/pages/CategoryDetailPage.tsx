@@ -16,7 +16,7 @@ import {
   Map, Compass, BedDouble,
   User, Mountain, Focus, SlidersHorizontal,
   BookCopy, Code2, Scroll, Target,
-  Hash, Search, BadgeCheck, Crown
+  Hash, Search, BadgeCheck, Crown, Eye
 } from 'lucide-react'
 import { categoryApi, postApi, fileApi, Category, SubCategory } from '../services/api'
 import SchoolCard from '../components/home/SchoolCard'
@@ -126,6 +126,48 @@ function CreatorLevelIcon({ level }: { level?: string }) {
     return <Crown className={`w-3.5 h-3.5 ${colorClass}`} />
   }
   return <BadgeCheck className={`w-3.5 h-3.5 ${colorClass}`} />
+}
+
+function timeAgo(dateStr: string): string {
+  const date = new Date(dateStr.replace(' ', 'T'))
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(diff / (1000 * 60))
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+
+  const isSameDay = date.toDateString() === now.toDateString()
+  if (isSameDay) {
+    if (seconds < 60) return '刚刚'
+    if (minutes < 60) return `${minutes}分钟前`
+    if (hours < 24) return `${hours}小时前`
+  }
+
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) return '昨天'
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`
+  }
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function formatNumber(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return n.toString()
+}
+
+function formatFileSize(bytes?: number): string | undefined {
+  if (!bytes) return undefined
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
+function getFileUrl(url?: string): string | undefined {
+  if (!url) return undefined
+  return url.startsWith('/files/') ? `/api${url}` : url
 }
 
 interface School {
@@ -485,7 +527,13 @@ export default function CategoryDetailPage() {
             </div>
 
             <div className="space-y-3">
-              {posts.map((post) => (
+              {posts.map((post) => {
+                const isImage = post.fileType?.startsWith('image/')
+                const hasFile = !!post.fileUrl && !isImage
+                const avatarUrl = post.authorAvatar
+                  ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
+                  : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
+                return (
                 <div
                   key={post.id}
                   onClick={() => {
@@ -495,39 +543,76 @@ export default function CategoryDetailPage() {
                       navigate(`/category/${post.categoryId}/post/${post.id}`)
                     }
                   }}
-                  className="bg-white rounded-xl border border-gray-100 p-4 cursor-pointer hover:border-gray-200 hover:shadow-sm transition-all"
+                  className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:border-gray-200 hover:shadow-sm transition-all"
                 >
+                  {/* 顶部作者栏 */}
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {post.authorAvatar ? (
-                        <img src={post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar} alt={post.authorName} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-white text-xs font-bold">{post.authorName?.substring(0, 1).toUpperCase()}</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                    <img
+                      src={avatarUrl}
+                      alt={post.authorName}
+                      className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
+                    />
+                    <span className="text-sm text-gray-700 font-medium flex items-center gap-1">
                       {post.authorName}
-                      {post.authorLevel && post.authorLevel !== 'NONE' && <span title="认证创作者"><CreatorLevelIcon level={post.authorLevel} /></span>}
+                      {post.authorLevel && post.authorLevel !== 'NONE' && (
+                        <CreatorLevelIcon level={post.authorLevel} />
+                      )}
                     </span>
-                    {post.subCategoryName && (
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${colors.light} ${colors.text}`}>{post.subCategoryName}</span>
-                    )}
-                    <span className="text-xs text-gray-300 ml-auto">{post.createTime?.substring(5, 16)}</span>
+                    <span className="text-xs text-gray-400 ml-1">{timeAgo(post.createTime)}</span>
                   </div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-1">{post.title}</h3>
-                  <p className="text-xs text-gray-400 line-clamp-2 mb-2">{post.content}</p>
-                  {post.fileName && (
-                    <div className="flex items-center gap-1.5 text-xs text-blue-500 bg-blue-50 rounded-lg px-2 py-1.5 mb-2 w-fit">
-                      <File className="w-3 h-3" />
-                      {post.fileName}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    <span className="flex items-center gap-0.5"><Flame className="w-3 h-3" />{post.likeCount}</span>
-                    <span className="flex items-center gap-0.5"><MessageSquare className="w-3 h-3" />{post.commentCount}</span>
+
+                  {/* 内容区 */}
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
+                      {post.title}
+                    </h3>
+                    {post.content && (
+                      <p className="text-sm text-gray-600 mt-1 line-clamp-2">{post.content}</p>
+                    )}
+
+                    {/* 图片附件缩略图 */}
+                    {isImage && post.fileUrl && (
+                      <img
+                        src={getFileUrl(post.fileUrl)}
+                        alt={post.fileName || '附件'}
+                        className="w-16 h-16 object-cover rounded mt-2"
+                      />
+                    )}
+
+                    {/* 文件附件条 */}
+                    {hasFile && (
+                      <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
+                        <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 truncate flex-1">{post.fileName || '附件'}</span>
+                        {formatFileSize(post.fileSize) && (
+                          <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(post.fileSize)}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 底部数据栏 */}
+                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Eye className="w-3.5 h-3.5" />
+                      {formatNumber(post.viewCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {post.commentCount}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5" />
+                      {formatNumber(post.starCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Heart className="w-3.5 h-3.5" />
+                      {formatNumber(post.likeCount)}
+                    </span>
                   </div>
                 </div>
-              ))}
+                )
+              })}
 
               {loading && (
                 <div className="text-center py-4 text-sm text-gray-400">加载中...</div>

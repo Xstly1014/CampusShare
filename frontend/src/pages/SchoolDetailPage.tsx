@@ -15,6 +15,7 @@ import {
   File,
   BadgeCheck,
   Crown,
+  Heart,
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
@@ -61,11 +62,12 @@ interface PostView {
   stars: number
   comments: number
   views: number
+  likes: number
   isStarred: boolean
   fileUrl?: string
+  fileName?: string
   fileType?: string
   fileSize?: string
-  description?: string
   content?: string
 }
 
@@ -136,6 +138,11 @@ interface PostCardProps {
   onStar: (postId: string) => void
 }
 
+function getFileUrl(url?: string): string | undefined {
+  if (!url) return undefined
+  return url.startsWith('/files/') ? `/api${url}` : url
+}
+
 function PostCard({ post, schoolId, onStar }: PostCardProps) {
   const navigate = useNavigate()
 
@@ -150,85 +157,81 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
     navigate(`/user/${post.author.id}`)
   }
 
+  const isImage = post.fileType?.startsWith('image/')
+  const hasFile = !!post.fileUrl && !isImage
+
   return (
     <div onClick={handleClick} className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer">
-      <div className="flex items-start gap-3">
-        {/* 头像 */}
+      {/* 顶部作者栏 */}
+      <div className="flex items-center gap-2 mb-2">
         <img
           onClick={handleAvatarClick}
           src={post.author.avatar}
           alt={post.author.username}
-          className="w-10 h-10 rounded-full flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+          className="w-8 h-8 rounded-full flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
         />
+        <span className="text-sm text-gray-700 font-medium flex items-center gap-1">
+          {post.author.username}
+          {post.author.authorLevel && post.author.authorLevel !== 'NONE' && (
+            <CreatorLevelIcon level={post.author.authorLevel} />
+          )}
+        </span>
+        <span className="text-xs text-gray-400 ml-1">{timeAgo(post.createdAt)}</span>
+      </div>
 
-        <div className="flex-1 min-w-0">
-          {/* 标签行 */}
-          <div className="flex items-center gap-2 mb-2">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColors[post.type]}`}>
-              {typeLabels[post.type]}
-            </span>
-            <span className="text-xs text-gray-400">{timeAgo(post.createdAt)}</span>
+      {/* 内容区 */}
+      <div>
+        <h3 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
+          {post.title}
+        </h3>
+        {post.content && (
+          <p className="text-sm text-gray-600 mt-1 line-clamp-2">{post.content}</p>
+        )}
+
+        {/* 图片附件缩略图 */}
+        {isImage && post.fileUrl && (
+          <img
+            src={getFileUrl(post.fileUrl)}
+            alt={post.fileName || '附件'}
+            className="w-16 h-16 object-cover rounded mt-2"
+          />
+        )}
+
+        {/* 文件附件条 */}
+        {hasFile && (
+          <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
+            <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            <span className="text-sm text-gray-700 truncate flex-1">{post.fileName || '附件'}</span>
+            {post.fileSize && (
+              <span className="text-xs text-gray-400 flex-shrink-0">{post.fileSize}</span>
+            )}
           </div>
+        )}
+      </div>
 
-          {/* 标题 */}
-          <h3 className="text-sm font-medium text-gray-900 mb-1 leading-snug line-clamp-2 hover:text-blue-600 cursor-pointer">
-            {post.title}
-          </h3>
-
-          {/* 描述（资源贴） */}
-          {post.type === 'resource' && post.description && (
-            <p className="text-xs text-gray-500 mb-2 line-clamp-2">{post.description}</p>
-          )}
-
-          {/* 讨论帖内容摘要 */}
-          {post.type === 'discussion' && post.content && (
-            <p className="text-xs text-gray-500 mb-2 line-clamp-2">{post.content}</p>
-          )}
-
-          {/* 文件信息（资源贴） */}
-          {post.type === 'resource' && post.fileType && (
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded font-mono uppercase">
-                {post.fileType}
-              </span>
-              {post.fileSize && (
-                <span className="text-xs text-gray-400">{post.fileSize}</span>
-              )}
-            </div>
-          )}
-
-          {/* 作者信息 */}
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              {post.author.username}
-              {post.author.authorLevel && post.author.authorLevel !== 'NONE' && (
-                <span title="认证创作者">
-                  <CreatorLevelIcon level={post.author.authorLevel} />
-                </span>
-              )}
-            </span>
-
-            <div className="flex items-center gap-3 text-gray-400">
-              <span className="flex items-center gap-1 text-xs">
-                <Eye className="w-3.5 h-3.5" />
-                {formatNumber(post.views)}
-              </span>
-              <span className="flex items-center gap-1 text-xs">
-                <MessageSquare className="w-3.5 h-3.5" />
-                {post.comments}
-              </span>
-              <button
-                onClick={() => onStar(post.id)}
-                className={`flex items-center gap-1 text-xs transition-colors ${
-                  post.isStarred ? 'text-orange-500' : 'hover:text-orange-500'
-                }`}
-              >
-                <Star className={`w-3.5 h-3.5 ${post.isStarred ? 'fill-current' : ''}`} />
-                {formatNumber(post.stars)}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* 底部数据栏 */}
+      <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+        <span className="flex items-center gap-1">
+          <Eye className="w-3.5 h-3.5" />
+          {formatNumber(post.views)}
+        </span>
+        <span className="flex items-center gap-1">
+          <MessageSquare className="w-3.5 h-3.5" />
+          {post.comments}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onStar(post.id) }}
+          className={`flex items-center gap-1 transition-colors ${
+            post.isStarred ? 'text-orange-500' : 'hover:text-orange-500'
+          }`}
+        >
+          <Star className={`w-3.5 h-3.5 ${post.isStarred ? 'fill-current' : ''}`} />
+          {formatNumber(post.stars)}
+        </button>
+        <span className="flex items-center gap-1">
+          <Heart className="w-3.5 h-3.5" />
+          {formatNumber(post.likes)}
+        </span>
       </div>
     </div>
   )
@@ -278,11 +281,12 @@ export default function SchoolDetailPage() {
         stars: p.starCount || 0,
         comments: p.commentCount || 0,
         views: p.viewCount || 0,
+        likes: p.likeCount || 0,
         isStarred: false,
         fileUrl: p.fileUrl,
+        fileName: p.fileName,
         fileType: p.fileType,
         fileSize: p.fileSize ? (p.fileSize / 1024 / 1024).toFixed(2) + ' MB' : undefined,
-        description: p.content,
         content: p.content,
       }))
       setPosts(viewPosts)
