@@ -20,6 +20,7 @@ public class NotificationDetailDTO {
     private String targetId;
     private String targetTitle;
     private String schoolId;
+    private String commentId;
     private Integer isRead;
     private LocalDateTime createTime;
 }

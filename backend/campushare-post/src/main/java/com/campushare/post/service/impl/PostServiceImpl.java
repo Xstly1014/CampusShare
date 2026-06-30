@@ -249,6 +249,7 @@ public class PostServiceImpl implements PostService {
                 req.setType("STAR");
                 req.setTargetId(postId);
                 req.setTargetTitle(post.getTitle());
+                req.setSchoolId(post.getSchoolId());
                 userFeignClient.createNotification(req);
             } catch (Exception e) {
                 log.warn("Feign调用创建收藏通知失败: {}", e.getMessage());
@@ -295,6 +296,7 @@ public class PostServiceImpl implements PostService {
                 req.setType("LIKE");
                 req.setTargetId(postId);
                 req.setTargetTitle(post.getTitle());
+                req.setSchoolId(post.getSchoolId());
                 userFeignClient.createNotification(req);
             } catch (Exception e) {
                 log.warn("Feign调用创建点赞通知失败: {}", e.getMessage());

@@ -22,6 +22,7 @@ export interface NotificationDetail {
   targetId?: string
   targetTitle?: string
   schoolId?: string
+  commentId?: string
   isRead: number
   createTime: string
 }

@@ -40,6 +40,12 @@ public class Notification implements Serializable {
     /** Target post title (for display) */
     private String targetTitle;
 
+    /** Target post school id (for navigation) */
+    private String schoolId;
+
+    /** Target comment id (for COMMENT/REPLY/COMMENT_LIKE navigation) */
+    private String commentId;
+
     /** Whether the notification has been read */
     private Integer isRead;
 

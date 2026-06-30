@@ -72,6 +72,8 @@ public class CommentServiceImpl implements CommentService {
                 req.setType("REPLY");
                 req.setTargetId(postId);
                 req.setTargetTitle(postTitle);
+                req.setSchoolId(post.getSchoolId());
+                req.setCommentId(comment.getId());
                 userFeignClient.createNotification(req);
             } else if (!post.getAuthorId().equals(userId)) {
                 UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
@@ -80,6 +82,8 @@ public class CommentServiceImpl implements CommentService {
                 req.setType("COMMENT");
                 req.setTargetId(postId);
                 req.setTargetTitle(postTitle);
+                req.setSchoolId(post.getSchoolId());
+                req.setCommentId(comment.getId());
                 userFeignClient.createNotification(req);
             }
         } catch (Exception e) {
@@ -180,12 +184,15 @@ public class CommentServiceImpl implements CommentService {
                 if (!comment.getUserId().equals(userId)) {
                     String commentContent = comment.getContent();
                     String targetTitle = commentContent.length() > 20 ? commentContent.substring(0, 20) + "..." : commentContent;
+                    Post postForLike = postMapper.selectById(comment.getPostId());
                     UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
                     req.setUserId(comment.getUserId());
                     req.setSenderId(userId);
                     req.setType("COMMENT_LIKE");
                     req.setTargetId(comment.getPostId());
                     req.setTargetTitle(targetTitle);
+                    req.setSchoolId(postForLike != null ? postForLike.getSchoolId() : null);
+                    req.setCommentId(commentId);
                     userFeignClient.createNotification(req);
                 }
             } catch (Exception e) {

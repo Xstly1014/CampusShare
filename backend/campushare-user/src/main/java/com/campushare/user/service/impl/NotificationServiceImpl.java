@@ -226,7 +226,8 @@ public class NotificationServiceImpl implements NotificationService {
                         .type(n.getType())
                         .targetId(n.getTargetId())
                         .targetTitle(n.getTargetTitle())
-                        .schoolId(null)
+                        .schoolId(n.getSchoolId())
+                        .commentId(n.getCommentId())
                         .isRead(n.getIsRead())
                         .createTime(n.getCreateTime())
                         .build());

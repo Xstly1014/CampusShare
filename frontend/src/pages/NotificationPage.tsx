@@ -165,15 +165,25 @@ export default function NotificationPage() {
                             key={d.id}
                             onClick={() => {
                               if (d.type === 'SYSTEM') return;
-                              if (d.targetId && d.schoolId) {
-                                navigate(`/school/${d.schoolId}/post/${d.targetId}`)
-                              } else {
+                              if (d.type === 'FOLLOW') {
                                 navigate(`/user/${d.senderId}`)
+                                return
+                              }
+                              if (d.targetId && d.schoolId) {
+                                const hash = d.commentId ? `#comment-${d.commentId}` : ''
+                                navigate(`/school/${d.schoolId}/post/${d.targetId}${hash}`)
                               }
                             }}
                             className={`bg-gray-50 rounded-lg p-2.5 flex items-center gap-2.5 ${d.type === 'SYSTEM' ? 'cursor-default' : 'cursor-pointer hover:bg-gray-100'} transition-colors`}
                           >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 ${d.type === 'SYSTEM' ? 'bg-amber-50 text-amber-500' : 'bg-gradient-to-br from-blue-500 to-blue-600'}`}>
+                            <div
+                              onClick={(e) => {
+                                if (d.type === 'SYSTEM') return
+                                e.stopPropagation()
+                                navigate(`/user/${d.senderId}`)
+                              }}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 ${d.type === 'SYSTEM' ? 'bg-amber-50 text-amber-500' : 'bg-gradient-to-br from-blue-500 to-blue-600 cursor-pointer hover:ring-2 hover:ring-blue-200'}`}
+                            >
                               {d.type === 'SYSTEM' ? (
                                 <Bell className="w-4 h-4" />
                               ) : d.senderAvatar ? (
