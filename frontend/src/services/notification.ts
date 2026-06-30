@@ -1,16 +1,27 @@
 import { api } from './http'
 
-export interface NotificationItem {
-  itemType: string
-  title: string
-  preview: string
-  unreadCount: number
-  totalCount: number
-  latestTime: string
-  isPinned: boolean
-  otherUserId?: string
-  otherUserName?: string
-  otherUserAvatar?: string
+export interface SenderInfo {
+  userId: string
+  username: string
+  avatarUrl?: string
+}
+
+export interface NotificationListItem {
+  id: string
+  type: string
+  senderId?: string
+  senderName?: string
+  senderAvatar?: string
+  aggregatedSenders?: SenderInfo[]
+  aggregatedCount: number
+  targetId?: string
+  targetTitle?: string
+  commentId?: string
+  schoolId?: string
+  categoryId?: string
+  content?: string
+  isRead: number
+  createTime: string
 }
 
 export interface NotificationDetail {
@@ -22,19 +33,21 @@ export interface NotificationDetail {
   targetId?: string
   targetTitle?: string
   schoolId?: string
+  categoryId?: string
+  commentId?: string
   isRead: number
   createTime: string
 }
 
 export const notificationApi = {
-  getFeed: () => api.get<NotificationItem[]>('/notifications/feed'),
+  getList: () => api.get<NotificationListItem[]>('/notifications/list'),
 
-  getDetail: (type: string) => api.get<NotificationDetail[]>(`/notifications/detail/${type}`),
+  markSingleAsRead: (id: number | string) => api.post(`/notifications/read-single/${id}`),
 
-  markAsRead: (type: string) => api.post(`/notifications/read/${type}`),
+  markAggregatedAsRead: (type: string, targetId: string) =>
+    api.post('/notifications/read-aggregated', { type, targetId }),
 
-  togglePin: (itemType: string, targetId?: string) =>
-    api.post('/notifications/pin', { itemType, targetId }),
+  markAllAsRead: () => api.post('/notifications/read-all'),
 
   getUnreadCount: () => api.get<number>('/notifications/unread-count'),
 }

@@ -8,7 +8,8 @@ type ListType = 'history' | 'starred' | 'liked' | 'mine' | 'comments'
 
 interface BackendPost {
   id: string
-  schoolId: string
+  schoolId?: string
+  categoryId?: string
   authorId: string
   authorName?: string
   authorAvatar?: string
@@ -60,6 +61,7 @@ interface CommentItem {
   id: string
   postId: string
   schoolId?: string
+  categoryId?: string
   userId: string
   username: string
   avatarUrl: string
@@ -244,10 +246,19 @@ export default function MyListPage() {
           </div>
         ) : isCommentsType && comments.length > 0 ? (
           <div className="space-y-3">
-            {comments.map((comment) => (
+            {comments.map((comment) => {
+              let postUrl: string
+              if (comment.schoolId) {
+                postUrl = `/school/${comment.schoolId}/post/${comment.postId}#comment-${comment.id}`
+              } else if (comment.categoryId) {
+                postUrl = `/category/${comment.categoryId}/post/${comment.postId}#comment-${comment.id}`
+              } else {
+                postUrl = `/school/1/post/${comment.postId}#comment-${comment.id}`
+              }
+              return (
               <div
                 key={comment.id}
-                onClick={() => navigate(`/school/${comment.schoolId || '1'}/post/${comment.postId}`)}
+                onClick={() => navigate(postUrl)}
                 className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
               >
                 <div className="flex items-start gap-3">
@@ -264,12 +275,13 @@ export default function MyListPage() {
                     <p className="text-sm text-gray-700 leading-relaxed mb-1 line-clamp-3">{comment.content}</p>
                     <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
                       <MessageSquare className="w-3.5 h-3.5" />
-                      <span>回复的帖子</span>
+                      <span>点击查看评论位置</span>
                     </div>
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         ) : !isCommentsType && posts.length > 0 ? (
           <div className="space-y-3">
@@ -279,10 +291,18 @@ export default function MyListPage() {
               const avatarUrl = post.authorAvatar
                 ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
                 : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
+              let postUrl: string
+              if (post.schoolId) {
+                postUrl = `/school/${post.schoolId}/post/${post.id}`
+              } else if (post.categoryId) {
+                postUrl = `/category/${post.categoryId}/post/${post.id}`
+              } else {
+                postUrl = `/school/1/post/${post.id}`
+              }
               return (
               <div
                 key={post.id}
-                onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)}
+                onClick={() => navigate(postUrl)}
                 className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
               >
                 <div className="flex items-center gap-2 mb-2">

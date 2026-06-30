@@ -15,6 +15,7 @@ public class CommentDTO {
     private String id;
     private String postId;
     private String schoolId;
+    private String categoryId;
     private String userId;
     private String username;
     private String avatarUrl;

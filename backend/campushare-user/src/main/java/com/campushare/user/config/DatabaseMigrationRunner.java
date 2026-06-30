@@ -21,6 +21,9 @@ public class DatabaseMigrationRunner {
         addVerificationTypeColumn();
         addReviewNoteColumn();
         updateExistingCreatorsLevel();
+        addNotificationSchoolIdColumn();
+        addNotificationCategoryIdColumn();
+        addNotificationCommentIdColumn();
         log.info("Database migrations completed");
     }
 
@@ -59,6 +62,33 @@ public class DatabaseMigrationRunner {
             log.info("Updated existing CREATOR users to JUNIOR level");
         } catch (Exception e) {
             log.warn("Failed to update existing creators level: {}", e.getMessage());
+        }
+    }
+
+    private void addNotificationSchoolIdColumn() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE notifications ADD COLUMN school_id VARCHAR(36)");
+            log.info("Added school_id column to notifications table");
+        } catch (Exception e) {
+            log.debug("school_id column may already exist: {}", e.getMessage());
+        }
+    }
+
+    private void addNotificationCategoryIdColumn() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE notifications ADD COLUMN category_id VARCHAR(36)");
+            log.info("Added category_id column to notifications table");
+        } catch (Exception e) {
+            log.debug("category_id column may already exist: {}", e.getMessage());
+        }
+    }
+
+    private void addNotificationCommentIdColumn() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE notifications ADD COLUMN comment_id VARCHAR(36)");
+            log.info("Added comment_id column to notifications table");
+        } catch (Exception e) {
+            log.debug("comment_id column may already exist: {}", e.getMessage());
         }
     }
 }

@@ -65,6 +65,8 @@ public class CommentServiceImpl implements CommentService {
         }
 
         try {
+            String schoolId = post.getSchoolId();
+            String categoryId = post.getCategoryId();
             if (replyToUserId != null && !replyToUserId.isEmpty() && !replyToUserId.equals(userId)) {
                 UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
                 req.setUserId(replyToUserId);
@@ -72,6 +74,9 @@ public class CommentServiceImpl implements CommentService {
                 req.setType("REPLY");
                 req.setTargetId(postId);
                 req.setTargetTitle(postTitle);
+                req.setSchoolId(schoolId);
+                req.setCategoryId(categoryId);
+                req.setCommentId(comment.getId());
                 userFeignClient.createNotification(req);
             } else if (!post.getAuthorId().equals(userId)) {
                 UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
@@ -80,6 +85,9 @@ public class CommentServiceImpl implements CommentService {
                 req.setType("COMMENT");
                 req.setTargetId(postId);
                 req.setTargetTitle(postTitle);
+                req.setSchoolId(schoolId);
+                req.setCategoryId(categoryId);
+                req.setCommentId(comment.getId());
                 userFeignClient.createNotification(req);
             }
         } catch (Exception e) {
@@ -180,12 +188,16 @@ public class CommentServiceImpl implements CommentService {
                 if (!comment.getUserId().equals(userId)) {
                     String commentContent = comment.getContent();
                     String targetTitle = commentContent.length() > 20 ? commentContent.substring(0, 20) + "..." : commentContent;
+                    Post postForLike = postMapper.selectById(comment.getPostId());
                     UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
                     req.setUserId(comment.getUserId());
                     req.setSenderId(userId);
                     req.setType("COMMENT_LIKE");
                     req.setTargetId(comment.getPostId());
                     req.setTargetTitle(targetTitle);
+                    req.setSchoolId(postForLike != null ? postForLike.getSchoolId() : null);
+                    req.setCategoryId(postForLike != null ? postForLike.getCategoryId() : null);
+                    req.setCommentId(commentId);
                     userFeignClient.createNotification(req);
                 }
             } catch (Exception e) {
@@ -268,11 +280,13 @@ public class CommentServiceImpl implements CommentService {
 
         Post post = postMapper.selectById(comment.getPostId());
         String schoolId = post != null ? post.getSchoolId() : null;
+        String categoryId = post != null ? post.getCategoryId() : null;
 
         return CommentDTO.builder()
                 .id(comment.getId())
                 .postId(comment.getPostId())
                 .schoolId(schoolId)
+                .categoryId(categoryId)
                 .userId(comment.getUserId())
                 .username(username)
                 .avatarUrl(avatarUrl)

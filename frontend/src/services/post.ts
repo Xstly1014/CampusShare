@@ -3,6 +3,8 @@ import { api } from './http'
 export interface PostComment {
   id: string
   postId: string
+  schoolId?: string
+  categoryId?: string
   userId: string
   username: string
   avatarUrl: string
@@ -12,6 +14,8 @@ export interface PostComment {
   replyToUsername?: string
   likeCount: number
   isLiked: boolean
+  liked?: boolean
+  isAuthor?: boolean
   createTime: string
 }
 
