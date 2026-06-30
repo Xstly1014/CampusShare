@@ -154,7 +154,8 @@ public class PostServiceImpl implements PostService {
     public List<Post> getPostsBySchool(String schoolId, String postType, String sortType, int page, int size) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
-                        Post::getAuthorId, Post::getPostType, Post::getTitle,
+                        Post::getAuthorId, Post::getPostType, Post::getTitle, Post::getContent,
+                        Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                         Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                         Post::getCreateTime)
                 .eq(Post::getSchoolId, schoolId)
@@ -410,7 +411,8 @@ public class PostServiceImpl implements PostService {
                 new Page<>(page, size),
                 new LambdaQueryWrapper<Post>()
                         .select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
-                                Post::getAuthorId, Post::getPostType, Post::getTitle,
+                                Post::getAuthorId, Post::getPostType, Post::getTitle, Post::getContent,
+                                Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                                 Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                                 Post::getCreateTime)
                         .eq(Post::getAuthorId, userId)
@@ -465,7 +467,8 @@ public class PostServiceImpl implements PostService {
         List<Post> posts = postMapper.selectList(
                 new LambdaQueryWrapper<Post>()
                         .select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
-                                Post::getAuthorId, Post::getPostType, Post::getTitle,
+                                Post::getAuthorId, Post::getPostType, Post::getTitle, Post::getContent,
+                                Post::getFileUrl, Post::getFileName, Post::getFileType, Post::getFileSize,
                                 Post::getViewCount, Post::getStarCount, Post::getLikeCount, Post::getCommentCount,
                                 Post::getCreateTime)
                         .in(Post::getId, postIds)
