@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight, BadgeCheck, Crown } from 'lucide-react'
 import schoolsData from '../data/schools.json'
 import { postApi } from '../services/api'
@@ -106,8 +106,6 @@ function CreatorLevelIcon({ level, size = 'w-4 h-4' }: { level?: string; size?: 
 interface CommentItem {
   id: string
   postId: string
-  schoolId?: string
-  categoryId?: string
   userId: string
   username: string
   avatarUrl: string
@@ -124,10 +122,7 @@ interface CommentItem {
 export default function PostDetailPage() {
   const { postId, schoolId } = useParams<{ postId: string; schoolId: string }>()
   const navigate = useNavigate()
-  const location = useLocation()
   const { user, isAuthenticated } = useAuth()
-  const commentsLoadedRef = useRef(false)
-  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null)
 
   const school = schoolsData.find((s) => s.id === schoolId)
 
@@ -194,24 +189,6 @@ export default function PostDetailPage() {
   useEffect(() => {
     fetchComments()
   }, [fetchComments])
-
-  useEffect(() => {
-    if (comments.length === 0) return
-    const hash = location.hash
-    if (!hash.startsWith('#comment-')) return
-    const targetId = hash.replace('#comment-', '')
-    if (!targetId) return
-
-    const timer = setTimeout(() => {
-      const el = document.getElementById(`comment-${targetId}`)
-      if (el) {
-        setHighlightedCommentId(targetId)
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        setTimeout(() => setHighlightedCommentId(null), 2000)
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [comments, location.hash])
 
   // ================================================================
   // Comment actions
@@ -582,9 +559,7 @@ export default function PostDetailPage() {
           <div className="bg-white rounded-2xl border border-gray-100 px-4">
             {topLevelComments.length > 0 ? (
               topLevelComments.map((comment) => (
-                <div key={comment.id} id={`comment-${comment.id}`} className={`transition-colors duration-500 rounded-lg ${
-                  highlightedCommentId === comment.id ? 'bg-yellow-50 -mx-2 px-2' : ''
-                }`}>
+                <div key={comment.id}>
                   {/* Top-level comment */}
                   <CommentRow
                     comment={comment}
@@ -594,9 +569,7 @@ export default function PostDetailPage() {
                   />
                   {/* Replies (楼中楼) - all replies under root comment, ordered by time */}
                   {getReplies(comment.id).map((reply) => (
-                    <div key={reply.id} id={`comment-${reply.id}`} className={`flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0 transition-colors duration-500 rounded-lg ${
-                      highlightedCommentId === reply.id ? 'bg-yellow-50 -mx-2 px-2' : ''
-                    }`}>
+                    <div key={reply.id} className="flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0">
                       <CornerDownRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
                       <img
                         onClick={() => navigate(`/user/${reply.userId}`)}

@@ -25,22 +25,22 @@ public class Notification implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Integer id;
 
+    /** Recipient user ID (post author or person being followed) */
     private String userId;
 
+    /** Sender user ID (who performed the action) */
     private String senderId;
 
+    /** Notification type: LIKE, STAR, FOLLOW */
     private String type;
 
+    /** Target post ID (for LIKE/STAR), null for FOLLOW */
     private String targetId;
 
+    /** Target post title (for display) */
     private String targetTitle;
 
-    private String schoolId;
-
-    private String categoryId;
-
-    private String commentId;
-
+    /** Whether the notification has been read */
     private Integer isRead;
 
     @TableField(fill = FieldFill.INSERT)

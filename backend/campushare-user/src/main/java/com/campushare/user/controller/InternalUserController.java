@@ -65,9 +65,6 @@ public class InternalUserController {
         String type = request.get("type");
         String targetId = request.get("targetId");
         String targetTitle = request.get("targetTitle");
-        String schoolId = request.get("schoolId");
-        String categoryId = request.get("categoryId");
-        String commentId = request.get("commentId");
 
         Notification notification = Notification.builder()
                 .userId(userId)
@@ -75,9 +72,6 @@ public class InternalUserController {
                 .type(type)
                 .targetId(targetId)
                 .targetTitle(targetTitle)
-                .schoolId(schoolId)
-                .categoryId(categoryId)
-                .commentId(commentId)
                 .isRead(0)
                 .build();
         notificationMapper.insert(notification);
