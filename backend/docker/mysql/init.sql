@@ -129,7 +129,17 @@ CREATE TABLE IF NOT EXISTS view_history (
     view_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user_time (user_id, view_time),
     INDEX idx_post (post_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='浏览历史表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf4mb4 COLLATE=utf8mb4_unicode_ci COMMENT='浏览历史表';
+
+-- 创建下载历史表
+CREATE TABLE IF NOT EXISTS post_downloads (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id VARCHAR(36) NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
+    download_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_time (user_id, download_time),
+    INDEX idx_post (post_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf4mb4 COLLATE=utf8mb4_unicode_ci COMMENT='下载历史表';
 
 -- 创建用户关注表
 CREATE TABLE IF NOT EXISTS follows (

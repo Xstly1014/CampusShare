@@ -1,5 +1,26 @@
 import { api } from './http'
 
+export interface WarehouseCategoryStat {
+  categoryId: string
+  categoryName: string
+  color: string
+  icon: string
+  uploadCount: number
+  downloadCount: number
+}
+
+export interface WarehouseStats {
+  uploadCount: number
+  downloadCount: number
+  totalViews: number
+  totalLikes: number
+  totalStars: number
+  totalDownloadsOfMyPosts: number
+  uploadsByCategory: Record<string, number>
+  downloadsByCategory: Record<string, number>
+  categoryStats: WarehouseCategoryStat[]
+}
+
 export interface PostComment {
   id: string
   postId: string
@@ -77,6 +98,13 @@ export const postApi = {
     api.get(`/posts/mine?page=${page}&size=${size}`),
 
   getMyPostStats: () => api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>('/posts/my-stats'),
+
+  getMyDownloads: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/my-downloads?page=${page}&size=${size}`),
+
+  getWarehouseStats: () => api.get<WarehouseStats>('/posts/warehouse-stats'),
+
+  recordDownload: (postId: string) => api.post(`/posts/${postId}/download`),
 
   getComments: (postId: string) => api.get<PostComment[]>(`/posts/${postId}/comments`),
 

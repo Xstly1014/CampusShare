@@ -8,14 +8,19 @@ import com.campushare.common.exception.BusinessException;
 import com.campushare.post.dto.CreatePostRequest;
 import com.campushare.post.dto.UserPostStats;
 import com.campushare.post.entity.Post;
+import com.campushare.post.entity.PostDownload;
 import com.campushare.post.entity.PostLike;
 import com.campushare.post.entity.PostStar;
 import com.campushare.post.entity.ViewHistory;
 import com.campushare.post.feign.UserFeignClient;
+import com.campushare.post.mapper.PostDownloadMapper;
 import com.campushare.post.mapper.PostLikeMapper;
 import com.campushare.post.mapper.PostMapper;
 import com.campushare.post.mapper.PostStarMapper;
 import com.campushare.post.mapper.ViewHistoryMapper;
+import com.campushare.post.cache.CategoryCache;
+import com.campushare.post.entity.Category;
+import com.campushare.post.dto.WarehouseStats;
 import com.campushare.post.service.PostService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,10 +51,12 @@ public class PostServiceImpl implements PostService {
     private final PostStarMapper postStarMapper;
     private final PostLikeMapper postLikeMapper;
     private final ViewHistoryMapper viewHistoryMapper;
+    private final PostDownloadMapper postDownloadMapper;
     private final RedisTemplate<String, String> redisTemplate;
     private final MeterRegistry meterRegistry;
     private final UserFeignClient userFeignClient;
     private final ObjectMapper objectMapper;
+    private final CategoryCache categoryCache;
 
     private static final String REDIS_KEY_STAR = "post:star:";
     private static final String REDIS_KEY_LIKE = "post:like:";
@@ -478,5 +485,86 @@ public class PostServiceImpl implements PostService {
     @Override
     public UserPostStats getUserPostStats(String userId) {
         return getMyPostStats(userId);
+    }
+
+    @Override
+    public void recordDownload(String userId, String postId) {
+        PostDownload download = PostDownload.builder()
+                .postId(postId)
+                .userId(userId)
+                .downloadTime(LocalDateTime.now())
+                .build();
+        postDownloadMapper.insert(download);
+    }
+
+    @Override
+    public IPage<Post> getMyDownloads(String userId, int page, int size) {
+        long total = postDownloadMapper.countValidByUserId(userId);
+        Page<Post> result = new Page<>(page, size, total);
+        if (total == 0) {
+            result.setRecords(new ArrayList<>());
+            return result;
+        }
+
+        int offset = (page - 1) * size;
+        List<String> postIds = postDownloadMapper.selectValidPostIdsPage(userId, offset, size);
+        result.setRecords(selectPostsByIdsWithoutContent(postIds));
+        return result;
+    }
+
+    @Override
+    public WarehouseStats getWarehouseStats(String userId) {
+        long uploadCount = postMapper.countByAuthorId(userId);
+        long downloadCount = postDownloadMapper.countValidByUserId(userId);
+        long totalViews = postMapper.sumViewCountByAuthorId(userId);
+        long totalLikes = postMapper.sumLikeCountByAuthorId(userId);
+        long totalStars = postMapper.sumStarCountByAuthorId(userId);
+        long totalDownloadsOfMyPosts = postDownloadMapper.countDownloadsByAuthor(userId);
+
+        Map<String, Long> uploadsByCategory = new java.util.LinkedHashMap<>();
+        Map<String, Long> downloadsByCategory = new java.util.LinkedHashMap<>();
+
+        List<Map<String, Object>> uploadRows = postMapper.countUploadsByAuthorGroupByCategory(userId);
+        for (Map<String, Object> row : uploadRows) {
+            String categoryId = String.valueOf(row.get("categoryId"));
+            long cnt = ((Number) row.get("cnt")).longValue();
+            uploadsByCategory.put(categoryId, cnt);
+        }
+
+        List<Map<String, Object>> downloadRows = postDownloadMapper.countDownloadsGroupByCategory(userId);
+        for (Map<String, Object> row : downloadRows) {
+            String categoryId = String.valueOf(row.get("categoryId"));
+            long cnt = ((Number) row.get("cnt")).longValue();
+            downloadsByCategory.put(categoryId, cnt);
+        }
+
+        List<WarehouseStats.CategoryStat> categoryStats = new java.util.ArrayList<>();
+        java.util.Set<String> allCategoryIds = new java.util.LinkedHashSet<>();
+        allCategoryIds.addAll(uploadsByCategory.keySet());
+        allCategoryIds.addAll(downloadsByCategory.keySet());
+        for (String categoryId : allCategoryIds) {
+            Category cat = categoryCache.getCategory(categoryId);
+            categoryStats.add(WarehouseStats.CategoryStat.builder()
+                    .categoryId(categoryId)
+                    .categoryName(cat != null ? cat.getName() : "未知分类")
+                    .color(cat != null ? cat.getColor() : "blue")
+                    .icon(cat != null ? cat.getIcon() : "FileText")
+                    .uploadCount(uploadsByCategory.getOrDefault(categoryId, 0L))
+                    .downloadCount(downloadsByCategory.getOrDefault(categoryId, 0L))
+                    .build());
+        }
+        categoryStats.sort((a, b) -> Long.compare(b.uploadCount + b.downloadCount, a.uploadCount + a.downloadCount));
+
+        return WarehouseStats.builder()
+                .uploadCount(uploadCount)
+                .downloadCount(downloadCount)
+                .totalViews(totalViews)
+                .totalLikes(totalLikes)
+                .totalStars(totalStars)
+                .totalDownloadsOfMyPosts(totalDownloadsOfMyPosts)
+                .uploadsByCategory(uploadsByCategory)
+                .downloadsByCategory(downloadsByCategory)
+                .categoryStats(categoryStats)
+                .build();
     }
 }

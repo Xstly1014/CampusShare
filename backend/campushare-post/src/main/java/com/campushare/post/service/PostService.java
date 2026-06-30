@@ -42,4 +42,10 @@ public interface PostService {
     Map<String, Long> getSchoolPostCounts();
 
     UserPostStats getUserPostStats(String userId);
+
+    void recordDownload(String userId, String postId);
+
+    IPage<Post> getMyDownloads(String userId, int page, int size);
+
+    WarehouseStats getWarehouseStats(String userId);
 }
