@@ -401,7 +401,7 @@ public class PostServiceImpl implements PostService {
     }
 
     @Override
-    public IPage<Post> getMyPosts(String userId, int page, int size, String postType) {
+    public IPage<Post> getMyPosts(String userId, int page, int size, String postType, String keyword) {
         Page<Post> postPage = postMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<Post>()
@@ -413,6 +413,7 @@ public class PostServiceImpl implements PostService {
                         .eq(Post::getAuthorId, userId)
                         .eq(Post::getDeleted, false)
                         .eq(postType != null && !postType.isEmpty(), Post::getPostType, postType)
+                        .like(keyword != null && !keyword.isEmpty(), Post::getTitle, keyword)
                         .orderByDesc(Post::getCreateTime));
         return postPage;
     }
@@ -491,7 +492,7 @@ public class PostServiceImpl implements PostService {
     @Override
     public WarehouseStats getWarehouseStats(String userId) {
         long uploadCount = postMapper.countResourceByAuthorId(userId);
-        long downloadCount = postDownloadMapper.countValidByUserId(userId);
+        long downloadCount = postDownloadMapper.countValidByUserId(userId, null);
         long totalViews = postMapper.sumViewCountByAuthorIdResource(userId);
         long totalLikes = postMapper.sumLikeCountByAuthorIdResource(userId);
         long totalStars = postMapper.sumStarCountByAuthorIdResource(userId);
@@ -551,10 +552,10 @@ public class PostServiceImpl implements PostService {
     }
 
     @Override
-    public IPage<Post> getMyDownloads(String userId, int page, int size) {
+    public IPage<Post> getMyDownloads(String userId, int page, int size, String keyword) {
         int offset = (page - 1) * size;
-        long total = postDownloadMapper.countValidByUserId(userId);
-        List<PostDownload> downloads = postDownloadMapper.selectValidPage(userId, offset, size);
+        long total = postDownloadMapper.countValidByUserId(userId, keyword);
+        List<PostDownload> downloads = postDownloadMapper.selectValidPage(userId, offset, size, keyword);
 
         if (downloads.isEmpty()) {
             Page<Post> emptyPage = new Page<>(page, size, 0);

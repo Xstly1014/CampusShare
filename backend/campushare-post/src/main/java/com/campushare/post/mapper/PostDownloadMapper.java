@@ -16,17 +16,29 @@ public interface PostDownloadMapper extends BaseMapper<PostDownload> {
     @Delete("DELETE FROM post_downloads")
     void deleteAllPhysical();
 
-    @Select("SELECT pd.id, pd.post_id, pd.download_time FROM post_downloads pd " +
+    @Select("<script>" +
+            "SELECT pd.id, pd.post_id, pd.download_time FROM post_downloads pd " +
             "INNER JOIN posts p ON pd.post_id = p.id " +
             "WHERE pd.user_id = #{userId} AND p.deleted = 0 AND p.post_type = 'resource' " +
-            "ORDER BY pd.download_time DESC LIMIT #{offset}, #{size}")
+            "<if test='keyword != null and keyword != \"\"'>" +
+            "AND p.title LIKE CONCAT('%', #{keyword}, '%') " +
+            "</if>" +
+            "ORDER BY pd.download_time DESC LIMIT #{offset}, #{size}" +
+            "</script>")
     List<PostDownload> selectValidPage(@Param("userId") String userId,
                                        @Param("offset") int offset,
-                                       @Param("size") int size);
+                                       @Param("size") int size,
+                                       @Param("keyword") String keyword);
 
-    @Select("SELECT COUNT(*) FROM post_downloads pd INNER JOIN posts p ON pd.post_id = p.id " +
-            "WHERE pd.user_id = #{userId} AND p.deleted = 0 AND p.post_type = 'resource'")
-    long countValidByUserId(@Param("userId") String userId);
+    @Select("<script>" +
+            "SELECT COUNT(*) FROM post_downloads pd INNER JOIN posts p ON pd.post_id = p.id " +
+            "WHERE pd.user_id = #{userId} AND p.deleted = 0 AND p.post_type = 'resource' " +
+            "<if test='keyword != null and keyword != \"\"'>" +
+            "AND p.title LIKE CONCAT('%', #{keyword}, '%') " +
+            "</if>" +
+            "</script>")
+    long countValidByUserId(@Param("userId") String userId,
+                            @Param("keyword") String keyword);
 
     @Select("SELECT COUNT(*) FROM post_downloads pd INNER JOIN posts p ON pd.post_id = p.id " +
             "WHERE p.author_id = #{authorId} AND p.deleted = 0 AND p.post_type = 'resource'")

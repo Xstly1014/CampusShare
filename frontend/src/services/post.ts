@@ -92,11 +92,12 @@ export const postApi = {
   getLiked: (page: number = 1, size: number = 50) =>
     api.get(`/posts/liked?page=${page}&size=${size}`),
 
-  getMyPosts: (page: number = 1, size: number = 50, postType?: string) => {
+  getMyPosts: (page: number = 1, size: number = 50, postType?: string, keyword?: string) => {
     const params = new URLSearchParams()
     params.set('page', String(page))
     params.set('size', String(size))
     if (postType) params.set('postType', postType)
+    if (keyword) params.set('keyword', keyword)
     return api.get(`/posts/mine?${params.toString()}`)
   },
 
@@ -106,8 +107,13 @@ export const postApi = {
 
   recordDownload: (postId: string) => api.post(`/posts/${postId}/download`),
 
-  getMyDownloads: (page: number = 1, size: number = 50) =>
-    api.get(`/posts/my-downloads?page=${page}&size=${size}`),
+  getMyDownloads: (page: number = 1, size: number = 50, keyword?: string) => {
+    const params = new URLSearchParams()
+    params.set('page', String(page))
+    params.set('size', String(size))
+    if (keyword) params.set('keyword', keyword)
+    return api.get(`/posts/my-downloads?${params.toString()}`)
+  },
 
   deleteDownloadRecord: (recordId: number) => api.delete(`/posts/downloads/${recordId}`),
 

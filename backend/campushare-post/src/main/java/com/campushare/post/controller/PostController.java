@@ -189,9 +189,10 @@ public class PostController {
     public Result<IPage<PostListDTO>> getMyDownloads(
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        IPage<Post> postPage = postService.getMyDownloads(userId, page, size);
+        IPage<Post> postPage = postService.getMyDownloads(userId, page, size, keyword);
         IPage<PostListDTO> dtoPage = enrichPage(postPage);
         List<Post> records = postPage.getRecords();
         if (!records.isEmpty()) {
@@ -245,9 +246,10 @@ public class PostController {
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String postType) {
+            @RequestParam(required = false) String postType,
+            @RequestParam(required = false) String keyword) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        IPage<Post> postPage = postService.getMyPosts(userId, page, size, postType);
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size, postType, keyword);
         return Result.success(enrichPage(postPage));
     }
 
@@ -272,7 +274,7 @@ public class PostController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        IPage<Post> postPage = postService.getMyPosts(userId, page, size, null);
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size, null, null);
         return Result.success(enrichPage(postPage));
     }
 

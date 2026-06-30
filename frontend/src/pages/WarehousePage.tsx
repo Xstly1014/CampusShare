@@ -31,6 +31,8 @@ import {
   Plane,
   Camera,
   BookOpen,
+  Search,
+  X,
 } from 'lucide-react'
 
 interface BackendPost {
@@ -164,6 +166,9 @@ export default function WarehousePage() {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [openSwipeId, setOpenSwipeId] = useState<number | null>(null)
+  const [searchInput, setSearchInput] = useState('')
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [searchDimension, setSearchDimension] = useState<'all' | 'uploads' | 'downloads'>('all')
   const deletingRef = useRef(false)
   const loadingRef = useRef(false)
   const observerRef = useRef<HTMLDivElement>(null)
@@ -182,6 +187,13 @@ export default function WarehousePage() {
     fetchStats()
   }, [])
 
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchKeyword(searchInput.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const isSearching = searchKeyword.length > 0
+
   const loadPage = useCallback(async (pageNum: number, isLoadMore = false) => {
     if (loadingRef.current) return
     loadingRef.current = true
@@ -193,18 +205,58 @@ export default function WarehousePage() {
     }
 
     try {
-      const res = activeTab === 'uploads'
-        ? await postApi.getMyPosts(pageNum, PAGE_SIZE, 'resource')
-        : await postApi.getMyDownloads(pageNum, PAGE_SIZE)
-      const pageData: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: PAGE_SIZE, current: 1, pages: 0 }
-      if (isLoadMore) {
-        setPosts(prev => [...prev, ...pageData.records])
+      if (isSearching) {
+        const SEARCH_SIZE = 50
+        let records: BackendPost[] = []
+        let totalCount = 0
+
+        if (searchDimension === 'all') {
+          const [upRes, dlRes] = await Promise.all([
+            postApi.getMyPosts(pageNum, SEARCH_SIZE, 'resource', searchKeyword),
+            postApi.getMyDownloads(pageNum, SEARCH_SIZE, searchKeyword),
+          ])
+          const upData: PageResponse<BackendPost> = upRes.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
+          const dlData: PageResponse<BackendPost> = dlRes.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
+          records = [...upData.records, ...dlData.records].sort((a, b) => {
+            const ta = new Date((a.downloadTime || a.createTime || '').replace(' ', 'T')).getTime()
+            const tb = new Date((b.downloadTime || b.createTime || '').replace(' ', 'T')).getTime()
+            return tb - ta
+          })
+          totalCount = upData.total + dlData.total
+        } else if (searchDimension === 'uploads') {
+          const res = await postApi.getMyPosts(pageNum, SEARCH_SIZE, 'resource', searchKeyword)
+          const data: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
+          records = data.records
+          totalCount = data.total
+        } else {
+          const res = await postApi.getMyDownloads(pageNum, SEARCH_SIZE, searchKeyword)
+          const data: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
+          records = data.records
+          totalCount = data.total
+        }
+
+        if (isLoadMore) {
+          setPosts(prev => [...prev, ...records])
+        } else {
+          setPosts(records)
+        }
+        setTotal(totalCount)
+        setPage(pageNum)
+        setHasMore(false)
       } else {
-        setPosts(pageData.records)
+        const res = activeTab === 'uploads'
+          ? await postApi.getMyPosts(pageNum, PAGE_SIZE, 'resource')
+          : await postApi.getMyDownloads(pageNum, PAGE_SIZE)
+        const pageData: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: PAGE_SIZE, current: 1, pages: 0 }
+        if (isLoadMore) {
+          setPosts(prev => [...prev, ...pageData.records])
+        } else {
+          setPosts(pageData.records)
+        }
+        setTotal(pageData.total)
+        setPage(pageNum)
+        setHasMore(pageNum * PAGE_SIZE < pageData.total)
       }
-      setTotal(pageData.total)
-      setPage(pageNum)
-      setHasMore(pageNum * PAGE_SIZE < pageData.total)
     } catch {
       toast.error('加载失败')
     } finally {
@@ -212,7 +264,7 @@ export default function WarehousePage() {
       setLoadingMore(false)
       loadingRef.current = false
     }
-  }, [activeTab])
+  }, [activeTab, isSearching, searchKeyword, searchDimension])
 
   useEffect(() => {
     setPosts([])
@@ -369,41 +421,86 @@ export default function WarehousePage() {
           </div>
         )}
 
+        {/* 搜索栏 */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-3">
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="搜索资源标题..."
+              className="flex-1 text-sm outline-none bg-transparent placeholder:text-gray-300"
+            />
+            {searchInput && (
+              <button onClick={() => setSearchInput('')} className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-50">
+            <span className="text-[11px] text-gray-400 flex-shrink-0">范围</span>
+            {(['all', 'uploads', 'downloads'] as const).map(dim => (
+              <button
+                key={dim}
+                onClick={() => setSearchDimension(dim)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                  searchDimension === dim
+                    ? 'bg-blue-100 text-blue-600'
+                    : 'bg-gray-50 text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {dim === 'all' ? '全部' : dim === 'uploads' ? '我的上传' : '我的下载'}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* 上传/下载列表切换 */}
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           <div className="border-b border-gray-100 flex">
-            <button
-              onClick={() => setActiveTab('uploads')}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                activeTab === 'uploads'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Upload className="w-4 h-4" />
-              我的上传
-              {stats && stats.uploadCount > 0 && (
-                <span className={`text-[11px] ${activeTab === 'uploads' ? 'text-blue-500' : 'text-gray-400'}`}>
-                  ({stats.uploadCount})
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('downloads')}
-              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                activeTab === 'downloads'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Download className="w-4 h-4" />
-              我的下载
-              {stats && stats.downloadCount > 0 && (
-                <span className={`text-[11px] ${activeTab === 'downloads' ? 'text-blue-500' : 'text-gray-400'}`}>
-                  ({stats.downloadCount})
-                </span>
-              )}
-            </button>
+            {isSearching ? (
+              <div className="flex-1 px-4 py-3 text-sm font-medium text-gray-600 flex items-center gap-1.5">
+                <Search className="w-4 h-4 text-gray-400" />
+                <span>搜索结果</span>
+                <span className="text-[11px] text-gray-400">({total})</span>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setActiveTab('uploads')}
+                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                    activeTab === 'uploads'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Upload className="w-4 h-4" />
+                  我的上传
+                  {stats && stats.uploadCount > 0 && (
+                    <span className={`text-[11px] ${activeTab === 'uploads' ? 'text-blue-500' : 'text-gray-400'}`}>
+                      ({stats.uploadCount})
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('downloads')}
+                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                    activeTab === 'downloads'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Download className="w-4 h-4" />
+                  我的下载
+                  {stats && stats.downloadCount > 0 && (
+                    <span className={`text-[11px] ${activeTab === 'downloads' ? 'text-blue-500' : 'text-gray-400'}`}>
+                      ({stats.downloadCount})
+                    </span>
+                  )}
+                </button>
+              </>
+            )}
           </div>
 
           <div className="p-3">
@@ -420,14 +517,18 @@ export default function WarehousePage() {
                   const avatarUrl = post.authorAvatar
                     ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
                     : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
-                  const timeStr = activeTab === 'downloads'
+                  const isDownloadContext = isSearching
+                    ? searchDimension !== 'uploads'
+                    : activeTab === 'downloads'
+                  const showSourceBadge = isSearching && searchDimension === 'all'
+                  const timeStr = isDownloadContext
                     ? (post.downloadTime || post.createTime)
                     : post.createTime
 
                   const cardContent = (
                     <div
                       onClick={() => {
-                        if (activeTab === 'downloads' && openSwipeId === post.downloadRecordId) {
+                        if (isDownloadContext && openSwipeId === post.downloadRecordId) {
                           setOpenSwipeId(null)
                           return
                         }
@@ -462,6 +563,15 @@ export default function WarehousePage() {
                           }`}>
                             {post.postType === 'resource' ? '资料' : '讨论'}
                           </span>
+                          {showSourceBadge && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              post.downloadRecordId != null
+                                ? 'bg-green-50 text-green-600'
+                                : 'bg-purple-50 text-purple-600'
+                            }`}>
+                              {post.downloadRecordId != null ? '下载' : '上传'}
+                            </span>
+                          )}
                         </div>
                         <h3 className="text-sm font-semibold text-gray-900 leading-snug" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
                           {post.title}
@@ -512,7 +622,7 @@ export default function WarehousePage() {
                     </div>
                   )
 
-                  if (activeTab === 'downloads' && post.downloadRecordId != null) {
+                  if (isDownloadContext && post.downloadRecordId != null) {
                     return (
                       <SwipeToDelete
                         key={post.id}
@@ -535,13 +645,19 @@ export default function WarehousePage() {
             ) : (
               <div className="text-center py-12">
                 <div className="w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                  {activeTab === 'uploads' ? <Upload className="w-6 h-6 text-gray-300" /> : <Download className="w-6 h-6 text-gray-300" />}
+                  {isSearching ? (
+                    <Search className="w-6 h-6 text-gray-300" />
+                  ) : activeTab === 'uploads' ? (
+                    <Upload className="w-6 h-6 text-gray-300" />
+                  ) : (
+                    <Download className="w-6 h-6 text-gray-300" />
+                  )}
                 </div>
                 <p className="text-gray-400 text-sm">
-                  {activeTab === 'uploads' ? '暂无上传记录' : '暂无下载记录'}
+                  {isSearching ? '未找到匹配的资源' : activeTab === 'uploads' ? '暂无上传记录' : '暂无下载记录'}
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
-                  {activeTab === 'uploads' ? '开始上传你的第一份资料吧' : '去发现有用的资料下载吧'}
+                  {isSearching ? '试试其他关键词或切换搜索范围' : activeTab === 'uploads' ? '开始上传你的第一份资料吧' : '去发现有用的资料下载吧'}
                 </p>
               </div>
             )}

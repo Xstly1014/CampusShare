@@ -36,7 +36,7 @@ public interface PostService {
 
     IPage<Post> getLikedPosts(String userId, int page, int size);
 
-    IPage<Post> getMyPosts(String userId, int page, int size, String postType);
+    IPage<Post> getMyPosts(String userId, int page, int size, String postType, String keyword);
 
     UserPostStats getMyPostStats(String userId);
 
@@ -44,7 +44,7 @@ public interface PostService {
 
     void recordDownload(String userId, String postId);
 
-    IPage<Post> getMyDownloads(String userId, int page, int size);
+    IPage<Post> getMyDownloads(String userId, int page, int size, String keyword);
 
     Map<String, PostDownload> getDownloadRecordMap(String userId, List<String> postIds);
 
