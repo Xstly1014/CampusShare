@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Search,
@@ -267,6 +267,8 @@ export default function SchoolDetailPage() {
 
   const PAGE_SIZE = 20
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const observerRef = useRef<HTMLDivElement>(null)
+  const loadingRef = useRef(false)
 
   const loadStarStatus = async (postList: BackendPost[]) => {
     const token = sessionStorage.getItem('campusshare_token')
@@ -351,8 +353,9 @@ export default function SchoolDetailPage() {
     return () => { cancelled = true }
   }, [schoolId, filterType, sortType, refreshTrigger])
 
-  const handleLoadMore = async () => {
-    if (!schoolId || loadingMore) return
+  const handleLoadMore = useCallback(async () => {
+    if (!schoolId || loadingRef.current || !hasMore) return
+    loadingRef.current = true
     setLoadingMore(true)
     const nextPage = page + 1
     try {
@@ -397,9 +400,27 @@ export default function SchoolDetailPage() {
     } catch (err) {
       toast.error('加载更多失败')
     } finally {
+      loadingRef.current = false
       setLoadingMore(false)
     }
-  }
+  }, [schoolId, page, hasMore, filterType, sortType])
+
+  useEffect(() => {
+    const sentinel = observerRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleLoadMore()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [handleLoadMore, posts.length])
 
   // Fetch real post count for this school
   useEffect(() => {
@@ -680,29 +701,8 @@ export default function SchoolDetailPage() {
               ))}
             </div>
 
-            {/* ===== 调试信息面板（黄色背景，非常醒目） ===== */}
-            <div className="bg-yellow-100 border-2 border-yellow-400 rounded-lg p-4 my-4">
-              <p className="text-yellow-800 font-bold text-sm mb-2">🔍 调试信息</p>
-              <div className="text-xs text-yellow-900 space-y-1 font-mono">
-                <p>当前页码 page = {page}</p>
-                <p>已加载帖子数 posts.length = {posts.length}</p>
-                <p>筛选后显示 filteredPosts.length = {filteredPosts.length}</p>
-                <p>hasMore = {String(hasMore)}</p>
-                <p>loading = {String(loading)}</p>
-                <p>loadingMore = {String(loadingMore)}</p>
-              </div>
-              <button
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="mt-3 w-full py-3 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 text-white font-bold rounded-lg text-sm"
-              >
-                {loadingMore ? '加载中...' : `点击加载第 ${page + 1} 页（测试按钮）`}
-              </button>
-              {!hasMore && !loadingMore && posts.length > 0 && (
-                <p className="text-yellow-700 text-xs mt-2 text-center">已加载完全部帖子</p>
-              )}
-            </div>
-            {/* ===== 调试面板结束 ===== */}
+            {/* IntersectionObserver 哨兵元素 - 滚动到此处时自动加载下一页 */}
+            <div ref={observerRef} className="h-8" />
 
             {/* 加载中状态 */}
             {loadingMore && (
@@ -712,7 +712,7 @@ export default function SchoolDetailPage() {
               </div>
             )}
 
-            {/* 点击加载更多按钮 */}
+            {/* 手动加载更多按钮（备用） */}
             {!loadingMore && hasMore && posts.length > 0 && (
               <div className="text-center py-4">
                 <button
