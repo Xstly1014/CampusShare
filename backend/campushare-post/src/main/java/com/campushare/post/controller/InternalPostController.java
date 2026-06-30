@@ -112,6 +112,11 @@ public class InternalPostController {
             dto.setAuthorLevel(author != null ? author.getCreatorLevel() : null);
             dto.setPostType(p.getPostType());
             dto.setTitle(p.getTitle());
+            dto.setContent(p.getContent());
+            dto.setFileUrl(p.getFileUrl());
+            dto.setFileName(p.getFileName());
+            dto.setFileType(p.getFileType());
+            dto.setFileSize(p.getFileSize());
             dto.setViewCount(p.getViewCount());
             dto.setStarCount(p.getStarCount());
             dto.setLikeCount(p.getLikeCount());

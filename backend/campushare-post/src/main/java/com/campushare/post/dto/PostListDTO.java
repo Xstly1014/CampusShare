@@ -21,6 +21,11 @@ public class PostListDTO {
     private String authorLevel;
     private String postType;
     private String title;
+    private String content;
+    private String fileUrl;
+    private String fileName;
+    private String fileType;
+    private Long fileSize;
     private Integer viewCount;
     private Integer starCount;
     private Integer likeCount;
