@@ -431,7 +431,9 @@ export default function CategoryDetailPage() {
               {viewMode === 'posts' && activeSub ? activeSub.name : category.name}
             </h1>
             <p className="text-xs text-gray-400 truncate">
-              {viewMode === 'posts' && activeSub ? category.name : category.description}
+              {viewMode === 'posts' && activeSub
+                ? `${catCounts[`sub_${activeSub.id}`] || activeSub.postCount || 0} 份资料`
+                : `${category.postCount || 0} 份资料`}
             </p>
           </div>
         </div>
@@ -448,7 +450,7 @@ export default function CategoryDetailPage() {
                 type="text"
                 value={subSearch}
                 onChange={(e) => setSubSearch(e.target.value)}
-                placeholder={isSchool ? '搜索高校...' : '搜索板块...'}
+                placeholder="搜索资料、帖子..."
                 className="w-full pl-9 pr-4 py-2.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
               />
               {subSearch && (
@@ -494,7 +496,7 @@ export default function CategoryDetailPage() {
                           </h3>
                           <div className="flex items-center gap-1">
                             <FileText className="w-3 h-3 text-gray-400" />
-                            <span className="text-xs text-gray-400">{count} 内容</span>
+                            <span className="text-xs text-gray-400">{count} 份资料</span>
                           </div>
                         </div>
                       </div>
@@ -517,7 +519,7 @@ export default function CategoryDetailPage() {
                 type="text"
                 value={postSearchInput}
                 onChange={(e) => setPostSearchInput(e.target.value)}
-                placeholder="搜索该板块内容..."
+                placeholder="搜索资料、帖子..."
                 className="w-full pl-9 pr-10 py-2.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
               />
               {postSearchInput && (

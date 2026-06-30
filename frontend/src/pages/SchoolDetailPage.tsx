@@ -289,7 +289,6 @@ export default function SchoolDetailPage() {
   const [sortType, setSortType] = useState<SortType>('latest')
   const [filterType, setFilterType] = useState<PostType | 'all'>('all')
   const [starredPosts, setStarredPosts] = useState<Set<string>>(new Set())
-  const [logoError, setLogoError] = useState(false)
 
   const PAGE_SIZE = 20
   const [refreshTrigger, setRefreshTrigger] = useState(0)
@@ -626,17 +625,8 @@ export default function SchoolDetailPage() {
             {(() => {
               const headerColor = SCHOOL_HEADER_COLORS[hashSchoolId(school.id) % SCHOOL_HEADER_COLORS.length]
               return (
-                <div className={`w-9 h-9 rounded-xl ${headerColor.bg} flex items-center justify-center flex-shrink-0 overflow-hidden`}>
-                  {!logoError ? (
-                    <img
-                      src={school.logo}
-                      alt={school.name}
-                      className="w-full h-full object-contain"
-                      onError={() => setLogoError(true)}
-                    />
-                  ) : (
-                    <span className={`${headerColor.text} text-xs font-bold`}>{school.name.substring(0, 2)}</span>
-                  )}
+                <div className={`w-9 h-9 rounded-xl ${headerColor.bg} flex items-center justify-center flex-shrink-0`}>
+                  <GraduationCap className={`w-5 h-5 ${headerColor.text}`} />
                 </div>
               )
             })()}
