@@ -244,10 +244,10 @@ export default function WarehousePage() {
   const statsCards = [
     { key: 'uploads', label: '我的上传', value: stats?.uploadCount || 0, icon: Upload, color: 'bg-blue-50 text-blue-600' },
     { key: 'downloads', label: '我的下载', value: stats?.downloadCount || 0, icon: Download, color: 'bg-green-50 text-green-600' },
+    { key: 'resourceDownloads', label: '资源被下载', value: stats?.totalDownloadsOfMyPosts || 0, icon: FileText, color: 'bg-purple-50 text-purple-600' },
     { key: 'totalViews', label: '总浏览量', value: stats?.totalViews || 0, icon: TrendingUp, color: 'bg-cyan-50 text-cyan-600' },
     { key: 'likes', label: '总获赞', value: stats?.totalLikes || 0, icon: ThumbsUp, color: 'bg-red-50 text-red-600' },
     { key: 'stars', label: '总被收藏', value: stats?.totalStars || 0, icon: Star, color: 'bg-amber-50 text-amber-600' },
-    { key: 'resourceDownloads', label: '资源被下载', value: stats?.totalDownloadsOfMyPosts || 0, icon: FileText, color: 'bg-purple-50 text-purple-600' },
   ]
 
   const categoryStats = stats?.categoryStats || []
