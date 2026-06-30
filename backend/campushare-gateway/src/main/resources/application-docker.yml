@@ -1,4 +1,6 @@
 spring:
+  codec:
+    max-in-memory-size: 100MB
   cloud:
     gateway:
       routes:
@@ -25,23 +27,25 @@ spring:
             allowCredentials: true
             maxAge: 3600
 
+      metrics:
+        enabled: true
+
 jwt:
   secret: CampusShare-Secret-Key-For-Docker-Deployment-2024-Minimum-256-Bits-Required
 
 server:
   port: 8080
-  max-http-header-size: 64KB
+  max-http-request-header-size: 64KB
   netty:
-    max-initial-line-length: 4096
-    max-header-size: 4096
-    max-content-length: 104857600
+    connection-timeout: 30000
+    idle-timeout: 60000
 
 logging:
   level:
     root: WARN
-    com.campushare: INFO
-    org.springframework.cloud.gateway: WARN
-    reactor.netty: WARN
+    '[com.campushare]': INFO
+    '[org.springframework.cloud.gateway]': WARN
+    '[reactor.netty]': WARN
 
 management:
   endpoints:
@@ -54,25 +58,24 @@ management:
       show-details: always
     prometheus:
       enabled: true
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       application: ${spring.application.name}
     distribution:
       percentiles-histogram:
-        http.server.requests: true
+        '[http.server.requests]': true
       minimum-expected-value:
-        http.server.requests: 1ms
+        '[http.server.requests]': 1ms
       maximum-expected-value:
-        http.server.requests: 10s
-    web:
-      server:
-        request:
-          autotime:
-            enabled: true
-            percentiles: 0.5,0.75,0.9,0.95,0.99
-    gateway:
-      request-metrics:
-        enabled: true
+        '[http.server.requests]': 10s
+      percentiles:
+        '[http.server.requests]':
+          - 0.5
+          - 0.75
+          - 0.9
+          - 0.95
+          - 0.99

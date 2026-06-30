@@ -74,7 +74,10 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms512m -Xmx1024m
+      - JAVA_OPTS=-Xms512m -Xmx1024m -javaagent:/app/opentelemetry-javaagent.jar
+      - OTEL_SERVICE_NAME=user-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_METRICS_EXPORTER=none
       # 邮件 SMTP 配置（在 .env 文件中设置真实值）
       - MAIL_HOST=${MAIL_HOST:-smtp.qq.com}
       - MAIL_PORT=${MAIL_PORT:-587}
@@ -114,7 +117,10 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms512m -Xmx1024m
+      - JAVA_OPTS=-Xms512m -Xmx1024m -javaagent:/app/opentelemetry-javaagent.jar
+      - OTEL_SERVICE_NAME=post-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_METRICS_EXPORTER=none
     dns:
       - 8.8.8.8
       - 114.114.114.114
@@ -151,7 +157,10 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
-      - JAVA_OPTS=-Xms256m -Xmx512m
+      - JAVA_OPTS=-Xms256m -Xmx512m -javaagent:/app/opentelemetry-javaagent.jar
+      - OTEL_SERVICE_NAME=gateway-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_METRICS_EXPORTER=none
     depends_on:
       user-service:
         condition: service_healthy

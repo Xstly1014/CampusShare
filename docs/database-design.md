@@ -1,7 +1,8 @@
 # CampusShare 数据库设计文档
 
-> **文档版本**: v1.0
+> **文档版本**: v2.0
 > **创建日期**: 2026-06-27
+> **更新日期**: 2026-06-30
 > **数据库类型**: MySQL 8.0
 > **字符集**: utf8mb4_unicode_ci
 > **存储引擎**: InnoDB
@@ -13,46 +14,49 @@
 ### 1.1 ER 关系图
 
 ```
-users ───┐
-         │ (1:N)
-roles ───┘
-   │
-   │ (1:N)
-user_roles
+users ─────────────────────┐
+  │ (1:N)                  │ (1:N)
+  ├── follows              ├── messages
+  ├── notifications        ├── creator_verifications
+  │                        │
+  │ (1:N)                  │ (1:N)
+  ├── posts ───────────────┤
+  │     │ (1:N)            │ (1:N)
+  │     ├── comments       ├── post_stars
+  │     ├── post_likes     ├── post_likes
+  │     ├── view_history   ├── comment_likes
+  │     └── post_downloads │
+  │                        │
+  │ (1:N)                  │ (1:N)
+  └── comment_likes        └── view_history
 
-schools ───┐
-            │ (1:N)
-posts ──────┤
-            │ (1:N)
-comments ───┤
-            │ (1:N)
-post_stars ─┤
-            │ (1:N)
-post_likes ─┤
-            │ (1:N)
-view_history┘
+categories ───┐
+              │ (1:N)
+              sub_categories
 
-resources (待完善)
+schools ─── posts (school_id)
 ```
 
 ### 1.2 表清单
 
-| 表名 | 说明 | 记录数预估 |
-|------|------|-----------|
-| `users` | 用户表 | 百万级 |
-| `roles` | 角色表 | < 100 |
-| `user_roles` | 用户角色关联表 | 百万级 |
-| `schools` | 学校表 | < 3000 |
-| `posts` | 帖子表 | 千万级 |
-| `comments` | 评论表 | 亿级 |
-| `post_stars` | 帖子收藏表 | 千万级 |
-| `post_likes` | 帖子点赞表 | 千万级 |
-| `comment_likes` | 评论点赞表 | 千万级 |
-| `view_history` | 浏览历史表 | 亿级 |
-| `follows` | 用户关注表 | 亿级 |
-| `messages` | 私信消息表 | 亿级 |
-| `notifications` | 通知表 | 亿级 |
-| `resources` | 资源表(legacy) | 百万级 |
+| 表名 | 说明 | 所属服务 | 记录数预估 |
+|------|------|---------|-----------|
+| `users` | 用户表 | user-service | 百万级 |
+| `follows` | 用户关注关系表 | user-service | 亿级 |
+| `messages` | 私信消息表 | user-service | 亿级 |
+| `notifications` | 通知表 | user-service | 亿级 |
+| `creator_verifications` | 创作者认证申请表 | user-service | 万级 |
+| `schools` | 学校表 | post-service | < 3000 |
+| `categories` | 主分类表（收纳袋） | post-service | < 100 |
+| `sub_categories` | 子分类表 | post-service | < 1000 |
+| `posts` | 帖子表 | post-service | 千万级 |
+| `comments` | 评论表 | post-service | 亿级 |
+| `post_stars` | 帖子收藏表 | post-service | 千万级 |
+| `post_likes` | 帖子点赞表 | post-service | 千万级 |
+| `comment_likes` | 评论点赞表 | post-service | 千万级 |
+| `view_history` | 浏览历史表 | post-service | 亿级 |
+| `post_downloads` | 下载历史表 | post-service | 亿级 |
+| `resources` | 资源表(legacy) | post-service | 百万级 |
 
 ---
 
@@ -60,7 +64,7 @@ resources (待完善)
 
 ### 2.1 用户表 `users`
 
-**说明**：存储用户基础信息
+**说明**：存储用户基础信息、角色、隐私设置、通知偏好
 
 | 字段名 | 类型 | 约束 | 默认值 | 说明 |
 |--------|------|------|--------|------|
@@ -72,7 +76,17 @@ resources (待完善)
 | `avatar_url` | VARCHAR(500) | - | NULL | 头像URL |
 | `bio` | VARCHAR(200) | - | NULL | 个人简介 |
 | `school_id` | VARCHAR(36) | - | NULL | 所属学校ID |
+| `role` | VARCHAR(20) | NOT NULL | USER | 用户角色：USER/CREATOR/ADMIN |
+| `creator_level` | VARCHAR(20) | - | NONE | 创作者等级：NONE/JUNIOR/INTERMEDIATE/SENIOR/AUTHORITY |
 | `status` | TINYINT | - | 1 | 账号状态：1-正常，0-禁用 |
+| `public_posts` | TINYINT | - | 1 | 隐私：是否公开帖子 |
+| `public_stars` | TINYINT | - | 0 | 隐私：是否公开收藏 |
+| `public_likes` | TINYINT | - | 0 | 隐私：是否公开点赞 |
+| `public_history` | TINYINT | - | 0 | 隐私：是否公开浏览历史 |
+| `searchable` | TINYINT | - | 1 | 隐私：是否允许被搜索 |
+| `notify_messages` | TINYINT | - | 1 | 通知：是否接收新消息通知 |
+| `notify_replies` | TINYINT | - | 1 | 通知：是否接收帖子回复通知 |
+| `notify_likes` | TINYINT | - | 0 | 通知：是否接收点赞收藏通知 |
 | `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 创建时间 |
 | `update_time` | TIMESTAMP | - | CURRENT_TIMESTAMP ON UPDATE | 更新时间 |
 | `deleted` | TINYINT | - | 0 | 逻辑删除标记 |
@@ -83,51 +97,42 @@ INDEX idx_username (username)
 INDEX idx_email (email)
 INDEX idx_phone (phone)
 INDEX idx_school (school_id)
+INDEX idx_role (role)
+```
+
+---
+
+### 2.2 创作者认证申请表 `creator_verifications`
+
+**说明**：存储创作者认证申请与审核记录
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | INT | PRIMARY KEY AUTO_INCREMENT | - | 主键 |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 申请人用户ID |
+| `real_name` | VARCHAR(50) | NOT NULL | - | 真实姓名 |
+| `id_card` | VARCHAR(20) | NOT NULL | - | 身份证号 |
+| `id_card_front` | VARCHAR(500) | - | NULL | 身份证正面照片URL |
+| `id_card_back` | VARCHAR(500) | - | NULL | 身份证反面照片URL |
+| `total_likes` | INT | - | 0 | 申请时总获赞数 |
+| `total_posts` | INT | - | 0 | 申请时总帖子数 |
+| `status` | VARCHAR(20) | NOT NULL | PENDING | 状态：PENDING/APPROVED/REJECTED |
+| `reject_reason` | VARCHAR(500) | - | NULL | 驳回原因 |
+| `review_time` | TIMESTAMP | - | NULL | 审核时间 |
+| `reviewer_id` | VARCHAR(36) | - | NULL | 审核人ID |
+| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 申请时间 |
+| `update_time` | TIMESTAMP | - | CURRENT_TIMESTAMP ON UPDATE | 更新时间 |
+
+**索引**：
+```sql
+INDEX idx_user (user_id)
 INDEX idx_status (status)
 INDEX idx_create_time (create_time)
 ```
 
 ---
 
-### 2.2 角色表 `roles`
-
-**说明**：系统角色定义
-
-| 字段名 | 类型 | 约束 | 默认值 | 说明 |
-|--------|------|------|--------|------|
-| `id` | INT | PRIMARY KEY AUTO_INCREMENT | - | 角色ID |
-| `role_name` | VARCHAR(50) | NOT NULL UNIQUE | - | 角色名称 |
-| `role_code` | VARCHAR(50) | NOT NULL UNIQUE | - | 角色编码 |
-| `description` | VARCHAR(200) | - | NULL | 角色描述 |
-| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 创建时间 |
-
-**初始数据**：
-| id | role_name | role_code | description |
-|----|-----------|-----------|-------------|
-| 1 | 普通用户 | USER | 普通注册用户 |
-| 2 | 管理员 | ADMIN | 系统管理员 |
-
----
-
-### 2.3 用户角色关联表 `user_roles`
-
-**说明**：用户与角色的多对多关联
-
-| 字段名 | 类型 | 约束 | 默认值 | 说明 |
-|--------|------|------|--------|------|
-| `id` | INT | PRIMARY KEY AUTO_INCREMENT | - | 主键 |
-| `user_id` | VARCHAR(36) | NOT NULL | - | 用户ID |
-| `role_id` | INT | NOT NULL | - | 角色ID |
-| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 创建时间 |
-
-**约束**：
-- UNIQUE KEY `uk_user_role` (`user_id`, `role_id`)
-- FOREIGN KEY `user_id` REFERENCES `users(id)` ON DELETE CASCADE
-- FOREIGN KEY `role_id` REFERENCES `roles(id)` ON DELETE CASCADE
-
----
-
-### 2.4 学校表 `schools`
+### 2.3 学校表 `schools`
 
 **说明**：高校基础信息
 
@@ -150,14 +155,16 @@ INDEX idx_region (region)
 
 ---
 
-### 2.5 帖子表 `posts`
+### 2.4 帖子表 `posts`
 
 **说明**：统一存储资源贴和讨论帖
 
 | 字段名 | 类型 | 约束 | 默认值 | 说明 |
 |--------|------|------|--------|------|
 | `id` | VARCHAR(36) | PRIMARY KEY | - | 帖子ID（UUID） |
-| `school_id` | VARCHAR(36) | NOT NULL | - | 所属学校ID |
+| `school_id` | VARCHAR(36) | - | NULL | 所属学校ID（校园分类帖子使用） |
+| `category_id` | VARCHAR(36) | - | NULL | 所属分类ID（非校园分类帖子使用） |
+| `sub_category_id` | VARCHAR(36) | - | NULL | 所属子分类ID（非校园分类帖子使用） |
 | `author_id` | VARCHAR(36) | NOT NULL | - | 作者ID |
 | `post_type` | VARCHAR(20) | NOT NULL | discussion | 类型：resource-资源贴，discussion-讨论贴 |
 | `title` | VARCHAR(200) | NOT NULL | - | 帖子标题 |
@@ -177,23 +184,25 @@ INDEX idx_region (region)
 
 **索引**：
 ```sql
-INDEX idx_school (school_id)
-INDEX idx_author (author_id)
 INDEX idx_type (post_type)
-INDEX idx_status (status)
-INDEX idx_create_time (create_time)
+INDEX idx_school_list (school_id, category_id, status, deleted, create_time)  -- 学校帖子列表复合索引
+INDEX idx_category_list (category_id, status, deleted, create_time)            -- 分类帖子列表复合索引
+INDEX idx_subcategory_list (sub_category_id, status, deleted, create_time)     -- 子分类帖子列表复合索引
+INDEX idx_author_list (author_id, deleted, create_time)                        -- 用户帖子列表复合索引
 FULLTEXT idx_title_content (title, content)  -- 全文检索
 ```
 
 **设计说明**：
 - 资源贴和讨论贴统一存储，通过 `post_type` 区分
+- `school_id` 用于校园分类帖子，`category_id`/`sub_category_id` 用于其他分类帖子
 - 文件相关字段（`file_*`）对讨论贴为 NULL（可选）
 - 计数字段（`*_count`）用于列表展示，减少 join 查询
+- 复合索引覆盖高频列表查询场景，P95延迟<100ms
 - 全文索引用于帖子标题和内容的关键词搜索
 
 ---
 
-### 2.6 评论表 `comments`
+### 2.5 评论表 `comments`
 
 **说明**：帖子评论与回复
 
@@ -225,7 +234,7 @@ INDEX idx_create_time (create_time)
 
 ---
 
-### 2.7 帖子收藏表 `post_stars`
+### 2.6 帖子收藏表 `post_stars`
 
 **说明**：用户收藏的帖子
 
@@ -246,7 +255,7 @@ INDEX idx_user (user_id)
 
 ---
 
-### 2.8 帖子点赞表 `post_likes`
+### 2.7 帖子点赞表 `post_likes`
 
 **说明**：用户点赞的帖子
 
@@ -267,7 +276,7 @@ INDEX idx_user (user_id)
 
 ---
 
-### 2.9 浏览历史表 `view_history`
+### 2.8 浏览历史表 `view_history`
 
 **说明**：用户浏览帖子的历史记录
 
@@ -291,13 +300,13 @@ INDEX idx_view_time (view_time)
 
 ---
 
-### 2.10 资源表 `resources` (Legacy)
+### 2.9 资源表 `resources` (Legacy)
 
 > 此表为早期设计，后续将逐步迁移到 `posts` 表统一管理
 
 ---
 
-### 2.11 用户关注表 `follows`
+### 2.10 用户关注表 `follows`
 
 **说明**：记录用户间的关注关系
 
@@ -324,7 +333,7 @@ INDEX idx_following (following_id)
 
 ---
 
-### 2.12 私信消息表 `messages`
+### 2.11 私信消息表 `messages`
 
 **说明**：存储用户间一对一私信内容
 
@@ -351,7 +360,7 @@ INDEX idx_create_time (create_time)
 
 ---
 
-### 2.13 通知表 `notifications`
+### 2.12 通知表 `notifications`
 
 **说明**：存储点赞、收藏、关注等通知记录
 
@@ -378,6 +387,93 @@ INDEX idx_create_time (create_time)
 - `user_id` 是通知的接收者（帖子作者或被关注者）
 - `sender_id` 是执行操作的用户
 - 私信通知不写入此表，直接从 `messages` 表查询
+
+---
+
+### 2.13 评论点赞表 `comment_likes`
+
+**说明**：用户对评论的点赞记录
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | INT | PRIMARY KEY AUTO_INCREMENT | - | 主键 |
+| `comment_id` | VARCHAR(36) | NOT NULL | - | 评论ID |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 点赞用户ID |
+| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 创建时间 |
+
+**索引**：
+```sql
+UNIQUE KEY uk_comment_user (comment_id, user_id)
+INDEX idx_user (user_id)
+INDEX idx_comment (comment_id)
+```
+
+---
+
+### 2.14 下载历史表 `post_downloads`
+
+**说明**：用户下载帖子的历史记录
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | INT | PRIMARY KEY AUTO_INCREMENT | - | 主键 |
+| `post_id` | VARCHAR(36) | NOT NULL | - | 帖子ID |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 下载用户ID |
+| `download_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 下载时间 |
+
+**索引**：
+```sql
+INDEX idx_user_time (user_id, download_time)
+INDEX idx_post (post_id)
+```
+
+---
+
+### 2.15 主分类表 `categories`
+
+**说明**：首页收纳袋主分类（校园/音乐/影视等12个分类）
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | VARCHAR(36) | PRIMARY KEY | - | 分类ID |
+| `name` | VARCHAR(50) | NOT NULL | - | 分类名称 |
+| `icon` | VARCHAR(50) | NOT NULL | - | 图标名称（lucide-react图标名） |
+| `color` | VARCHAR(20) | - | NULL | 主题色（tailwind颜色类） |
+| `type` | VARCHAR(20) | NOT NULL | category | 类型：school-校园，category-普通分类 |
+| `description` | VARCHAR(200) | - | NULL | 分类描述 |
+| `sort_order` | INT | - | 0 | 排序权重 |
+| `post_count` | INT | - | 0 | 帖子数量 |
+| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 创建时间 |
+| `update_time` | TIMESTAMP | - | CURRENT_TIMESTAMP ON UPDATE | 更新时间 |
+
+**索引**：
+```sql
+INDEX idx_sort (sort_order)
+INDEX idx_type (type)
+```
+
+---
+
+### 2.16 子分类表 `sub_categories`
+
+**说明**：普通分类下的子板块（如音乐→华语/欧美/K-POP）
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | VARCHAR(36) | PRIMARY KEY | - | 子分类ID |
+| `category_id` | VARCHAR(36) | NOT NULL | - | 所属主分类ID |
+| `name` | VARCHAR(50) | NOT NULL | - | 子分类名称 |
+| `icon` | VARCHAR(50) | NOT NULL | Hash | 图标名称 |
+| `sort_order` | INT | - | 0 | 排序权重 |
+| `post_count` | INT | - | 0 | 帖子数量 |
+| `create_time` | TIMESTAMP | - | CURRENT_TIMESTAMP | 创建时间 |
+| `update_time` | TIMESTAMP | - | CURRENT_TIMESTAMP ON UPDATE | 更新时间 |
+
+**索引**：
+```sql
+INDEX idx_category (category_id)
+INDEX idx_sort (sort_order)
+```
 
 ---
 
@@ -441,7 +537,7 @@ TTL: Token 剩余有效期
 ### 4.1 表命名
 - 小写字母 + 下划线
 - 复数形式（如 `users`, `posts`）
-- 关联表用下划线连接两个表名（如 `user_roles`）
+- 关联表用下划线连接两个表名（如 `comment_likes`）
 
 ### 4.2 字段命名
 - 小写字母 + 下划线

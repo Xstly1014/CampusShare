@@ -2,50 +2,33 @@
 spring:
   application:
     name: campushare-gateway
-    
-  # Nacos配置中心
+
+  codec:
+    max-in-memory-size: 100MB
+
   cloud:
-    nacos:
-      discovery:
-        server-addr: localhost:8848
-        namespace: public
-      config:
-        server-addr: localhost:8848
-        file-extension: yaml
-        namespace: public
-        
-    # Gateway路由配置
     gateway:
       # 路由规则
       routes:
-        # 用户服务
+        # 帖子服务（优先匹配）
+        - id: post-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/posts/**,/api/comments/**,/api/categories/**,/api/admin/**
+          filters:
+            - StripPrefix=1
+
+        # 用户服务（兜底匹配）
         - id: user-service
-          uri: lb://campushare-user
+          uri: http://localhost:8081
           predicates:
-            - Path=/api/v1/auth/**
-            - Path=/api/v1/users/**
+            - Path=/api/**
           filters:
             - StripPrefix=1
-            
-        # 学校服务（未来）
-        - id: school-service
-          uri: lb://campushare-school
-          predicates:
-            - Path=/api/v1/schools/**
-          filters:
-            - StripPrefix=1
-            
-        # 资源服务（未来）
-        - id: resource-service
-          uri: lb://campushare-resource
-          predicates:
-            - Path=/api/v1/resources/**
-          filters:
-            - StripPrefix=1
-            
+
       # 全局跨域配置
       globalcors:
-        corsConfigurations:
+        cors-configurations:
           '[/**]':
             allowedOriginPatterns: "*"
             allowedMethods:
@@ -57,11 +40,15 @@ spring:
             allowedHeaders: "*"
             allowCredentials: true
             maxAge: 3600
-            
+
       # 默认过滤器
       default-filters:
         - DedupeResponseHeader=Vary Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
-        
+
+      # 网关指标
+      metrics:
+        enabled: true
+
   # Redis配置（用于限流）
   data:
     redis:
@@ -70,16 +57,24 @@ spring:
       database: 0
       timeout: 5000ms
 
+# JWT配置
+jwt:
+  secret: CampusShare-Secret-Key-For-Local-Development-2024-Minimum-256-Bits-Required
+
 # 服务端口
 server:
   port: 8080
+  max-http-request-header-size: 64KB
+  netty:
+    connection-timeout: 30000
+    idle-timeout: 60000
 
 # 日志配置
 logging:
   level:
     root: INFO
-    com.campushare: DEBUG
-    org.springframework.cloud.gateway: DEBUG
+    '[com.campushare]': DEBUG
+    '[org.springframework.cloud.gateway]': DEBUG
   pattern:
     console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
 
@@ -95,12 +90,24 @@ management:
       show-details: always
     prometheus:
       enabled: true
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       application: ${spring.application.name}
-    gateway:
-      request-metrics:
-        enabled: true
+    distribution:
+      percentiles-histogram:
+        '[http.server.requests]': true
+      minimum-expected-value:
+        '[http.server.requests]': 1ms
+      maximum-expected-value:
+        '[http.server.requests]': 10s
+      percentiles:
+        '[http.server.requests]':
+          - 0.5
+          - 0.75
+          - 0.9
+          - 0.95
+          - 0.99

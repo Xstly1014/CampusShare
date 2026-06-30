@@ -720,7 +720,65 @@ Authorization: Bearer {token}
 
 ---
 
-### 4.6 搜索用户
+### 4.6 更新隐私设置
+
+- **接口**: `PUT /api/users/me/privacy`
+- **说明**: 更新当前用户的隐私设置（控制他人可见内容范围）
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "publicPosts": true,
+  "publicStars": true,
+  "publicLikes": false,
+  "publicHistory": false,
+  "searchable": true
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `publicPosts` | boolean | 否 | 是否公开帖子（false时他人主页帖子列表返回空） |
+| `publicStars` | boolean | 否 | 是否公开收藏 |
+| `publicLikes` | boolean | 否 | 是否公开点赞 |
+| `publicHistory` | boolean | 否 | 是否公开浏览历史 |
+| `searchable` | boolean | 否 | 是否允许被搜索（false时搜索结果不包含该用户） |
+
+**响应示例**: 返回更新后的 UserDTO（含8个隐私/通知字段）
+
+---
+
+### 4.7 更新通知偏好设置
+
+- **接口**: `PUT /api/users/me/notification-settings`
+- **说明**: 更新当前用户的通知偏好（控制未读红点推送，收纳篮始终可见）
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "notifyMessages": true,
+  "notifyReplies": false,
+  "notifyLikes": true
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `notifyMessages` | boolean | 否 | 是否接收新消息通知（false时不产生私信红点） |
+| `notifyReplies` | boolean | 否 | 是否接收帖子回复通知（false时不产生评论/回复红点） |
+| `notifyLikes` | boolean | 否 | 是否接收点赞收藏通知（false时不产生点赞/收藏/关注红点） |
+
+> **行为说明**: 关闭某类通知时，该类型不推送未读红点（收纳篮 unreadCount 为0，底部导航栏未读总数不包含），但收纳篮始终显示且历史内容可查看。null 值视为默认开启。
+
+**响应示例**: 返回更新后的 UserDTO
+
+---
+
+### 4.8 搜索用户
 
 - **接口**: `GET /api/users/search`
 - **说明**: 按用户名模糊搜索用户（排除自己，最多20条）
@@ -745,7 +803,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 4.7 获取用户主页资料
+### 4.9 获取用户主页资料
 
 - **接口**: `GET /api/users/{userId}/profile`
 - **说明**: 获取指定用户的公开资料（含统计、关注状态）
@@ -775,7 +833,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 4.8 获取用户的帖子/收藏/点赞/浏览历史
+### 4.10 获取用户的帖子/收藏/点赞/浏览历史
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
@@ -788,7 +846,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 4.9 关注/取消关注用户
+### 4.11 关注/取消关注用户
 
 - **接口**: `POST /api/users/{userId}/follow`
 - **说明**: 切换关注状态（已关注则取消，未关注则关注）。不能关注自己。
@@ -807,7 +865,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 4.10 获取关注统计
+### 4.12 获取关注统计
 
 - **接口**: `GET /api/users/me/follow-stats`
 - **说明**: 获取当前用户的关注/粉丝/互关数量
@@ -834,7 +892,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 4.11 获取关注/粉丝/互关列表
+### 4.13 获取关注/粉丝/互关列表
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
@@ -1085,9 +1143,129 @@ Authorization: Bearer {token}
 
 ---
 
-## 七、管理模块
+## 七、创作者认证模块
 
-### 4.1 清空帖子数据
+### 7.1 获取创作者认证统计
+
+- **接口**: `GET /api/creator/stats`
+- **说明**: 获取当前用户的创作者认证统计数据（总获赞、发帖数、是否满足认证条件）
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "totalLikes": 89,
+    "postCount": 12,
+    "canApply": false,
+    "thresholdLikes": 10000,
+    "thresholdPosts": 50
+  }
+}
+```
+
+---
+
+### 7.2 获取创作者认证状态
+
+- **接口**: `GET /api/creator/status`
+- **说明**: 获取当前用户的创作者认证申请状态和等级
+- **是否需要登录**: 是
+
+**响应示例**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "isCreator": false,
+    "creatorLevel": "NONE",
+    "applicationStatus": "NONE",
+    "realName": null,
+    "rejectReason": null
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `isCreator` | boolean | 是否已认证为创作者 |
+| `creatorLevel` | string | 创作者等级：NONE/JUNIOR/INTERMEDIATE/SENIOR/AUTHORITY |
+| `applicationStatus` | string | 申请状态：NONE/PENDING/APPROVED/REJECTED |
+| `realName` | string | 认证真实姓名（未认证为null） |
+| `rejectReason` | string | 驳回原因（被驳回时有值） |
+
+---
+
+### 7.3 提交创作者认证申请
+
+- **接口**: `POST /api/creator/apply`
+- **说明**: 提交创作者认证申请（需满足总获赞≥10000且发帖≥50篇）
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "realName": "张三",
+  "idCard": "110101199001011234",
+  "idCardFront": "/files/20260627/front.png",
+  "idCardBack": "/files/20260627/back.png"
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `realName` | string | 是 | 真实姓名 |
+| `idCard` | string | 是 | 身份证号 |
+| `idCardFront` | string | 否 | 身份证正面照URL |
+| `idCardBack` | string | 否 | 身份证背面照URL |
+
+---
+
+### 7.4 管理员获取认证申请列表
+
+- **接口**: `GET /api/creator/admin/applications`
+- **说明**: 管理员分页查看创作者认证申请列表
+- **是否需要登录**: 是（需管理员权限）
+
+**查询参数**:
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `status` | string | all | 筛选状态：all/pending/approved/rejected |
+| `page` | int | 1 | 页码 |
+| `size` | int | 20 | 每页数量 |
+
+---
+
+### 7.5 管理员审核认证申请
+
+- **接口**: `POST /api/creator/admin/applications/{id}/verify`
+- **说明**: 管理员审核认证申请（通过或驳回）
+- **是否需要登录**: 是（需管理员权限）
+
+**请求体**:
+
+```json
+{
+  "approved": false,
+  "rejectReason": "身份证信息不清晰，请重新上传"
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `approved` | boolean | 是 | 是否通过 |
+| `rejectReason` | string | 否 | 驳回原因（驳回时必填） |
+
+---
+
+## 八、管理模块
+
+### 8.1 清空帖子数据
 
 - **接口**: `POST /api/admin/clear-posts`
 - **说明**: 清空所有帖子及关联数据（posts、post_stars、post_likes、view_history、Redis缓存），用于调试重置
@@ -1106,7 +1284,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 4.2 生成测试数据
+### 8.2 生成测试数据
 
 - **接口**: `POST /api/admin/init-test-data`
 - **说明**: 为每个学校生成测试帖子（内容随机，浏览量/点赞/收藏全为0）
@@ -1133,9 +1311,9 @@ Authorization: Bearer {token}
 
 ---
 
-## 八、文件模块
+## 九、文件模块
 
-### 8.1 文件上传
+### 9.1 文件上传
 
 - **接口**: `POST /api/files/upload`
 - **说明**: 上传文件
@@ -1153,7 +1331,7 @@ Authorization: Bearer {token}
 - 文本：TXT, MD, HTML
 - 压缩包：ZIP, RAR, 7Z
 - 图片：JPG, PNG, GIF
-- 单文件大小：最大 50MB
+- 单文件大小：最大 100MB
 
 **响应示例**:
 
@@ -1180,7 +1358,7 @@ Authorization: Bearer {token}
 
 ---
 
-### 8.2 文件访问
+### 9.2 文件访问
 
 - **接口**: `GET /api/files/{date}/{filename}`
 - **说明**: 访问/下载上传的文件
@@ -1189,7 +1367,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 九、错误码汇总
+## 十、错误码汇总
 
 | 错误码 | 错误信息 | 可能原因 |
 |--------|---------|---------|
@@ -1212,7 +1390,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 十、版本历史
+## 十一、版本历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
@@ -1224,3 +1402,5 @@ Authorization: Bearer {token}
 | v1.5 | 2026-06-27 | 新增用户社交：关注/取消关注、关注统计、关注/粉丝/互关列表、用户主页资料、用户帖子/收藏/点赞/历史；新增密码修改、账号绑定、实名认证、用户搜索 |
 | v1.6 | 2026-06-27 | 新增私信模块：发送消息、会话记录、会话列表、可发送检查；单向消息限制（未互关/未回复仅可发一条） |
 | v1.7 | 2026-06-27 | 新增通知模块：通知列表(feed)、通知详情、标记已读、置顶、未读数；点赞/收藏/关注自动创建通知 |
+| v1.8 | 2026-06-29 | 新增创作者认证模块：认证统计/状态/申请/管理员审核；通知中心改为独立页面+分类Tab；文件大小上限提升至100MB |
+| v1.9 | 2026-06-30 | 新增隐私设置接口(5个开关)、通知偏好设置接口(3个开关)；UserDTO增加8个隐私/通知字段；修复OTel agent依赖与网关YAML配置 |
