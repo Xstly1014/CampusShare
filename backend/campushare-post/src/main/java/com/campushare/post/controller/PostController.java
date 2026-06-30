@@ -8,6 +8,7 @@ import com.campushare.post.cache.CategoryCache;
 import com.campushare.post.dto.*;
 import com.campushare.post.entity.Category;
 import com.campushare.post.entity.Post;
+import com.campushare.post.entity.PostDownload;
 import com.campushare.post.entity.SubCategory;
 import com.campushare.post.feign.UserFeignClient;
 import com.campushare.post.service.PostService;
@@ -173,6 +174,50 @@ public class PostController {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         IPage<Post> postPage = postService.getViewHistory(userId, page, size);
         return Result.success(enrichPage(postPage));
+    }
+
+    @PostMapping("/{postId}/download")
+    public Result<Void> recordDownload(
+            @RequestHeader("Authorization") String token,
+            @PathVariable String postId) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        postService.recordDownload(userId, postId);
+        return Result.success(null);
+    }
+
+    @GetMapping("/my-downloads")
+    public Result<IPage<PostListDTO>> getMyDownloads(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        IPage<Post> postPage = postService.getMyDownloads(userId, page, size);
+        IPage<PostListDTO> dtoPage = enrichPage(postPage);
+        List<Post> records = postPage.getRecords();
+        if (!records.isEmpty()) {
+            List<String> postIds = new ArrayList<>(records.size());
+            for (Post p : records) {
+                postIds.add(p.getId());
+            }
+            Map<String, PostDownload> downloadMap = postService.getDownloadRecordMap(userId, postIds);
+            for (PostListDTO dto : dtoPage.getRecords()) {
+                PostDownload d = downloadMap.get(dto.getId());
+                if (d != null) {
+                    dto.setDownloadRecordId(d.getId());
+                    dto.setDownloadTime(d.getDownloadTime() != null ? d.getDownloadTime().format(FMT) : null);
+                }
+            }
+        }
+        return Result.success(dtoPage);
+    }
+
+    @DeleteMapping("/downloads/{recordId}")
+    public Result<Void> deleteDownloadRecord(
+            @RequestHeader("Authorization") String token,
+            @PathVariable int recordId) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        postService.deleteDownloadRecord(userId, recordId);
+        return Result.success(null);
     }
 
     @GetMapping("/starred")

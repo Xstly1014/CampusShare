@@ -522,6 +522,7 @@ export default function PostDetailPage() {
                         document.body.removeChild(a)
                         URL.revokeObjectURL(url)
                         toast.success('下载成功')
+                        if (postId) postApi.recordDownload(postId).catch(() => {})
                       } catch (err) {
                         toast.error((err as Error).message || '下载失败')
                       }

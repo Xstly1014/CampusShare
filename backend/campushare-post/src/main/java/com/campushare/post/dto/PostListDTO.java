@@ -31,4 +31,6 @@ public class PostListDTO {
     private Integer likeCount;
     private Integer commentCount;
     private String createTime;
+    private Integer downloadRecordId;
+    private String downloadTime;
 }

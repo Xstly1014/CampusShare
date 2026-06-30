@@ -6,15 +6,16 @@ export interface WarehouseCategoryStat {
   color: string
   icon: string
   uploadCount: number
-  viewCount: number
+  downloadCount: number
 }
 
 export interface WarehouseStats {
   uploadCount: number
-  viewCount: number
+  downloadCount: number
   totalViews: number
   totalLikes: number
   totalStars: number
+  totalDownloadsOfMyPosts: number
   categoryStats: WarehouseCategoryStat[]
 }
 
@@ -102,6 +103,13 @@ export const postApi = {
   getMyPostStats: () => api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>('/posts/my-stats'),
 
   getWarehouseStats: () => api.get<WarehouseStats>('/posts/warehouse-stats'),
+
+  recordDownload: (postId: string) => api.post(`/posts/${postId}/download`),
+
+  getMyDownloads: (page: number = 1, size: number = 50) =>
+    api.get(`/posts/my-downloads?page=${page}&size=${size}`),
+
+  deleteDownloadRecord: (recordId: number) => api.delete(`/posts/downloads/${recordId}`),
 
   getComments: (postId: string) => api.get<PostComment[]>(`/posts/${postId}/comments`),
 

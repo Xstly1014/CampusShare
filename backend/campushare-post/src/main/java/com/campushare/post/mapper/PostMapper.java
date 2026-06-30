@@ -31,6 +31,15 @@ public interface PostMapper extends BaseMapper<Post> {
     @Select("SELECT COUNT(*) FROM posts WHERE author_id = #{userId} AND deleted = 0 AND post_type = 'resource'")
     long countResourceByAuthorId(@Param("userId") String userId);
 
+    @Select("SELECT COALESCE(SUM(view_count), 0) FROM posts WHERE author_id = #{userId} AND deleted = 0 AND post_type = 'resource'")
+    long sumViewCountByAuthorIdResource(@Param("userId") String userId);
+
+    @Select("SELECT COALESCE(SUM(like_count), 0) FROM posts WHERE author_id = #{userId} AND deleted = 0 AND post_type = 'resource'")
+    long sumLikeCountByAuthorIdResource(@Param("userId") String userId);
+
+    @Select("SELECT COALESCE(SUM(star_count), 0) FROM posts WHERE author_id = #{userId} AND deleted = 0 AND post_type = 'resource'")
+    long sumStarCountByAuthorIdResource(@Param("userId") String userId);
+
     @Select("SELECT school_id AS schoolId, COUNT(*) AS cnt FROM posts " +
             "WHERE deleted = 0 AND status = 1 AND school_id IS NOT NULL AND category_id IS NULL " +
             "GROUP BY school_id")

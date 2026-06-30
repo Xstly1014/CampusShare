@@ -11,10 +11,12 @@ import com.campushare.post.dto.UserPostStats;
 import com.campushare.post.dto.WarehouseStats;
 import com.campushare.post.entity.Category;
 import com.campushare.post.entity.Post;
+import com.campushare.post.entity.PostDownload;
 import com.campushare.post.entity.PostLike;
 import com.campushare.post.entity.PostStar;
 import com.campushare.post.entity.ViewHistory;
 import com.campushare.post.feign.UserFeignClient;
+import com.campushare.post.mapper.PostDownloadMapper;
 import com.campushare.post.mapper.PostLikeMapper;
 import com.campushare.post.mapper.PostMapper;
 import com.campushare.post.mapper.PostStarMapper;
@@ -49,6 +51,7 @@ public class PostServiceImpl implements PostService {
     private final PostStarMapper postStarMapper;
     private final PostLikeMapper postLikeMapper;
     private final ViewHistoryMapper viewHistoryMapper;
+    private final PostDownloadMapper postDownloadMapper;
     private final RedisTemplate<String, String> redisTemplate;
     private final MeterRegistry meterRegistry;
     private final UserFeignClient userFeignClient;
@@ -488,24 +491,25 @@ public class PostServiceImpl implements PostService {
     @Override
     public WarehouseStats getWarehouseStats(String userId) {
         long uploadCount = postMapper.countResourceByAuthorId(userId);
-        long viewCount = viewHistoryMapper.countValidByUserId(userId);
-        long totalViews = postMapper.sumViewCountByAuthorId(userId);
-        long totalLikes = postMapper.sumLikeCountByAuthorId(userId);
-        long totalStars = postMapper.sumStarCountByAuthorId(userId);
+        long downloadCount = postDownloadMapper.countValidByUserId(userId);
+        long totalViews = postMapper.sumViewCountByAuthorIdResource(userId);
+        long totalLikes = postMapper.sumLikeCountByAuthorIdResource(userId);
+        long totalStars = postMapper.sumStarCountByAuthorIdResource(userId);
+        long totalDownloadsOfMyPosts = postDownloadMapper.countDownloadsByAuthor(userId);
 
         java.util.Map<String, Long> uploadsByCategory = new java.util.LinkedHashMap<>();
         for (Map<String, Object> row : postMapper.countUploadsByAuthorGroupByCategory(userId)) {
             uploadsByCategory.put(String.valueOf(row.get("categoryId")), ((Number) row.get("cnt")).longValue());
         }
 
-        java.util.Map<String, Long> viewsByCategory = new java.util.LinkedHashMap<>();
-        for (Map<String, Object> row : postMapper.countViewsByUserGroupByCategory(userId)) {
-            viewsByCategory.put(String.valueOf(row.get("categoryId")), ((Number) row.get("cnt")).longValue());
+        java.util.Map<String, Long> downloadsByCategory = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : postDownloadMapper.countDownloadsGroupByCategory(userId)) {
+            downloadsByCategory.put(String.valueOf(row.get("categoryId")), ((Number) row.get("cnt")).longValue());
         }
 
         java.util.Set<String> allCategoryIds = new java.util.LinkedHashSet<>();
         allCategoryIds.addAll(uploadsByCategory.keySet());
-        allCategoryIds.addAll(viewsByCategory.keySet());
+        allCategoryIds.addAll(downloadsByCategory.keySet());
 
         List<WarehouseStats.CategoryStat> categoryStats = new ArrayList<>();
         for (String categoryId : allCategoryIds) {
@@ -516,18 +520,93 @@ public class PostServiceImpl implements PostService {
                     .color(cat != null ? cat.getColor() : "blue")
                     .icon(cat != null ? cat.getIcon() : "FileText")
                     .uploadCount(uploadsByCategory.getOrDefault(categoryId, 0L))
-                    .viewCount(viewsByCategory.getOrDefault(categoryId, 0L))
+                    .downloadCount(downloadsByCategory.getOrDefault(categoryId, 0L))
                     .build());
         }
-        categoryStats.sort((a, b) -> Long.compare(b.getUploadCount() + b.getViewCount(), a.getUploadCount() + a.getViewCount()));
+        categoryStats.sort((a, b) -> Long.compare(b.getUploadCount() + b.getDownloadCount(), a.getUploadCount() + a.getDownloadCount()));
 
         return WarehouseStats.builder()
                 .uploadCount(uploadCount)
-                .viewCount(viewCount)
+                .downloadCount(downloadCount)
                 .totalViews(totalViews)
                 .totalLikes(totalLikes)
                 .totalStars(totalStars)
+                .totalDownloadsOfMyPosts(totalDownloadsOfMyPosts)
                 .categoryStats(categoryStats)
                 .build();
+    }
+
+    @Override
+    public void recordDownload(String userId, String postId) {
+        Post post = postMapper.selectById(postId);
+        if (post == null || post.getDeleted() || !"resource".equals(post.getPostType())) {
+            return;
+        }
+        PostDownload download = PostDownload.builder()
+                .postId(postId)
+                .userId(userId)
+                .downloadTime(LocalDateTime.now())
+                .build();
+        postDownloadMapper.insert(download);
+    }
+
+    @Override
+    public IPage<Post> getMyDownloads(String userId, int page, int size) {
+        int offset = (page - 1) * size;
+        long total = postDownloadMapper.countValidByUserId(userId);
+        List<PostDownload> downloads = postDownloadMapper.selectValidPage(userId, offset, size);
+
+        if (downloads.isEmpty()) {
+            Page<Post> emptyPage = new Page<>(page, size, 0);
+            emptyPage.setRecords(new ArrayList<>());
+            return emptyPage;
+        }
+
+        List<String> postIds = new ArrayList<>(downloads.size());
+        for (PostDownload d : downloads) {
+            postIds.add(d.getPostId());
+        }
+        List<Post> posts = postMapper.selectBatchIds(postIds);
+        java.util.Map<String, Post> postMap = new java.util.HashMap<>(posts.size());
+        for (Post p : posts) {
+            postMap.put(p.getId(), p);
+        }
+
+        List<Post> orderedPosts = new ArrayList<>();
+        for (PostDownload d : downloads) {
+            Post p = postMap.get(d.getPostId());
+            if (p != null && !p.getDeleted()) {
+                orderedPosts.add(p);
+            }
+        }
+
+        Page<Post> result = new Page<>(page, size, total);
+        result.setRecords(orderedPosts);
+        return result;
+    }
+
+    @Override
+    public Map<String, PostDownload> getDownloadRecordMap(String userId, List<String> postIds) {
+        if (postIds == null || postIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        List<PostDownload> downloads = postDownloadMapper.selectList(
+                new LambdaQueryWrapper<PostDownload>()
+                        .eq(PostDownload::getUserId, userId)
+                        .in(PostDownload::getPostId, postIds));
+        Map<String, PostDownload> map = new HashMap<>(downloads.size());
+        for (PostDownload d : downloads) {
+            map.put(d.getPostId(), d);
+        }
+        return map;
+    }
+
+    @Override
+    public void deleteDownloadRecord(String userId, int recordId) {
+        PostDownload download = postDownloadMapper.selectById(recordId);
+        if (download == null || !download.getUserId().equals(userId)) {
+            throw new BusinessException(4030, "下载记录不存在或无权删除");
+        }
+        postDownloadMapper.deleteById(recordId);
     }
 }

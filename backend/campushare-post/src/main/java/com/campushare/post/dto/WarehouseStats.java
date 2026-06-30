@@ -13,10 +13,11 @@ import java.util.List;
 @AllArgsConstructor
 public class WarehouseStats {
     private long uploadCount;
-    private long viewCount;
+    private long downloadCount;
     private long totalViews;
     private long totalLikes;
     private long totalStars;
+    private long totalDownloadsOfMyPosts;
     private List<CategoryStat> categoryStats;
 
     @Data
@@ -29,6 +30,6 @@ public class WarehouseStats {
         private String color;
         private String icon;
         private long uploadCount;
-        private long viewCount;
+        private long downloadCount;
     }
 }

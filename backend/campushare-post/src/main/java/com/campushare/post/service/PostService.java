@@ -3,6 +3,7 @@ package com.campushare.post.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.campushare.post.dto.*;
 import com.campushare.post.entity.Post;
+import com.campushare.post.entity.PostDownload;
 
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,14 @@ public interface PostService {
     UserPostStats getMyPostStats(String userId);
 
     WarehouseStats getWarehouseStats(String userId);
+
+    void recordDownload(String userId, String postId);
+
+    IPage<Post> getMyDownloads(String userId, int page, int size);
+
+    Map<String, PostDownload> getDownloadRecordMap(String userId, List<String> postIds);
+
+    void deleteDownloadRecord(String userId, int recordId);
 
     Map<String, Long> getSchoolPostCounts();
 

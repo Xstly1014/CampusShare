@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import NavBar from '../components/common/NavBar'
+import SwipeToDelete from '../components/common/SwipeToDelete'
 import { postApi, WarehouseStats } from '../services/api'
 import { toast } from '../stores/toastStore'
 import {
   Package,
   Upload,
+  Download,
   Eye,
   ThumbsUp,
   Star,
@@ -51,6 +53,8 @@ interface BackendPost {
   likeCount: number
   commentCount: number
   createTime: string
+  downloadRecordId?: number
+  downloadTime?: string
 }
 
 interface PageResponse<T> {
@@ -159,6 +163,8 @@ export default function WarehousePage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
+  const [openSwipeId, setOpenSwipeId] = useState<number | null>(null)
+  const deletingRef = useRef(false)
   const loadingRef = useRef(false)
   const observerRef = useRef<HTMLDivElement>(null)
 
@@ -189,7 +195,7 @@ export default function WarehousePage() {
     try {
       const res = activeTab === 'uploads'
         ? await postApi.getMyPosts(pageNum, PAGE_SIZE, 'resource')
-        : await postApi.getHistory(pageNum, PAGE_SIZE)
+        : await postApi.getMyDownloads(pageNum, PAGE_SIZE)
       const pageData: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: PAGE_SIZE, current: 1, pages: 0 }
       if (isLoadMore) {
         setPosts(prev => [...prev, ...pageData.records])
@@ -213,6 +219,7 @@ export default function WarehousePage() {
     setTotal(0)
     setPage(1)
     setHasMore(false)
+    setOpenSwipeId(null)
     loadPage(1, false)
   }, [loadPage])
 
@@ -236,14 +243,32 @@ export default function WarehousePage() {
 
   const statsCards = [
     { key: 'uploads', label: '我的上传', value: stats?.uploadCount || 0, icon: Upload, color: 'bg-blue-50 text-blue-600' },
-    { key: 'downloads', label: '我的下载', value: stats?.viewCount || 0, icon: Eye, color: 'bg-green-50 text-green-600' },
+    { key: 'downloads', label: '我的下载', value: stats?.downloadCount || 0, icon: Download, color: 'bg-green-50 text-green-600' },
     { key: 'totalViews', label: '总浏览量', value: stats?.totalViews || 0, icon: TrendingUp, color: 'bg-cyan-50 text-cyan-600' },
     { key: 'likes', label: '总获赞', value: stats?.totalLikes || 0, icon: ThumbsUp, color: 'bg-red-50 text-red-600' },
     { key: 'stars', label: '总被收藏', value: stats?.totalStars || 0, icon: Star, color: 'bg-amber-50 text-amber-600' },
+    { key: 'resourceDownloads', label: '资源被下载', value: stats?.totalDownloadsOfMyPosts || 0, icon: FileText, color: 'bg-purple-50 text-purple-600' },
   ]
 
   const categoryStats = stats?.categoryStats || []
-  const maxCategoryTotal = categoryStats.reduce((max, c) => Math.max(max, c.uploadCount + c.viewCount), 0) || 1
+  const maxCategoryTotal = categoryStats.reduce((max, c) => Math.max(max, c.uploadCount + c.downloadCount), 0) || 1
+
+  const handleDeleteDownload = useCallback(async (recordId: number) => {
+    if (deletingRef.current) return
+    deletingRef.current = true
+    try {
+      await postApi.deleteDownloadRecord(recordId)
+      setPosts(prev => prev.filter(p => p.downloadRecordId !== recordId))
+      setTotal(prev => Math.max(0, prev - 1))
+      setOpenSwipeId(null)
+      setStats(prev => prev ? { ...prev, downloadCount: Math.max(0, prev.downloadCount - 1) } : prev)
+      toast.success('已删除下载记录')
+    } catch {
+      toast.error('删除失败')
+    } finally {
+      deletingRef.current = false
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
@@ -301,9 +326,9 @@ export default function WarehousePage() {
               {categoryStats.map((cat) => {
                 const colors = COLOR_MAP[cat.color] || DEFAULT_COLOR
                 const IconComp = ICON_MAP[cat.icon] || FileText
-                const total = cat.uploadCount + cat.viewCount
+                const total = cat.uploadCount + cat.downloadCount
                 const uploadPct = (cat.uploadCount / maxCategoryTotal) * 100
-                const viewPct = (cat.viewCount / maxCategoryTotal) * 100
+                const downloadPct = (cat.downloadCount / maxCategoryTotal) * 100
                 return (
                   <div key={cat.categoryId} className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${colors.bg} flex items-center justify-center flex-shrink-0`}>
@@ -330,10 +355,10 @@ export default function WarehousePage() {
                           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-gray-400 rounded-full transition-all duration-500"
-                              style={{ width: `${Math.max(viewPct, cat.viewCount > 0 ? 4 : 0)}%` }}
+                              style={{ width: `${Math.max(downloadPct, cat.downloadCount > 0 ? 4 : 0)}%` }}
                             />
                           </div>
-                          <span className="text-[10px] text-gray-600 w-6 text-right flex-shrink-0">{cat.viewCount}</span>
+                          <span className="text-[10px] text-gray-600 w-6 text-right flex-shrink-0">{cat.downloadCount}</span>
                         </div>
                       </div>
                     </div>
@@ -371,11 +396,11 @@ export default function WarehousePage() {
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              <Eye className="w-4 h-4" />
+              <Download className="w-4 h-4" />
               我的下载
-              {stats && stats.viewCount > 0 && (
+              {stats && stats.downloadCount > 0 && (
                 <span className={`text-[11px] ${activeTab === 'downloads' ? 'text-blue-500' : 'text-gray-400'}`}>
-                  ({stats.viewCount})
+                  ({stats.downloadCount})
                 </span>
               )}
             </button>
@@ -395,11 +420,20 @@ export default function WarehousePage() {
                   const avatarUrl = post.authorAvatar
                     ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
                     : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
-                  return (
+                  const timeStr = activeTab === 'downloads'
+                    ? (post.downloadTime || post.createTime)
+                    : post.createTime
+
+                  const cardContent = (
                     <div
-                      key={post.id}
-                      onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)}
-                      className="bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-3 cursor-pointer"
+                      onClick={() => {
+                        if (activeTab === 'downloads' && openSwipeId === post.downloadRecordId) {
+                          setOpenSwipeId(null)
+                          return
+                        }
+                        navigate(`/school/${post.schoolId}/post/${post.id}`)
+                      }}
+                      className="bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-3 cursor-pointer"
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <img
@@ -415,7 +449,7 @@ export default function WarehousePage() {
                         </span>
                         <span className="text-[11px] text-gray-400 ml-1 flex items-center gap-0.5">
                           <Clock className="w-3 h-3" />
-                          {formatTime(post.createTime)}
+                          {formatTime(timeStr)}
                         </span>
                       </div>
 
@@ -477,12 +511,31 @@ export default function WarehousePage() {
                       </div>
                     </div>
                   )
+
+                  if (activeTab === 'downloads' && post.downloadRecordId != null) {
+                    return (
+                      <SwipeToDelete
+                        key={post.id}
+                        isOpen={openSwipeId === post.downloadRecordId}
+                        onOpenChange={(open) => setOpenSwipeId(open ? post.downloadRecordId! : null)}
+                        onDelete={() => handleDeleteDownload(post.downloadRecordId!)}
+                      >
+                        {cardContent}
+                      </SwipeToDelete>
+                    )
+                  }
+
+                  return (
+                    <div key={post.id} className="rounded-xl">
+                      {cardContent}
+                    </div>
+                  )
                 })}
               </div>
             ) : (
               <div className="text-center py-12">
                 <div className="w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                  {activeTab === 'uploads' ? <Upload className="w-6 h-6 text-gray-300" /> : <Eye className="w-6 h-6 text-gray-300" />}
+                  {activeTab === 'uploads' ? <Upload className="w-6 h-6 text-gray-300" /> : <Download className="w-6 h-6 text-gray-300" />}
                 </div>
                 <p className="text-gray-400 text-sm">
                   {activeTab === 'uploads' ? '暂无上传记录' : '暂无下载记录'}
