@@ -407,4 +407,26 @@ public class DataInitServiceImpl implements DataInitService {
         log.info(result);
         return result;
     }
+
+    @Override
+    public String fillEmptyPostContent() {
+        log.info("开始补全空内容帖子...");
+        List<Post> emptyPosts = postMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Post>()
+                        .and(w -> w.isNull(Post::getContent).or().eq(Post::getContent, ""))
+                        .eq(Post::getDeleted, false)
+        );
+        int count = 0;
+        for (Post p : emptyPosts) {
+            p.setContent(generateContent());
+            postMapper.updateById(p);
+            count++;
+            if (count % 100 == 0) {
+                log.info("已补全 {} 篇帖子", count);
+            }
+        }
+        String result = String.format("空内容补全完成：共更新 %d 篇帖子", count);
+        log.info(result);
+        return result;
+    }
 }

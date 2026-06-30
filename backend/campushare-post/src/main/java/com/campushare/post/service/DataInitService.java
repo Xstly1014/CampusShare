@@ -6,4 +6,5 @@ public interface DataInitService {
     String initFullTestData(int userCount, int postsPerUser);
     String initTargetedSchoolData(int userCount, int postsPerUser, String schoolId);
     String initCreatorTestData(String userId, String schoolId);
+    String fillEmptyPostContent();
 }

@@ -52,4 +52,10 @@ public class DataInitController {
         String result = dataInitService.initCreatorTestData(userId, schoolId);
         return Result.success(result);
     }
+
+    @PostMapping("/fill-empty-content")
+    public Result<String> fillEmptyContent() {
+        String result = dataInitService.fillEmptyPostContent();
+        return Result.success(result);
+    }
 }
