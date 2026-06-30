@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bell, MessageSquare, CheckCheck } from 'lucide-react'
+import { ArrowLeft, Bell, MessageSquare } from 'lucide-react'
 import { notificationApi } from '../services/api'
 import type { NotificationDetail } from '../services/api'
 import { formatTime } from '../utils/time'
@@ -22,7 +22,6 @@ export default function NotificationBasketPage() {
   const { basketType = '' } = useParams<{ basketType: string }>()
   const [detail, setDetail] = useState<NotificationDetail[]>([])
   const [loading, setLoading] = useState(true)
-  const [markingRead, setMarkingRead] = useState(false)
 
   const fetchDetail = useCallback(async () => {
     setLoading(true)
@@ -38,19 +37,6 @@ export default function NotificationBasketPage() {
   }, [basketType])
 
   useEffect(() => { fetchDetail() }, [fetchDetail])
-
-  const handleMarkAllRead = async () => {
-    setMarkingRead(true)
-    try {
-      await notificationApi.markAsRead(basketType)
-      setDetail(prev => prev.map(d => ({ ...d, isRead: 1 })))
-      toast.success('已全部标为已读')
-    } catch {
-      toast.error('操作失败')
-    } finally {
-      setMarkingRead(false)
-    }
-  }
 
   const handleItemClick = (d: NotificationDetail) => {
     if (d.type === 'SYSTEM') return
@@ -89,14 +75,7 @@ export default function NotificationBasketPage() {
             返回
           </button>
           <span className="text-sm font-medium text-gray-900">{title}</span>
-          <button
-            onClick={handleMarkAllRead}
-            disabled={markingRead || loading || detail.length === 0}
-            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-300 transition-colors"
-          >
-            <CheckCheck className="w-4 h-4" />
-            一键已读
-          </button>
+          <div className="w-12"></div>
         </div>
       </div>
 
