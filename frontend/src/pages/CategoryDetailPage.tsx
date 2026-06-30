@@ -60,7 +60,35 @@ const COLOR_MAP: Record<string, { bg: string; light: string; text: string }> = {
   teal:    { bg: 'from-teal-400 to-teal-600',     light: 'bg-teal-50',    text: 'text-teal-600' },
 }
 
-const DEFAULT_COLORS = { bg: 'from-gray-400 to-gray-600', light: 'bg-gray-50', text: 'text-gray-600' }
+const DEFAULT_COLORS = { bg: 'from-blue-400 to-blue-600', light: 'bg-blue-50', text: 'text-blue-600' }
+
+const SUB_COLORS = [
+  { bg: 'bg-rose-50', text: 'text-rose-600' },
+  { bg: 'bg-orange-50', text: 'text-orange-600' },
+  { bg: 'bg-amber-50', text: 'text-amber-600' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+  { bg: 'bg-teal-50', text: 'text-teal-600' },
+  { bg: 'bg-sky-50', text: 'text-sky-600' },
+  { bg: 'bg-indigo-50', text: 'text-indigo-600' },
+  { bg: 'bg-violet-50', text: 'text-violet-600' },
+  { bg: 'bg-pink-50', text: 'text-pink-600' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+  { bg: 'bg-lime-50', text: 'text-lime-600' },
+  { bg: 'bg-fuchsia-50', text: 'text-fuchsia-600' },
+]
+
+function hashStr(str: string): number {
+  let h = 0
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h) + str.charCodeAt(i)
+    h |= 0
+  }
+  return Math.abs(h)
+}
+
+function getSubColor(id: string) {
+  return SUB_COLORS[hashStr(id) % SUB_COLORS.length]
+}
 
 const CATEGORY_DESC_MAP: Record<string, { unit: string; desc: string }> = {
   'cat-campus':    { unit: '所高校', desc: '浏览优质学习资源' },
@@ -435,21 +463,26 @@ export default function CategoryDetailPage() {
                 {filteredSubs.map((sub) => {
                   const count = catCounts[`sub_${sub.id}`] || sub.postCount || 0
                   const SubIconComp = SUB_ICON_MAP[sub.icon] || Hash
+                  const subColor = getSubColor(sub.id)
                   return (
                     <div
                       key={sub.id}
                       onClick={() => handleSubClick(sub)}
                       className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
                     >
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-2.5 shadow-sm group-hover:scale-110 transition-transform`}>
-                        <SubIconComp className="w-5 h-5 text-white" />
-                      </div>
-                      <h3 className="font-semibold text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">
-                        {sub.name}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-3 h-3 text-gray-400" />
-                        <span className="text-xs text-gray-400">{count} 内容</span>
+                      <div className="flex items-start gap-3">
+                        <div className={`w-12 h-12 rounded-xl ${subColor.bg} flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                          <SubIconComp className={`w-6 h-6 ${subColor.text}`} />
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <h3 className="font-semibold text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors truncate">
+                            {sub.name}
+                          </h3>
+                          <div className="flex items-center gap-1">
+                            <FileText className="w-3 h-3 text-gray-400" />
+                            <span className="text-xs text-gray-400">{count} 内容</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )
