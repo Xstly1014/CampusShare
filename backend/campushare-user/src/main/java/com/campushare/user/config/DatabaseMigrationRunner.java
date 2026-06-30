@@ -2,28 +2,31 @@ package com.campushare.user.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+
+import jakarta.annotation.PostConstruct;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DatabaseMigrationRunner implements CommandLineRunner {
+public class DatabaseMigrationRunner {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @Override
-    public void run(String... args) {
+    @PostConstruct
+    public void init() {
+        log.info("Running database migrations...");
         addCreatorLevelColumn();
         addVerificationTypeColumn();
         addReviewNoteColumn();
         updateExistingCreatorsLevel();
+        log.info("Database migrations completed");
     }
 
     private void addCreatorLevelColumn() {
         try {
-            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS creator_level VARCHAR(20) DEFAULT 'NONE'");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN creator_level VARCHAR(20) DEFAULT 'NONE'");
             log.info("Added creator_level column to users table");
         } catch (Exception e) {
             log.debug("creator_level column may already exist: {}", e.getMessage());
@@ -32,7 +35,7 @@ public class DatabaseMigrationRunner implements CommandLineRunner {
 
     private void addVerificationTypeColumn() {
         try {
-            jdbcTemplate.execute("ALTER TABLE creator_verifications ADD COLUMN IF NOT EXISTS verification_type VARCHAR(20) DEFAULT 'INITIAL'");
+            jdbcTemplate.execute("ALTER TABLE creator_verifications ADD COLUMN verification_type VARCHAR(20) DEFAULT 'INITIAL'");
             log.info("Added verification_type column to creator_verifications table");
         } catch (Exception e) {
             log.debug("verification_type column may already exist: {}", e.getMessage());
@@ -41,7 +44,7 @@ public class DatabaseMigrationRunner implements CommandLineRunner {
 
     private void addReviewNoteColumn() {
         try {
-            jdbcTemplate.execute("ALTER TABLE creator_verifications ADD COLUMN IF NOT EXISTS review_note VARCHAR(500)");
+            jdbcTemplate.execute("ALTER TABLE creator_verifications ADD COLUMN review_note VARCHAR(500)");
             log.info("Added review_note column to creator_verifications table");
         } catch (Exception e) {
             log.debug("review_note column may already exist: {}", e.getMessage());
