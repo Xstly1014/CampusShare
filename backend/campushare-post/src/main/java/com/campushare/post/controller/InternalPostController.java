@@ -33,7 +33,7 @@ public class InternalPostController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        IPage<Post> postPage = postService.getMyPosts(userId, page, size);
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size, null);
         return Result.success(enrichPage(postPage));
     }
 

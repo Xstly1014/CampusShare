@@ -28,6 +28,9 @@ public interface PostMapper extends BaseMapper<Post> {
     @Select("SELECT COUNT(*) FROM posts WHERE author_id = #{userId} AND deleted = 0")
     long countByAuthorId(@Param("userId") String userId);
 
+    @Select("SELECT COUNT(*) FROM posts WHERE author_id = #{userId} AND deleted = 0 AND post_type = 'resource'")
+    long countResourceByAuthorId(@Param("userId") String userId);
+
     @Select("SELECT school_id AS schoolId, COUNT(*) AS cnt FROM posts " +
             "WHERE deleted = 0 AND status = 1 AND school_id IS NOT NULL AND category_id IS NULL " +
             "GROUP BY school_id")
@@ -44,7 +47,7 @@ public interface PostMapper extends BaseMapper<Post> {
     List<Map<String, Object>> countGroupBySubCategory();
 
     @Select("SELECT category_id AS categoryId, COUNT(*) AS cnt FROM posts " +
-            "WHERE author_id = #{userId} AND deleted = 0 AND category_id IS NOT NULL " +
+            "WHERE author_id = #{userId} AND deleted = 0 AND post_type = 'resource' AND category_id IS NOT NULL " +
             "GROUP BY category_id")
     List<Map<String, Object>> countUploadsByAuthorGroupByCategory(@Param("userId") String userId);
 

@@ -145,7 +145,7 @@ function getFileUrl(url?: string): string | undefined {
 
 const PAGE_SIZE = 20
 
-type TabKey = 'uploads' | 'views'
+type TabKey = 'uploads' | 'downloads'
 
 export default function WarehousePage() {
   const navigate = useNavigate()
@@ -187,8 +187,9 @@ export default function WarehousePage() {
     }
 
     try {
-      const fetcher = activeTab === 'uploads' ? postApi.getMyPosts : postApi.getHistory
-      const res = await fetcher(pageNum, PAGE_SIZE)
+      const res = activeTab === 'uploads'
+        ? await postApi.getMyPosts(pageNum, PAGE_SIZE, 'resource')
+        : await postApi.getHistory(pageNum, PAGE_SIZE)
       const pageData: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: PAGE_SIZE, current: 1, pages: 0 }
       if (isLoadMore) {
         setPosts(prev => [...prev, ...pageData.records])
@@ -235,7 +236,7 @@ export default function WarehousePage() {
 
   const statsCards = [
     { key: 'uploads', label: '我的上传', value: stats?.uploadCount || 0, icon: Upload, color: 'bg-blue-50 text-blue-600' },
-    { key: 'views', label: '我的查看', value: stats?.viewCount || 0, icon: Eye, color: 'bg-green-50 text-green-600' },
+    { key: 'downloads', label: '我的下载', value: stats?.viewCount || 0, icon: Eye, color: 'bg-green-50 text-green-600' },
     { key: 'totalViews', label: '总浏览量', value: stats?.totalViews || 0, icon: TrendingUp, color: 'bg-cyan-50 text-cyan-600' },
     { key: 'likes', label: '总获赞', value: stats?.totalLikes || 0, icon: ThumbsUp, color: 'bg-red-50 text-red-600' },
     { key: 'stars', label: '总被收藏', value: stats?.totalStars || 0, icon: Star, color: 'bg-amber-50 text-amber-600' },
@@ -253,7 +254,7 @@ export default function WarehousePage() {
             <Package className="w-5 h-5 text-blue-600" />
             <h1 className="text-lg font-bold text-gray-900">我的仓库</h1>
           </div>
-          <p className="text-xs text-gray-400 mt-1">管理上传与查看的资料，掌握资源数据动态</p>
+          <p className="text-xs text-gray-400 mt-1">管理上传与下载的资料，掌握资源数据动态</p>
         </div>
       </div>
 
@@ -294,7 +295,7 @@ export default function WarehousePage() {
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="w-4 h-4 text-gray-700" />
               <h2 className="text-sm font-semibold text-gray-900">分类分布</h2>
-              <span className="text-xs text-gray-400">（上传 / 查看）</span>
+              <span className="text-xs text-gray-400">（上传 / 下载）</span>
             </div>
             <div className="space-y-3">
               {categoryStats.map((cat) => {
@@ -325,7 +326,7 @@ export default function WarehousePage() {
                           <span className="text-[10px] text-gray-600 w-6 text-right flex-shrink-0">{cat.uploadCount}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-gray-400 w-8 flex-shrink-0">查看</span>
+                          <span className="text-[10px] text-gray-400 w-8 flex-shrink-0">下载</span>
                           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-gray-400 rounded-full transition-all duration-500"
@@ -343,7 +344,7 @@ export default function WarehousePage() {
           </div>
         )}
 
-        {/* 上传/查看列表切换 */}
+        {/* 上传/下载列表切换 */}
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           <div className="border-b border-gray-100 flex">
             <button
@@ -363,17 +364,17 @@ export default function WarehousePage() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab('views')}
+              onClick={() => setActiveTab('downloads')}
               className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                activeTab === 'views'
+                activeTab === 'downloads'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               <Eye className="w-4 h-4" />
-              我的查看
+              我的下载
               {stats && stats.viewCount > 0 && (
-                <span className={`text-[11px] ${activeTab === 'views' ? 'text-blue-500' : 'text-gray-400'}`}>
+                <span className={`text-[11px] ${activeTab === 'downloads' ? 'text-blue-500' : 'text-gray-400'}`}>
                   ({stats.viewCount})
                 </span>
               )}
@@ -484,10 +485,10 @@ export default function WarehousePage() {
                   {activeTab === 'uploads' ? <Upload className="w-6 h-6 text-gray-300" /> : <Eye className="w-6 h-6 text-gray-300" />}
                 </div>
                 <p className="text-gray-400 text-sm">
-                  {activeTab === 'uploads' ? '暂无上传记录' : '暂无查看记录'}
+                  {activeTab === 'uploads' ? '暂无上传记录' : '暂无下载记录'}
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
-                  {activeTab === 'uploads' ? '开始上传你的第一份资料吧' : '去发现有用的资料查看吧'}
+                  {activeTab === 'uploads' ? '开始上传你的第一份资料吧' : '去发现有用的资料下载吧'}
                 </p>
               </div>
             )}

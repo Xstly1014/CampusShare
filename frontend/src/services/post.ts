@@ -91,8 +91,13 @@ export const postApi = {
   getLiked: (page: number = 1, size: number = 50) =>
     api.get(`/posts/liked?page=${page}&size=${size}`),
 
-  getMyPosts: (page: number = 1, size: number = 50) =>
-    api.get(`/posts/mine?page=${page}&size=${size}`),
+  getMyPosts: (page: number = 1, size: number = 50, postType?: string) => {
+    const params = new URLSearchParams()
+    params.set('page', String(page))
+    params.set('size', String(size))
+    if (postType) params.set('postType', postType)
+    return api.get(`/posts/mine?${params.toString()}`)
+  },
 
   getMyPostStats: () => api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>('/posts/my-stats'),
 

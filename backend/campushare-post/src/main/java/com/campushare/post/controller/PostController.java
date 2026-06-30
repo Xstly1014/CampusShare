@@ -199,9 +199,10 @@ public class PostController {
     public Result<IPage<PostListDTO>> getMyPosts(
             @RequestHeader("Authorization") String token,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String postType) {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
-        IPage<Post> postPage = postService.getMyPosts(userId, page, size);
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size, postType);
         return Result.success(enrichPage(postPage));
     }
 
@@ -226,7 +227,7 @@ public class PostController {
             @PathVariable String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        IPage<Post> postPage = postService.getMyPosts(userId, page, size);
+        IPage<Post> postPage = postService.getMyPosts(userId, page, size, null);
         return Result.success(enrichPage(postPage));
     }
 

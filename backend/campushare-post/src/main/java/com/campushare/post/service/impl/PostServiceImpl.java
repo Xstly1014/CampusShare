@@ -398,7 +398,7 @@ public class PostServiceImpl implements PostService {
     }
 
     @Override
-    public IPage<Post> getMyPosts(String userId, int page, int size) {
+    public IPage<Post> getMyPosts(String userId, int page, int size, String postType) {
         Page<Post> postPage = postMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<Post>()
@@ -409,6 +409,7 @@ public class PostServiceImpl implements PostService {
                                 Post::getCreateTime)
                         .eq(Post::getAuthorId, userId)
                         .eq(Post::getDeleted, false)
+                        .eq(postType != null && !postType.isEmpty(), Post::getPostType, postType)
                         .orderByDesc(Post::getCreateTime));
         return postPage;
     }
@@ -486,7 +487,7 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public WarehouseStats getWarehouseStats(String userId) {
-        long uploadCount = postMapper.countByAuthorId(userId);
+        long uploadCount = postMapper.countResourceByAuthorId(userId);
         long viewCount = viewHistoryMapper.countValidByUserId(userId);
         long totalViews = postMapper.sumViewCountByAuthorId(userId);
         long totalLikes = postMapper.sumLikeCountByAuthorId(userId);

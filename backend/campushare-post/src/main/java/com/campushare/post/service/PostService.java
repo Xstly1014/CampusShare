@@ -35,7 +35,7 @@ public interface PostService {
 
     IPage<Post> getLikedPosts(String userId, int page, int size);
 
-    IPage<Post> getMyPosts(String userId, int page, int size);
+    IPage<Post> getMyPosts(String userId, int page, int size, String postType);
 
     UserPostStats getMyPostStats(String userId);
 
