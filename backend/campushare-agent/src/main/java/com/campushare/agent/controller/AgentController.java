@@ -5,6 +5,7 @@ import com.campushare.agent.dto.SessionCreateRequest;
 import com.campushare.agent.dto.SessionResponse;
 import com.campushare.agent.dto.TurnResponse;
 import com.campushare.agent.service.AgentChatService;
+import com.campushare.agent.service.AgentRateLimiter;
 import com.campushare.agent.service.AgentSessionService;
 import com.campushare.common.result.Result;
 import com.campushare.common.utils.JwtUtils;
@@ -27,6 +28,7 @@ public class AgentController {
 
     private final AgentChatService chatService;
     private final AgentSessionService sessionService;
+    private final AgentRateLimiter rateLimiter;
     private final JwtUtils jwtUtils;
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -36,21 +38,30 @@ public class AgentController {
 
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
 
-        return chatService.chat(userId, request)
-                .map(content -> ServerSentEvent.<String>builder()
-                        .event("delta")
-                        .data(content)
-                        .build())
-                .concatWith(Mono.fromSupplier(() -> ServerSentEvent.<String>builder()
-                        .event("done")
-                        .data("[DONE]")
-                        .build()))
-                .onErrorResume(e -> {
-                    log.error("Chat error", e);
-                    return Flux.just(ServerSentEvent.<String>builder()
-                            .event("error")
-                            .data(e.getMessage() != null ? e.getMessage() : "服务异常")
-                            .build());
+        return rateLimiter.checkRateLimit(userId)
+                .flatMapMany(allowed -> {
+                    if (!allowed) {
+                        return Flux.just(ServerSentEvent.<String>builder()
+                                .event("error")
+                                .data("请求过于频繁，每分钟最多 10 次，请稍后再试")
+                                .build());
+                    }
+                    return chatService.chat(userId, request)
+                            .map(event -> ServerSentEvent.<String>builder()
+                                    .event(event.type())
+                                    .data(event.data())
+                                    .build())
+                            .concatWith(Mono.fromSupplier(() -> ServerSentEvent.<String>builder()
+                                    .event("done")
+                                    .data("[DONE]")
+                                    .build()))
+                            .onErrorResume(e -> {
+                                log.error("Chat error", e);
+                                return Flux.just(ServerSentEvent.<String>builder()
+                                        .event("error")
+                                        .data(e.getMessage() != null ? e.getMessage() : "服务异常")
+                                        .build());
+                            });
                 });
     }
 

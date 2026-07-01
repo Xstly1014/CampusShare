@@ -63,6 +63,10 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-reactor</artifactId>
+        </dependency>
 
         <!-- MyBatis Plus：业务表（会话/轮次/记忆等）走 MySQL -->
         <dependency>

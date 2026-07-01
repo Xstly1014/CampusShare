@@ -9,6 +9,7 @@ export {
   notificationApi,
   categoryApi,
   creatorApi,
+  agentApi,
 } from './index'
 
 export type {
@@ -26,4 +27,6 @@ export type {
   CreatorApplication,
   ApplicationListResponse,
   PostType,
+  AgentSession,
+  AgentTurn,
 } from './index'

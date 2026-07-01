@@ -16,6 +16,7 @@ import NotificationPage from '../pages/NotificationPage'
 import NotificationBasketPage from '../pages/NotificationBasketPage'
 import CreatorVerificationPage from '../pages/CreatorVerificationPage'
 import AdminCreatorPage from '../pages/AdminCreatorPage'
+import AgentPage from '../pages/AgentPage'
 
 // 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -41,6 +42,14 @@ export default function Router() {
           element={
             <PrivateRoute>
               <HomePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/agent"
+          element={
+            <PrivateRoute>
+              <AgentPage />
             </PrivateRoute>
           }
         />

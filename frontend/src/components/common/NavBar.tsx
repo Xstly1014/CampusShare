@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Home, Package, Bell, User } from 'lucide-react'
+import { Home, Package, Bell, User, Sparkles } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { notificationApi } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -28,6 +28,7 @@ export default function NavBar() {
 
   const navItems = [
     { path: '/home', icon: Home, label: '首页' },
+    { path: '/agent', icon: Sparkles, label: 'AI助手' },
     { path: '/warehouse', icon: Package, label: '仓库' },
     { path: '/notifications', icon: Bell, label: '通知', badge: unreadCount },
     { path: '/profile', icon: User, label: '我的' },

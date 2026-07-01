@@ -25,6 +25,9 @@ public class DeepSeekRequest {
     @JsonProperty("top_p")
     private Double topP;
 
+    @JsonProperty("stream_options")
+    private StreamOptions streamOptions;
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -32,5 +35,14 @@ public class DeepSeekRequest {
     public static class Message {
         private String role;
         private String content;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StreamOptions {
+        @JsonProperty("include_usage")
+        private Boolean includeUsage;
     }
 }

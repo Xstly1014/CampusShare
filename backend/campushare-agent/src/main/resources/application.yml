@@ -86,9 +86,20 @@ app:
       api-key: ${DEEPSEEK_API_KEY:sk-placeholder}
       model: deepseek-chat
       timeout: 60000
+      temperature: 0.7
+      max-tokens: 2048
       retry:
         max-attempts: 3
         backoff: 1000
+      circuit-breaker:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      connection-pool:
+        max-connections: 50
+        pending-acquire-timeout: 45000
     embedding:
       base-url: ${BGE_BASE_URL:http://bge-service:8080}
       api-key: ${EMBEDDING_API_KEY:sk-placeholder}
