@@ -18,6 +18,7 @@
         <module>campushare-user</module>
         <module>campushare-post</module>
         <module>campushare-gateway</module>
+        <module>campushare-agent</module>
     </modules>
 
     <!-- Spring Boot 父工程 -->

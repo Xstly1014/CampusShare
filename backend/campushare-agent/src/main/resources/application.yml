@@ -1,0 +1,137 @@
+spring:
+  application:
+    name: campushare-agent
+
+  # 主数据源：MySQL（业务表：会话/轮次/记忆/知识文章等）
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/campushare?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: campushare
+    password: campushare123
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+
+  # 虚拟线程：WebFlux 阻塞操作（DB/Feign）调度到虚拟线程，避免占用 Reactor 线程
+  threads:
+    virtual:
+      enabled: true
+
+# Feign 调用目标服务
+service:
+  user:
+    url: http://localhost:8081
+  post:
+    url: http://localhost:8082
+
+server:
+  port: 8083
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.campushare.agent.entity
+  global-config:
+    db-config:
+      id-type: assign_uuid
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+# 应用自定义配置（统一前缀 app）
+app:
+  # 向量库数据源：PostgreSQL + pgvector
+  # 用自定义前缀，不触发 Spring Boot 自动配置，由 PgVectorConfig 配置类手动创建 DataSource
+  # 骨架阶段暂不启用，避免无 PG 实例时启动失败
+  datasource:
+    pgvector:
+      driver-class-name: org.postgresql.Driver
+      url: jdbc:postgresql://localhost:5432/campushare_vector
+      username: campushare
+      password: campushare123
+      hikari:
+        maximum-pool-size: 10
+        minimum-idle: 2
+
+  # LLM 客户端配置
+  # base-url 支持代理通道（如 New API），通过环境变量 DEEPSEEK_BASE_URL 配置
+  llm:
+    deepseek:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY:sk-placeholder}
+      model: deepseek-chat
+      timeout: 60000
+      retry:
+        max-attempts: 3
+        backoff: 1000
+    embedding:
+      base-url: ${BGE_BASE_URL:http://bge-service:8080}
+      api-key: ${EMBEDDING_API_KEY:sk-placeholder}
+      model: BAAI/bge-m3
+
+  # 检索参数
+  retrieval:
+    top-k: 10
+    rerank-top-k: 5
+    rrf-k: 60
+
+logging:
+  level:
+    root: INFO
+    '[com.campushare]': DEBUG
+  pattern:
+    console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,loggers
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        '[http.server.requests]': true
+      percentiles:
+        '[http.server.requests]':
+          - 0.5
+          - 0.75
+          - 0.9
+          - 0.95
+          - 0.99
