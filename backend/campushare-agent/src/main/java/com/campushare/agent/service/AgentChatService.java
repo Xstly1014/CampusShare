@@ -52,6 +52,9 @@ public class AgentChatService {
     @Value("${app.agent.history-limit:10}")
     private int historyLimit;
 
+    @Value("${app.llm.deepseek.model:deepseek-v4-flash}")
+    private String modelName;
+
     public Flux<ChatEvent> chat(String userId, ChatRequest request) {
         return Mono.fromCallable(() -> prepareContext(userId, request))
                 .subscribeOn(Schedulers.boundedElastic())
@@ -191,7 +194,7 @@ public class AgentChatService {
                 .userMessage(userMessage)
                 .messageRole("user")
                 .status("STREAMING")
-                .modelName("deepseek-chat")
+                .modelName(modelName)
                 .build();
         turnMapper.insert(turn);
         return turn;

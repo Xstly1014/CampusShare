@@ -29,7 +29,7 @@ public class DeepSeekClient {
     private final ObjectMapper objectMapper;
     private final CircuitBreaker deepSeekCircuitBreaker;
 
-    @Value("${app.llm.deepseek.model:deepseek-chat}")
+    @Value("${app.llm.deepseek.model:deepseek-v4-flash}")
     private String defaultModel;
 
     @Value("${app.llm.deepseek.temperature:0.7}")
