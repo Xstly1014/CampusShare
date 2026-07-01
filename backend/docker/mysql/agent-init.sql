@@ -5,62 +5,55 @@
 -- 归属：仅 agent-service 可直接读写，其他服务通过 Feign 调用
 -- 执行方式：进入 MySQL 容器手动执行
 --   docker exec -i campushare-mysql mysql -uroot -proot123456 campushare < agent-init.sql
--- 注意：所有表用 CREATE TABLE IF NOT EXISTS，可在已有库上安全重复执行
+-- 注意：agent_sessions / agent_turns 用 DROP+CREATE 重建（字段与实体类严格对齐）
+--       其余表用 CREATE TABLE IF NOT EXISTS，可在已有库上安全重复执行
 -- ========================================
 
 USE campushare;
 
 -- ========================================
--- 1. 会话主表
+-- 1. 会话主表（字段与 AgentSession 实体类对齐）
+--    主键 id 为 UUID（IdType.ASSIGN_UUID），非自增
 -- ========================================
-CREATE TABLE IF NOT EXISTS agent_sessions (
-  id VARCHAR(36) PRIMARY KEY COMMENT '会话ID（UUID）',
+DROP TABLE IF EXISTS agent_sessions;
+CREATE TABLE agent_sessions (
+  id VARCHAR(36) PRIMARY KEY COMMENT '会话ID（UUID，MyBatis Plus ASSIGN_UUID）',
   user_id VARCHAR(36) NOT NULL COMMENT '用户ID',
-  status ENUM('INIT','ACTIVE','TOOL_CALLING','WAITING_CLARIFY','REFLECTING','ARCHIVED','CLOSED','ERROR') NOT NULL COMMENT '会话状态机',
-  started_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '会话开始时间',
-  last_active_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后活跃时间',
-  closed_at DATETIME COMMENT '会话关闭时间',
-  turn_count INT DEFAULT 0 COMMENT '已进行轮次数',
-  prompt_version VARCHAR(16) COMMENT 'Prompt 版本（用于 A/B 测试和回溯）',
-  llm_model VARCHAR(32) COMMENT '使用的 LLM 模型名',
-  intent_summary VARCHAR(256) COMMENT '意图摘要（会话级主题）',
-  total_input_tokens INT DEFAULT 0 COMMENT '累计输入 token 数',
-  total_output_tokens INT DEFAULT 0 COMMENT '累计输出 token 数',
-  total_cost_yuan DECIMAL(10,4) DEFAULT 0 COMMENT '累计成本（元）',
-  feedback_positive INT DEFAULT 0 COMMENT '正面反馈数',
-  feedback_negative INT DEFAULT 0 COMMENT '负面反馈数',
-  quality_score DECIMAL(3,2) COMMENT '质量评分（LLM-as-Judge）',
-  error_reason VARCHAR(256) COMMENT '错误原因（status=ERROR 时）',
-  INDEX idx_user_active (user_id, status, last_active_at) COMMENT '用户活跃会话查询',
-  INDEX idx_status_archived (status, last_active_at) COMMENT '归档清理查询'
+  title VARCHAR(256) NOT NULL DEFAULT '新对话' COMMENT '会话标题',
+  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '会话状态（ACTIVE/ARCHIVED/CLOSED/ERROR）',
+  message_count INT DEFAULT 0 COMMENT '消息轮次数',
+  total_tokens INT DEFAULT 0 COMMENT '累计 token 数',
+  total_cost DECIMAL(10,4) DEFAULT 0 COMMENT '累计成本',
+  last_message_at DATETIME COMMENT '最后消息时间',
+  metadata TEXT COMMENT '元数据（JSON）',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（MyMetaObjectHandler 自动填充）',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间（MyMetaObjectHandler 自动填充）',
+  INDEX idx_user_status (user_id, status) COMMENT '按用户查活跃会话',
+  INDEX idx_last_message (last_message_at) COMMENT '按最后消息时间排序'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 会话主表';
 
 -- ========================================
--- 2. 轮次记录表
+-- 2. 轮次记录表（字段与 AgentTurn 实体类对齐）
+--    主键 id 为 UUID（IdType.ASSIGN_UUID），非自增
 -- ========================================
-CREATE TABLE IF NOT EXISTS agent_turns (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '自增主键',
+DROP TABLE IF EXISTS agent_turns;
+CREATE TABLE agent_turns (
+  id VARCHAR(36) PRIMARY KEY COMMENT '轮次ID（UUID，MyBatis Plus ASSIGN_UUID）',
   session_id VARCHAR(36) NOT NULL COMMENT '会话ID',
-  turn_id INT NOT NULL COMMENT '轮次序号（会话内自增）',
-  user_query TEXT COMMENT '用户提问内容',
-  intent VARCHAR(32) COMMENT '识别的意图类型',
-  intent_confidence DECIMAL(3,2) COMMENT '意图置信度（0-1）',
-  tools_called JSON COMMENT '调用的工具列表',
-  tool_versions JSON COMMENT '工具版本（用于回溯）',
-  retrieval_refs JSON COMMENT '检索引用列表',
-  assistant_answer TEXT COMMENT '助手回答内容',
-  input_tokens INT COMMENT '本轮输入 token 数',
-  output_tokens INT COMMENT '本轮输出 token 数',
-  latency_ms INT COMMENT '本轮总延迟（毫秒）',
-  cost_yuan DECIMAL(8,4) COMMENT '本轮成本（元）',
-  feedback ENUM('UP','DOWN') COMMENT '用户反馈：UP-赞，DOWN-踩',
-  feedback_reason VARCHAR(64) COMMENT '反馈原因（踩时填写）',
-  context_snapshot_id BIGINT COMMENT '关联的上下文快照ID',
-  interrupted TINYINT DEFAULT 0 COMMENT '是否被用户中断',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  UNIQUE KEY uk_session_turn (session_id, turn_id) COMMENT '会话内轮次唯一',
-  INDEX idx_session (session_id, turn_id) COMMENT '会话轮次查询',
-  INDEX idx_feedback (feedback, created_at) COMMENT '反馈统计查询'
+  turn_number INT NOT NULL COMMENT '轮次序号（会话内自增）',
+  user_message TEXT COMMENT '用户消息内容',
+  assistant_message TEXT COMMENT '助手回答内容',
+  message_role VARCHAR(16) COMMENT '消息角色（user/assistant）',
+  tokens_used INT COMMENT '本轮使用 token 数',
+  model_name VARCHAR(64) COMMENT '使用的模型名',
+  retrieval_context TEXT COMMENT '检索上下文（JSON）',
+  tools_used VARCHAR(512) COMMENT '使用的工具列表（JSON）',
+  response_time_ms INT COMMENT '响应时间（毫秒）',
+  status VARCHAR(32) NOT NULL DEFAULT 'STREAMING' COMMENT '轮次状态（STREAMING/COMPLETED/ERROR）',
+  error_message VARCHAR(512) COMMENT '错误信息（status=ERROR 时）',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（MyMetaObjectHandler 自动填充）',
+  INDEX idx_session_turn (session_id, turn_number) COMMENT '会话轮次查询',
+  INDEX idx_session_status (session_id, status) COMMENT '按状态查历史轮次'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 轮次记录表';
 
 -- ========================================
