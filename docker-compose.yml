@@ -208,6 +208,10 @@ services:
     container_name: campushare-agent-service
     restart: unless-stopped
     mem_limit: 1536m
+    # DNS 配置：容器内需解析外网 api.deepseek.com 域名
+    dns:
+      - 8.8.8.8
+      - 114.114.114.114
     ports:
       - "8083:8083"
     environment:

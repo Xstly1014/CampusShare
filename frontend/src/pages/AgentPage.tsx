@@ -189,7 +189,7 @@ export default function AgentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -298,7 +298,7 @@ export default function AgentPage() {
                     )}
                   </div>
                   <div className={`max-w-[80%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap select-text ${
                       isUser
                         ? 'bg-blue-600 text-white rounded-tr-sm'
                         : 'bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm'

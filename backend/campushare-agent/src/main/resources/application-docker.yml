@@ -1,0 +1,146 @@
+spring:
+  # 主数据源：MySQL（Docker 网络内通过服务名 mysql 访问）
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://mysql:3306/campushare?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root123456
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # Redis（Docker 网络内通过服务名 redis 访问）
+  data:
+    redis:
+      host: redis
+      port: 6379
+      password: ""
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+
+  threads:
+    virtual:
+      enabled: true
+
+# Feign 调用目标服务（Docker 网络内通过服务名访问）
+service:
+  user:
+    url: http://user-service:8081
+  post:
+    url: http://post-service:8082
+
+server:
+  port: 8083
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.campushare.agent.entity
+  global-config:
+    db-config:
+      id-type: assign_uuid
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+# 应用自定义配置
+app:
+  # 向量库数据源：PostgreSQL + pgvector（骨架阶段暂不启用，无 PgVectorConfig 类读取此配置）
+  datasource:
+    pgvector:
+      driver-class-name: org.postgresql.Driver
+      url: jdbc:postgresql://agent-postgres:5432/agent_vectors
+      username: agent
+      password: ${AGENT_PG_PASSWORD:agent123456}
+      hikari:
+        maximum-pool-size: 10
+        minimum-idle: 2
+
+  # LLM 客户端配置（api-key / base-url 由环境变量注入）
+  llm:
+    deepseek:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY:sk-placeholder}
+      model: deepseek-chat
+      timeout: 60000
+      temperature: 0.7
+      max-tokens: 2048
+      retry:
+        max-attempts: 3
+        backoff: 1000
+      circuit-breaker:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      connection-pool:
+        max-connections: 50
+        pending-acquire-timeout: 45000
+    embedding:
+      base-url: ${BGE_BASE_URL:http://bge-service:8080}
+      api-key: ${EMBEDDING_API_KEY:sk-placeholder}
+      model: BAAI/bge-m3
+
+  retrieval:
+    top-k: 10
+    rerank-top-k: 5
+    rrf-k: 60
+
+logging:
+  level:
+    root: WARN
+    '[com.campushare]': INFO
+    '[org.springframework]': WARN
+    '[reactor.netty]': WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,loggers
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        '[http.server.requests]': true
+      minimum-expected-value:
+        '[http.server.requests]': 1ms
+      maximum-expected-value:
+        '[http.server.requests]': 10s
+      percentiles:
+        '[http.server.requests]':
+          - 0.5
+          - 0.75
+          - 0.9
+          - 0.95
+          - 0.99
