@@ -175,6 +175,72 @@ services:
     networks:
       - campushare-network
 
+  # PostgreSQL + pgvector（Agent 向量库）
+  agent-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: campushare-agent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: agent_vectors
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${AGENT_PG_PASSWORD:-agent123456}
+    ports:
+      - "5432:5432"
+    volumes:
+      - agent_pg_data:/var/lib/postgresql/data
+      - ./backend/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U agent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - campushare-network
+
+  # Agent 智能问答服务
+  agent-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: agent-service
+    image: campusshare/agent-service:latest
+    container_name: campushare-agent-service
+    restart: unless-stopped
+    mem_limit: 1536m
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - TZ=Asia/Shanghai
+      - JAVA_OPTS=-Xms512m -Xmx1024m -javaagent:/app/opentelemetry-javaagent.jar
+      - OTEL_SERVICE_NAME=agent-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+      - OTEL_METRICS_EXPORTER=none
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - BGE_BASE_URL=${BGE_BASE_URL:-http://bge-service:8080}
+      - AGENT_PG_PASSWORD=${AGENT_PG_PASSWORD:-agent123456}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      agent-postgres:
+        condition: service_healthy
+      post-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8083/actuator/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    networks:
+      - campushare-network
+
   # ========================================
   # 监控与可观测性服务
   # ========================================
@@ -305,6 +371,9 @@ volumes:
   tempo_data:
     driver: local
     name: campushare-tempo-data
+  agent_pg_data:
+    driver: local
+    name: campushare-agent-pg-data
 
 # ========================================
 # 网络

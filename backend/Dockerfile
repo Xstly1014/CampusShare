@@ -16,6 +16,7 @@ COPY campushare-common/pom.xml campushare-common/
 COPY campushare-user/pom.xml campushare-user/
 COPY campushare-post/pom.xml campushare-post/
 COPY campushare-gateway/pom.xml campushare-gateway/
+COPY campushare-agent/pom.xml campushare-agent/
 
 # Download dependencies (this layer will be cached)
 RUN mvn dependency:go-offline -B
@@ -25,6 +26,7 @@ COPY campushare-common/src campushare-common/src
 COPY campushare-user/src campushare-user/src
 COPY campushare-post/src campushare-post/src
 COPY campushare-gateway/src campushare-gateway/src
+COPY campushare-agent/src campushare-agent/src
 
 # Build the project
 RUN mvn clean package -DskipTests
@@ -109,6 +111,33 @@ EXPOSE 8080
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+# Run the application
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.profiles.active=docker -jar app.jar"]
+
+# ========================================
+# Stage 5: Agent Service
+# ========================================
+FROM eclipse-temurin:17-jre-alpine AS agent-service
+
+WORKDIR /app
+
+RUN apk add --no-cache curl tzdata && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+ENV TZ=Asia/Shanghai
+
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.3.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
+
+COPY --from=builder /build/campushare-agent/target/campushare-agent-*.jar app.jar
+
+# Expose port
+EXPOSE 8083
+
+# Health check（start-period 90s：WebFlux + 双数据源初始化较慢）
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+  CMD curl -f http://localhost:8083/actuator/health || exit 1
 
 # Run the application
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.profiles.active=docker -jar app.jar"]
