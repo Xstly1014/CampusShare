@@ -1,0 +1,123 @@
+package com.campushare.agent.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campushare.agent.dto.SessionCreateRequest;
+import com.campushare.agent.dto.SessionResponse;
+import com.campushare.agent.dto.TurnResponse;
+import com.campushare.agent.entity.AgentSession;
+import com.campushare.agent.entity.AgentTurn;
+import com.campushare.agent.mapper.AgentSessionMapper;
+import com.campushare.agent.mapper.AgentTurnMapper;
+import com.campushare.common.exception.BusinessException;
+import com.campushare.common.result.ResultCode;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class AgentSessionServiceImpl implements AgentSessionService {
+
+    private final AgentSessionMapper sessionMapper;
+    private final AgentTurnMapper turnMapper;
+
+    @Override
+    public SessionResponse createSession(String userId, SessionCreateRequest request) {
+        AgentSession session = AgentSession.builder()
+                .userId(userId)
+                .title(request != null && request.getTitle() != null ? request.getTitle() : "新对话")
+                .status("ACTIVE")
+                .messageCount(0)
+                .totalTokens(0)
+                .totalCost(BigDecimal.ZERO)
+                .lastMessageAt(LocalDateTime.now())
+                .build();
+        sessionMapper.insert(session);
+        return toResponse(session);
+    }
+
+    @Override
+    public SessionResponse getSession(String userId, String sessionId) {
+        return toResponse(getSessionAndVerifyOwner(userId, sessionId));
+    }
+
+    @Override
+    public List<SessionResponse> getUserSessions(String userId) {
+        LambdaQueryWrapper<AgentSession> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AgentSession::getUserId, userId)
+               .ne(AgentSession::getStatus, "DELETED")
+               .orderByDesc(AgentSession::getLastMessageAt);
+        return sessionMapper.selectList(wrapper).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public void archiveSession(String userId, String sessionId) {
+        AgentSession session = getSessionAndVerifyOwner(userId, sessionId);
+        session.setStatus("ARCHIVED");
+        sessionMapper.updateById(session);
+    }
+
+    @Override
+    public void deleteSession(String userId, String sessionId) {
+        AgentSession session = getSessionAndVerifyOwner(userId, sessionId);
+        session.setStatus("DELETED");
+        sessionMapper.updateById(session);
+    }
+
+    @Override
+    public List<TurnResponse> getSessionTurns(String userId, String sessionId) {
+        getSessionAndVerifyOwner(userId, sessionId);
+        LambdaQueryWrapper<AgentTurn> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AgentTurn::getSessionId, sessionId)
+               .orderByAsc(AgentTurn::getTurnNumber);
+        return turnMapper.selectList(wrapper).stream()
+                .map(this::toTurnResponse)
+                .collect(Collectors.toList());
+    }
+
+    private AgentSession getSessionAndVerifyOwner(String userId, String sessionId) {
+        AgentSession session = sessionMapper.selectById(sessionId);
+        if (session == null) {
+            throw new BusinessException(ResultCode.RESOURCE_NOT_FOUND);
+        }
+        if (!session.getUserId().equals(userId)) {
+            throw new BusinessException(ResultCode.USER_ACCOUNT_FORBIDDEN, "无权访问此会话");
+        }
+        return session;
+    }
+
+    private SessionResponse toResponse(AgentSession session) {
+        return SessionResponse.builder()
+                .id(session.getId())
+                .userId(session.getUserId())
+                .title(session.getTitle())
+                .status(session.getStatus())
+                .messageCount(session.getMessageCount())
+                .totalTokens(session.getTotalTokens())
+                .lastMessageAt(session.getLastMessageAt())
+                .createdAt(session.getCreatedAt())
+                .updatedAt(session.getUpdatedAt())
+                .build();
+    }
+
+    private TurnResponse toTurnResponse(AgentTurn turn) {
+        return TurnResponse.builder()
+                .id(turn.getId())
+                .sessionId(turn.getSessionId())
+                .turnNumber(turn.getTurnNumber())
+                .userMessage(turn.getUserMessage())
+                .assistantMessage(turn.getAssistantMessage())
+                .tokensUsed(turn.getTokensUsed())
+                .status(turn.getStatus())
+                .createdAt(turn.getCreatedAt())
+                .build();
+    }
+}
