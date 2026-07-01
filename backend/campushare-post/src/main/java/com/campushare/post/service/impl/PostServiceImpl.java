@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.post.cache.CategoryCache;
 import com.campushare.post.dto.CreatePostRequest;
+import com.campushare.post.dto.PostVectorDTO;
 import com.campushare.post.dto.UserPostStats;
 import com.campushare.post.dto.WarehouseStats;
 import com.campushare.post.entity.Category;
@@ -15,6 +16,7 @@ import com.campushare.post.entity.PostDownload;
 import com.campushare.post.entity.PostLike;
 import com.campushare.post.entity.PostStar;
 import com.campushare.post.entity.ViewHistory;
+import com.campushare.post.feign.AgentFeignClient;
 import com.campushare.post.feign.UserFeignClient;
 import com.campushare.post.mapper.PostDownloadMapper;
 import com.campushare.post.mapper.PostLikeMapper;
@@ -40,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -55,6 +58,7 @@ public class PostServiceImpl implements PostService {
     private final RedisTemplate<String, String> redisTemplate;
     private final MeterRegistry meterRegistry;
     private final UserFeignClient userFeignClient;
+    private final AgentFeignClient agentFeignClient;
     private final ObjectMapper objectMapper;
     private final CategoryCache categoryCache;
 
@@ -101,6 +105,7 @@ public class PostServiceImpl implements PostService {
                 .build();
 
         postMapper.insert(post);
+        notifyAgentPostChanged(post.getId(), "CREATE");
         return post;
     }
 
@@ -609,5 +614,63 @@ public class PostServiceImpl implements PostService {
             throw new BusinessException(4030, "下载记录不存在或无权删除");
         }
         postDownloadMapper.deleteById(recordId);
+    }
+
+    private void notifyAgentPostChanged(String postId, String action) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                AgentFeignClient.PostVectorNotifyRequest req = new AgentFeignClient.PostVectorNotifyRequest();
+                req.setPostId(postId);
+                req.setAction(action);
+                agentFeignClient.notifyPostChanged(req);
+            } catch (Exception e) {
+                log.warn("Feign调用通知agent-service帖子变更失败 postId={} action={}: {}", postId, action, e.getMessage());
+            }
+        });
+    }
+
+    @Override
+    public IPage<PostVectorDTO> getPostsForVector(int page, int size) {
+        LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
+        wrapper.select(Post::getId, Post::getSchoolId, Post::getCategoryId, Post::getSubCategoryId,
+                        Post::getAuthorId, Post::getPostType, Post::getTitle, Post::getContent,
+                        Post::getLikeCount, Post::getViewCount, Post::getCreateTime)
+                .eq(Post::getStatus, 1)
+                .eq(Post::getDeleted, false)
+                .orderByDesc(Post::getCreateTime);
+
+        Page<Post> postPage = postMapper.selectPage(new Page<>(page, size), wrapper);
+        Page<PostVectorDTO> dtoPage = new Page<>(postPage.getCurrent(), postPage.getSize(), postPage.getTotal());
+        List<PostVectorDTO> dtoList = new ArrayList<>(postPage.getRecords().size());
+        for (Post p : postPage.getRecords()) {
+            dtoList.add(toVectorDTO(p));
+        }
+        dtoPage.setRecords(dtoList);
+        return dtoPage;
+    }
+
+    @Override
+    public PostVectorDTO getPostVectorData(String postId) {
+        Post post = postMapper.selectById(postId);
+        if (post == null || post.getDeleted()) {
+            return null;
+        }
+        return toVectorDTO(post);
+    }
+
+    private PostVectorDTO toVectorDTO(Post post) {
+        PostVectorDTO dto = new PostVectorDTO();
+        dto.setId(post.getId());
+        dto.setTitle(post.getTitle());
+        String content = post.getContent();
+        dto.setContentExcerpt(content != null && content.length() > 500 ? content.substring(0, 500) : content);
+        dto.setPostType(post.getPostType());
+        dto.setCategoryId(post.getCategoryId());
+        dto.setSchoolId(post.getSchoolId());
+        dto.setAuthorId(post.getAuthorId());
+        dto.setLikeCount(post.getLikeCount());
+        dto.setViewCount(post.getViewCount());
+        dto.setCreateTime(post.getCreateTime());
+        return dto;
     }
 }

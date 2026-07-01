@@ -53,4 +53,8 @@ public interface PostService {
     Map<String, Long> getSchoolPostCounts();
 
     UserPostStats getUserPostStats(String userId);
+
+    IPage<PostVectorDTO> getPostsForVector(int page, int size);
+
+    PostVectorDTO getPostVectorData(String postId);
 }

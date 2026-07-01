@@ -223,8 +223,12 @@ services:
       - OTEL_METRICS_EXPORTER=none
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      - BGE_BASE_URL=${BGE_BASE_URL:-http://bge-service:8080}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-https://api.siliconflow.cn}
       - AGENT_PG_PASSWORD=${AGENT_PG_PASSWORD:-agent123456}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-campushare-internal-token}
+    volumes:
+      - ./docs/agent-assistant/knowledge-docs:/app/docs/agent-assistant/knowledge-docs:ro
     depends_on:
       mysql:
         condition: service_healthy

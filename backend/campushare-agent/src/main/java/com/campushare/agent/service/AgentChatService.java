@@ -2,6 +2,7 @@ package com.campushare.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.agent.dto.ChatRequest;
+import com.campushare.agent.dto.RetrievalResult;
 import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
 import com.campushare.agent.llm.DeepSeekClient;
@@ -44,6 +45,7 @@ public class AgentChatService {
     private final DeepSeekClient deepSeekClient;
     private final AgentSessionMapper sessionMapper;
     private final AgentTurnMapper turnMapper;
+    private final RetrievalService retrievalService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final EncodingRegistry ENCODING_REGISTRY = Encodings.newDefaultEncodingRegistry();
@@ -90,7 +92,7 @@ public class AgentChatService {
                                 Mono.fromRunnable(() -> {
                                     if (signalType == SignalType.ON_COMPLETE) {
                                         completeTurn(ctx.turn(), ctx.session(), content, elapsed,
-                                                usageRef.get(), ctx.promptTokens());
+                                                usageRef.get(), ctx.promptTokens(), ctx.retrievalContext());
                                     } else if (signalType == SignalType.ON_ERROR) {
                                         errorTurn(ctx.turn(), "Stream terminated with error");
                                     }
@@ -103,10 +105,15 @@ public class AgentChatService {
 
     private ChatContext prepareContext(String userId, ChatRequest request) {
         AgentSession session = getOrCreateSession(userId, request);
-        List<DeepSeekRequest.Message> messages = buildMessages(session, request.getMessage());
+
+        List<RetrievalResult> retrievalResults = retrievalService.retrieve(request.getMessage()).block();
+        String retrievalContext = formatRetrievalContext(retrievalResults);
+        String retrievalContextJson = formatRetrievalContextJson(retrievalResults);
+
+        List<DeepSeekRequest.Message> messages = buildMessages(session, request.getMessage(), retrievalContext);
         int promptTokens = countPromptTokens(messages);
         AgentTurn turn = createTurn(session, request.getMessage());
-        return new ChatContext(session, messages, turn, System.currentTimeMillis(), promptTokens);
+        return new ChatContext(session, messages, turn, System.currentTimeMillis(), promptTokens, retrievalContextJson);
     }
 
     private int countPromptTokens(List<DeepSeekRequest.Message> messages) {
@@ -151,12 +158,12 @@ public class AgentChatService {
         return session;
     }
 
-    private List<DeepSeekRequest.Message> buildMessages(AgentSession session, String currentMessage) {
+    private List<DeepSeekRequest.Message> buildMessages(AgentSession session, String currentMessage, String retrievalContext) {
         List<DeepSeekRequest.Message> messages = new ArrayList<>();
 
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
-                .content(PromptConstants.SYSTEM_PROMPT)
+                .content(PromptConstants.formatSystemPrompt(retrievalContext))
                 .build());
 
         LambdaQueryWrapper<AgentTurn> wrapper = new LambdaQueryWrapper<>();
@@ -201,7 +208,7 @@ public class AgentChatService {
     }
 
     private void completeTurn(AgentTurn turn, AgentSession session, String content, long elapsedMs,
-                              DeepSeekResponse.Usage usage, int promptTokens) {
+                              DeepSeekResponse.Usage usage, int promptTokens, String retrievalContextJson) {
         try {
             int completionTokens;
             int totalTokens;
@@ -220,6 +227,7 @@ public class AgentChatService {
             turn.setStatus("COMPLETED");
             turn.setResponseTimeMs((int) elapsedMs);
             turn.setTokensUsed(totalTokens);
+            turn.setRetrievalContext(retrievalContextJson);
             turnMapper.updateById(turn);
 
             session.setMessageCount(turn.getTurnNumber());
@@ -247,5 +255,43 @@ public class AgentChatService {
     public record ChatEvent(String type, String data) {}
 
     private record ChatContext(AgentSession session, List<DeepSeekRequest.Message> messages,
-                               AgentTurn turn, long startTime, int promptTokens) {}
+                               AgentTurn turn, long startTime, int promptTokens, String retrievalContext) {}
+
+    private String formatRetrievalContext(List<RetrievalResult> results) {
+        if (results == null || results.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < results.size(); i++) {
+            RetrievalResult r = results.get(i);
+            sb.append("---\n");
+            sb.append("[").append(i + 1).append("] 来源：")
+              .append(r.source() == RetrievalResult.Source.KNOWLEDGE ? "知识库" : "帖子")
+              .append(" | 标题：").append(r.title()).append("\n");
+            sb.append("内容：").append(r.content() != null ? r.content() : "无内容").append("\n");
+        }
+        sb.append("---");
+        return sb.toString();
+    }
+
+    private String formatRetrievalContextJson(List<RetrievalResult> results) {
+        if (results == null || results.isEmpty()) {
+            return null;
+        }
+        try {
+            List<Map<String, Object>> jsonList = new ArrayList<>();
+            for (RetrievalResult r : results) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", r.id());
+                item.put("title", r.title());
+                item.put("source", r.source().name());
+                item.put("score", r.score());
+                jsonList.add(item);
+            }
+            return objectMapper.writeValueAsString(jsonList);
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to serialize retrieval context", e);
+            return null;
+        }
+    }
 }

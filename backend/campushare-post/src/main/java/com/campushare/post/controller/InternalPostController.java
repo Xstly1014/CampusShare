@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campushare.common.result.Result;
 import com.campushare.post.cache.CategoryCache;
 import com.campushare.post.dto.PostListDTO;
+import com.campushare.post.dto.PostVectorDTO;
 import com.campushare.post.dto.UserPostStats;
 import com.campushare.post.entity.Category;
 import com.campushare.post.entity.Post;
@@ -79,6 +80,18 @@ public class InternalPostController {
         meta.put("schoolId", post.getSchoolId());
         meta.put("title", post.getTitle());
         return Result.success(meta);
+    }
+
+    @GetMapping("/all-for-vector")
+    public Result<IPage<PostVectorDTO>> getAllForVector(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return Result.success(postService.getPostsForVector(page, size));
+    }
+
+    @GetMapping("/{postId}/vector-data")
+    public Result<PostVectorDTO> getPostVectorData(@PathVariable String postId) {
+        return Result.success(postService.getPostVectorData(postId));
     }
 
     private IPage<PostListDTO> enrichPage(IPage<Post> postPage) {

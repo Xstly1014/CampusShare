@@ -63,7 +63,7 @@ mybatis-plus:
 
 # 应用自定义配置
 app:
-  # 向量库数据源：PostgreSQL + pgvector（骨架阶段暂不启用，无 PgVectorConfig 类读取此配置）
+  # 向量库数据源：PostgreSQL + pgvector
   datasource:
     pgvector:
       driver-class-name: org.postgresql.Driver
@@ -96,14 +96,46 @@ app:
         max-connections: 50
         pending-acquire-timeout: 45000
     embedding:
-      base-url: ${BGE_BASE_URL:http://bge-service:8080}
+      base-url: ${EMBEDDING_BASE_URL:https://api.siliconflow.cn}
       api-key: ${EMBEDDING_API_KEY:sk-placeholder}
       model: BAAI/bge-m3
+      timeout: 30000
+      batch-size: 32
+      max-tokens: 8000
+      retry:
+        max-attempts: 3
+        backoff: 1000
+      circuit-breaker:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      connection-pool:
+        max-connections: 30
+        pending-acquire-timeout: 30000
 
   retrieval:
     top-k: 10
     rerank-top-k: 5
     rrf-k: 60
+
+  # 知识库文档路径（Docker 容器内挂载路径）
+  knowledge:
+    docs-path: /app/docs/agent-assistant/knowledge-docs
+
+  # 帖子向量同步熔断配置
+  post-sync:
+    circuit-breaker:
+      sliding-window-size: 10
+      minimum-number-of-calls: 5
+      failure-rate-threshold: 50.0
+      wait-duration-in-open-state: 30s
+      permitted-number-of-calls-in-half-open-state: 3
+
+  # 内部 API 调用 token
+  internal:
+    token: ${INTERNAL_API_TOKEN:campushare-internal-token}
 
 logging:
   level:

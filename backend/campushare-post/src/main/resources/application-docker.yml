@@ -27,6 +27,8 @@ feign:
 service:
   user:
     url: http://user-service:8081
+  agent:
+    url: http://agent-service:8083
 
 server:
   port: 8082

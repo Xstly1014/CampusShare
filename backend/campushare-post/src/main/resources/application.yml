@@ -36,6 +36,8 @@ spring:
 service:
   user:
     url: http://localhost:8081
+  agent:
+    url: http://localhost:8083
 
 server:
   port: 8082

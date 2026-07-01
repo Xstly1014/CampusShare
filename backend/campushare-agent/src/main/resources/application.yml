@@ -67,13 +67,12 @@ mybatis-plus:
 app:
   # 向量库数据源：PostgreSQL + pgvector
   # 用自定义前缀，不触发 Spring Boot 自动配置，由 PgVectorConfig 配置类手动创建 DataSource
-  # 骨架阶段暂不启用，避免无 PG 实例时启动失败
   datasource:
     pgvector:
       driver-class-name: org.postgresql.Driver
-      url: jdbc:postgresql://localhost:5432/campushare_vector
-      username: campushare
-      password: campushare123
+      url: jdbc:postgresql://localhost:5432/agent_vectors
+      username: agent
+      password: ${AGENT_PG_PASSWORD:agent123456}
       hikari:
         maximum-pool-size: 10
         minimum-idle: 2
@@ -101,15 +100,47 @@ app:
         max-connections: 50
         pending-acquire-timeout: 45000
     embedding:
-      base-url: ${BGE_BASE_URL:http://bge-service:8080}
+      base-url: ${EMBEDDING_BASE_URL:https://api.siliconflow.cn}
       api-key: ${EMBEDDING_API_KEY:sk-placeholder}
       model: BAAI/bge-m3
+      timeout: 30000
+      batch-size: 32
+      max-tokens: 8000
+      retry:
+        max-attempts: 3
+        backoff: 1000
+      circuit-breaker:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      connection-pool:
+        max-connections: 30
+        pending-acquire-timeout: 30000
 
   # 检索参数
   retrieval:
     top-k: 10
     rerank-top-k: 5
     rrf-k: 60
+
+  # 知识库文档路径（随仓库提交的 Markdown 文档）
+  knowledge:
+    docs-path: docs/agent-assistant/knowledge-docs
+
+  # 帖子向量同步熔断配置
+  post-sync:
+    circuit-breaker:
+      sliding-window-size: 10
+      minimum-number-of-calls: 5
+      failure-rate-threshold: 50.0
+      wait-duration-in-open-state: 30s
+      permitted-number-of-calls-in-half-open-state: 3
+
+  # 内部 API 调用 token（服务间鉴权，绕过网关）
+  internal:
+    token: ${INTERNAL_API_TOKEN:campushare-internal-token}
 
 logging:
   level:
