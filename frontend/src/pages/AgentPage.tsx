@@ -24,6 +24,8 @@ const WELCOME_MESSAGE = `你好！我是 CampusShare 智能助手 👋
 
 有什么可以帮你的吗？`
 
+const SESSION_STORAGE_KEY = 'agent_current_session_id'
+
 export default function AgentPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -33,7 +35,9 @@ export default function AgentPage() {
   ])
   const [inputValue, setInputValue] = useState('')
   const [sending, setSending] = useState(false)
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
+    return localStorage.getItem(SESSION_STORAGE_KEY)
+  })
   const [sessions, setSessions] = useState<AgentSession[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -91,14 +95,27 @@ export default function AgentPage() {
         setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
       }
       setCurrentSessionId(sessionId)
+      localStorage.setItem(SESSION_STORAGE_KEY, sessionId)
     } catch {
+      localStorage.removeItem(SESSION_STORAGE_KEY)
+      setCurrentSessionId(null)
+      setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
       toast.error('加载会话失败')
     } finally {
       setLoadingHistory(false)
     }
   }
 
+  useEffect(() => {
+    const savedId = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (savedId) {
+      loadSession(savedId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const startNewChat = () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY)
     setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
     setCurrentSessionId(null)
     setSidebarOpen(false)
@@ -171,6 +188,7 @@ export default function AgentPage() {
       }).then(({ sessionId: newSessionId }) => {
         if (newSessionId && !currentSessionId) {
           setCurrentSessionId(newSessionId)
+          localStorage.setItem(SESSION_STORAGE_KEY, newSessionId)
         }
       })
     } catch (e) {
