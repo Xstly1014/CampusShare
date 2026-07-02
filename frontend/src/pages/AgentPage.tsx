@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Send, Bot, User, Sparkles, Plus, Trash2, Menu, X, MessageSquare, Folder, FolderOpen, ChevronDown, ChevronRight, FolderInput, MoreVertical, Pencil } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { agentApi, chatStream } from '../services/agent'
 import type { AgentSession, AgentTurn, AgentCategory } from '../services/agent'
 import { toast } from '../stores/toastStore'
@@ -588,12 +589,16 @@ export default function AgentPage() {
                     )}
                   </div>
                   <div className={`max-w-[80%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap select-text ${
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed select-text ${
                       isUser
-                        ? 'bg-blue-600 text-white rounded-tr-sm'
-                        : 'bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm'
+                        ? 'bg-blue-600 text-white rounded-tr-sm whitespace-pre-wrap'
+                        : 'prose prose-sm max-w-none bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_strong]:text-gray-900 [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm'
                     }`}>
-                      {msg.content}
+                      {isUser ? (
+                        msg.content
+                      ) : (
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      )}
                       {!isUser && msg.id === messages[messages.length - 1]?.id && streaming && msg.content && (
                         <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse" />
                       )}
