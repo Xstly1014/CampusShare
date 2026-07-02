@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -43,25 +44,34 @@ public class InternalAgentController {
     private final PostVectorService postVectorService;
 
     @PostMapping("/knowledge/reindex")
-    public Result<Map<String, Object>> reindexKnowledge() {
+    public Mono<Result<Map<String, Object>>> reindexKnowledge() {
         log.info("Manual knowledge reindex triggered");
-        Map<String, Object> result = knowledgeIngestionService.ingestAll();
-        return Result.success(result);
+        return Mono.fromCallable(() -> knowledgeIngestionService.ingestAll())
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(Result::success);
     }
 
     @GetMapping("/knowledge/status")
-    public Result<Map<String, Object>> knowledgeStatus() {
-        Map<String, Object> status = new HashMap<>();
-        status.put("knowledgeVectorCount", knowledgeVectorStore.count());
-        return Result.success(status);
+    public Mono<Result<Map<String, Object>>> knowledgeStatus() {
+        return Mono.fromCallable(() -> {
+                    Map<String, Object> status = new HashMap<>();
+                    status.put("knowledgeVectorCount", knowledgeVectorStore.count());
+                    return status;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(Result::success);
     }
 
     @GetMapping("/vector/status")
-    public Result<Map<String, Object>> vectorStatus() {
-        Map<String, Object> status = new HashMap<>();
-        status.put("knowledgeVectorCount", knowledgeVectorStore.count());
-        status.put("postVectorCount", postVectorStore.count());
-        return Result.success(status);
+    public Mono<Result<Map<String, Object>>> vectorStatus() {
+        return Mono.fromCallable(() -> {
+                    Map<String, Object> status = new HashMap<>();
+                    status.put("knowledgeVectorCount", knowledgeVectorStore.count());
+                    status.put("postVectorCount", postVectorStore.count());
+                    return status;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(Result::success);
     }
 
     @PostMapping("/posts/sync")

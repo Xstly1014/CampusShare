@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.HashMap;
 import java.util.List;
@@ -53,6 +54,7 @@ public class PostVectorService {
     public Mono<Void> syncPost(String postId, String action) {
         if ("DELETE".equals(action)) {
             return Mono.fromRunnable(() -> postVectorStore.delete(postId))
+                    .subscribeOn(Schedulers.boundedElastic())
                     .onErrorResume(e -> {
                         log.warn("Failed to delete post vector {}: {}", postId, e.getMessage());
                         return Mono.empty();
@@ -64,6 +66,7 @@ public class PostVectorService {
                     Result<PostVectorDTO> result = postFeignClient.getVectorData(postId);
                     return result != null ? result.getData() : null;
                 })
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(dto -> {
                     if (dto == null) {
                         log.warn("Post not found for vector sync: {}", postId);
@@ -88,6 +91,7 @@ public class PostVectorService {
      */
     public Mono<Map<String, Object>> syncAll() {
         return Mono.fromCallable(this::doSyncAll)
+                .subscribeOn(Schedulers.boundedElastic())
                 .onErrorResume(e -> {
                     log.error("Full post sync failed", e);
                     Map<String, Object> err = new HashMap<>();
