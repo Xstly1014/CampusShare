@@ -1,6 +1,7 @@
 package com.campushare.agent.controller;
 
 import com.campushare.agent.dto.ChatRequest;
+import com.campushare.agent.dto.MoveSessionCategoryRequest;
 import com.campushare.agent.dto.SessionCreateRequest;
 import com.campushare.agent.dto.SessionResponse;
 import com.campushare.agent.dto.TurnResponse;
@@ -122,6 +123,18 @@ public class AgentController {
         String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
         return Mono.fromRunnable(() -> sessionService.deleteSession(userId, sessionId))
                 .thenReturn(Result.<Void>success(null))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @PutMapping("/sessions/{sessionId}/category")
+    public Mono<Result<SessionResponse>> moveSessionCategory(
+            @RequestHeader("Authorization") String token,
+            @PathVariable String sessionId,
+            @RequestBody MoveSessionCategoryRequest request) {
+        String userId = jwtUtils.getUserId(token.replace("Bearer ", ""));
+        return Mono.fromCallable(() -> sessionService.moveSessionCategory(
+                        userId, sessionId, request != null ? request.getCategoryId() : null))
+                .map(Result::success)
                 .subscribeOn(Schedulers.boundedElastic());
     }
 }

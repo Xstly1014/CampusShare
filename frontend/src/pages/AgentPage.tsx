@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Send, Bot, User, Sparkles, Plus, Trash2, Menu, X, MessageSquare } from 'lucide-react'
+import { Send, Bot, User, Sparkles, Plus, Trash2, Menu, X, MessageSquare, Folder, FolderOpen, ChevronDown, ChevronRight, FolderInput, MoreVertical, Pencil } from 'lucide-react'
 import { agentApi, chatStream } from '../services/agent'
-import type { AgentSession, AgentTurn } from '../services/agent'
+import type { AgentSession, AgentTurn, AgentCategory } from '../services/agent'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
 import NavBar from '../components/common/NavBar'
+import SwipeToDelete from '../components/common/SwipeToDelete'
 
 interface ChatMessage {
   id: string
@@ -43,6 +44,16 @@ export default function AgentPage() {
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [streaming, setStreaming] = useState(false)
 
+  const [categories, setCategories] = useState<AgentCategory[]>([])
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null)
+  const [openMenuCategoryId, setOpenMenuCategoryId] = useState<string | null>(null)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<AgentCategory | null>(null)
+  const [categoryName, setCategoryName] = useState('')
+  const [showMovePicker, setShowMovePicker] = useState(false)
+  const [moveTargetSessionId, setMoveTargetSessionId] = useState<string | null>(null)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<boolean>(false)
   const streamContentRef = useRef<string>('')
@@ -60,9 +71,37 @@ export default function AgentPage() {
     } catch { /* ignore */ }
   }, [])
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await agentApi.getCategories()
+      setCategories(res.data || [])
+    } catch { /* ignore */ }
+  }, [])
+
   useEffect(() => {
     fetchSessions()
-  }, [fetchSessions])
+    fetchCategories()
+  }, [fetchSessions, fetchCategories])
+
+  const groupedSessions = useMemo(() => {
+    const groups: Record<string, AgentSession[]> = { uncategorized: [] }
+    for (const cat of categories) groups[cat.id] = []
+    for (const s of sessions) {
+      const key = s.categoryId && categories.some(c => c.id === s.categoryId) ? s.categoryId! : 'uncategorized'
+      groups[key].push(s)
+    }
+    return groups
+  }, [sessions, categories])
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const closeSidebar = () => {
+    setSidebarOpen(false)
+    setOpenSwipeId(null)
+    setOpenMenuCategoryId(null)
+  }
 
   const loadSession = async (sessionId: string) => {
     setLoadingHistory(true)
@@ -123,11 +162,11 @@ export default function AgentPage() {
     setSidebarOpen(false)
   }
 
-  const deleteSession = async (e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation()
+  const handleSwipeDelete = async (sessionId: string) => {
     try {
       await agentApi.deleteSession(sessionId)
       setSessions(prev => prev.filter(s => s.id !== sessionId))
+      setOpenSwipeId(null)
       if (currentSessionId === sessionId) {
         startNewChat()
       }
@@ -135,6 +174,73 @@ export default function AgentPage() {
     } catch {
       toast.error('删除失败')
     }
+  }
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    try {
+      await agentApi.deleteCategory(categoryId)
+      await fetchCategories()
+      await fetchSessions()
+      setOpenMenuCategoryId(null)
+      toast.success('分类已删除')
+    } catch {
+      toast.error('删除分类失败')
+    }
+  }
+
+  const handleSaveCategory = async () => {
+    const name = categoryName.trim()
+    if (!name) {
+      toast.error('分类名不能为空')
+      return
+    }
+    try {
+      if (editingCategory) {
+        await agentApi.renameCategory(editingCategory.id, name)
+        toast.success('分类已更新')
+      } else {
+        await agentApi.createCategory(name)
+        toast.success('分类已创建')
+      }
+      await fetchCategories()
+      setShowCategoryModal(false)
+      setEditingCategory(null)
+      setCategoryName('')
+    } catch {
+      toast.error(editingCategory ? '更新失败' : '创建失败')
+    }
+  }
+
+  const handleMoveToCategory = async (categoryId: string | null) => {
+    if (!moveTargetSessionId) return
+    try {
+      await agentApi.moveSessionCategory(moveTargetSessionId, categoryId)
+      await fetchSessions()
+      setShowMovePicker(false)
+      setMoveTargetSessionId(null)
+      toast.success(categoryId ? '已移入分类' : '已移出分类')
+    } catch {
+      toast.error('移动失败')
+    }
+  }
+
+  const openMovePicker = (sessionId: string) => {
+    setMoveTargetSessionId(sessionId)
+    setOpenSwipeId(null)
+    setShowMovePicker(true)
+  }
+
+  const openCreateCategory = () => {
+    setEditingCategory(null)
+    setCategoryName('')
+    setShowCategoryModal(true)
+  }
+
+  const openRenameCategory = (cat: AgentCategory) => {
+    setEditingCategory(cat)
+    setCategoryName(cat.name)
+    setOpenMenuCategoryId(null)
+    setShowCategoryModal(true)
   }
 
   const handleSend = async () => {
@@ -208,6 +314,29 @@ export default function AgentPage() {
     }
   }
 
+  const renderSessionItem = (s: AgentSession) => (
+    <SwipeToDelete
+      key={s.id}
+      isOpen={openSwipeId === s.id}
+      onOpenChange={(open) => setOpenSwipeId(open ? s.id : null)}
+      onDelete={() => handleSwipeDelete(s.id)}
+      onMove={() => openMovePicker(s.id)}
+    >
+      <div
+        onClick={() => {
+          if (openSwipeId === s.id) { setOpenSwipeId(null); return }
+          loadSession(s.id)
+        }}
+        className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer ${
+          currentSessionId === s.id ? 'text-blue-700' : 'text-gray-700'
+        }`}
+      >
+        <MessageSquare className="w-4 h-4 flex-shrink-0 text-gray-400" />
+        <span className="text-sm truncate flex-1">{s.title || '新对话'}</span>
+      </div>
+    </SwipeToDelete>
+  )
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
       {/* Header */}
@@ -237,18 +366,18 @@ export default function AgentPage() {
 
       {/* Sidebar Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setSidebarOpen(false)}>
+        <div className="fixed inset-0 bg-black/30 z-40" onClick={closeSidebar}>
           <div
             className="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <span className="text-sm font-semibold text-gray-900">历史会话</span>
-              <button onClick={() => setSidebarOpen(false)} className="p-1 hover:bg-gray-100 rounded-full">
+              <button onClick={closeSidebar} className="p-1 hover:bg-gray-100 rounded-full">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-            <div className="p-3">
+            <div className="p-3 space-y-2">
               <button
                 onClick={startNewChat}
                 className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors"
@@ -256,32 +385,170 @@ export default function AgentPage() {
                 <Plus className="w-4 h-4" />
                 新建对话
               </button>
+              <button
+                onClick={openCreateCategory}
+                className="w-full flex items-center gap-2 px-3 py-2 text-gray-500 text-sm hover:bg-gray-50 rounded-xl transition-colors"
+              >
+                <FolderInput className="w-4 h-4" />
+                新建分类
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
-              {sessions.length > 0 ? sessions.map(s => (
-                <div
-                  key={s.id}
-                  onClick={() => loadSession(s.id)}
-                  className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
-                    currentSessionId === s.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  <MessageSquare className="w-4 h-4 flex-shrink-0 text-gray-400" />
-                  <span className="text-sm truncate flex-1">{s.title || '新对话'}</span>
-                  <button
-                    onClick={(e) => deleteSession(e, s.id)}
-                    className="p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
+            <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
+              {/* 分类折叠组 */}
+              {categories.map(cat => {
+                const expanded = expandedGroups[cat.id] !== false
+                const groupSessions = groupedSessions[cat.id] || []
+                return (
+                  <div key={cat.id}>
+                    <div className="flex items-center gap-1 px-2 py-1.5 relative">
+                      <button onClick={() => toggleGroup(cat.id)} className="p-0.5 hover:bg-gray-100 rounded">
+                        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
+                      </button>
+                      {expanded ? <FolderOpen className="w-4 h-4 text-amber-500" /> : <Folder className="w-4 h-4 text-amber-500" />}
+                      <span className="text-xs font-medium text-gray-600 flex-1 truncate">{cat.name}</span>
+                      <span className="text-[10px] text-gray-400">{groupSessions.length}</span>
+                      <button
+                        onClick={() => setOpenMenuCategoryId(openMenuCategoryId === cat.id ? null : cat.id)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
+                      </button>
+                      {openMenuCategoryId === cat.id && (
+                        <div className="absolute right-0 top-full mt-1 bg-white shadow-lg rounded-lg border border-gray-100 z-10 w-28">
+                          <button
+                            onClick={() => openRenameCategory(cat)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-gray-600 hover:bg-gray-50"
+                          >
+                            <Pencil className="w-3 h-3" /> 重命名
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(cat.id)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-red-500 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3 h-3" /> 删除分类
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {expanded && groupSessions.length > 0 && (
+                      <div className="space-y-1 pl-2">
+                        {groupSessions.map(renderSessionItem)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* 未分类组 */}
+              <div>
+                <div className="flex items-center gap-1 px-2 py-1.5">
+                  <button onClick={() => toggleGroup('uncategorized')} className="p-0.5 hover:bg-gray-100 rounded">
+                    {expandedGroups['uncategorized'] !== false ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
                   </button>
+                  <MessageSquare className="w-4 h-4 text-gray-400" />
+                  <span className="text-xs font-medium text-gray-500 flex-1">未分类</span>
+                  <span className="text-[10px] text-gray-400">{groupedSessions['uncategorized']?.length || 0}</span>
                 </div>
-              )) : (
-                <div className="text-center py-8">
-                  <MessageSquare className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                  <p className="text-xs text-gray-400">暂无历史会话</p>
-                </div>
-              )}
+                {expandedGroups['uncategorized'] !== false && (
+                  <div className="space-y-1 pl-2">
+                    {(groupedSessions['uncategorized'] || []).map(renderSessionItem)}
+                    {sessions.length === 0 && (
+                      <div className="text-center py-6">
+                        <MessageSquare className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                        <p className="text-xs text-gray-400">暂无历史会话</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 分类 CRUD Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowCategoryModal(false)}>
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-5">{editingCategory ? '重命名分类' : '新建分类'}</h2>
+            <input
+              type="text"
+              value={categoryName}
+              onChange={e => setCategoryName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveCategory() }}
+              placeholder="输入分类名称"
+              autoFocus
+              maxLength={64}
+              className="w-full px-4 py-3 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+            />
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => { setShowCategoryModal(false); setEditingCategory(null); setCategoryName('') }}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveCategory}
+                className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 分类选择器 Modal（移动会话） */}
+      {showMovePicker && moveTargetSessionId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowMovePicker(false)}>
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900 mb-5">选择分类</h2>
+            <div className="space-y-1">
+              {(() => {
+                const targetSession = sessions.find(s => s.id === moveTargetSessionId)
+                const hasCategory = !!targetSession?.categoryId
+                return (
+                  <>
+                    {hasCategory && (
+                      <button
+                        onClick={() => handleMoveToCategory(null)}
+                        className="w-full flex items-center gap-3 px-3 py-3 text-left text-sm text-gray-600 hover:bg-gray-50 rounded-xl"
+                      >
+                        <X className="w-4 h-4 text-gray-400" />
+                        移出分类
+                      </button>
+                    )}
+                    {categories.map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => handleMoveToCategory(cat.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-3 text-left text-sm rounded-xl hover:bg-gray-50 ${
+                          targetSession?.categoryId === cat.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                        }`}
+                      >
+                        <Folder className="w-4 h-4 text-amber-500" />
+                        <span className="flex-1">{cat.name}</span>
+                        {targetSession?.categoryId === cat.id && <span className="text-xs">当前</span>}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => { setShowMovePicker(false); openCreateCategory() }}
+                      className="w-full flex items-center gap-3 px-3 py-3 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-xl"
+                    >
+                      <Plus className="w-4 h-4" />
+                      新建分类
+                    </button>
+                  </>
+                )
+              })()}
+            </div>
+            <button
+              onClick={() => setShowMovePicker(false)}
+              className="w-full mt-3 py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+            >
+              取消
+            </button>
           </div>
         </div>
       )}

@@ -7,6 +7,16 @@ export interface AgentSession {
   status: string
   messageCount: number
   lastMessageAt?: string
+  categoryId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AgentCategory {
+  id: string
+  userId: string
+  name: string
+  sortOrder: number
   createdAt: string
   updatedAt: string
 }
@@ -137,4 +147,19 @@ export const agentApi = {
 
   deleteSession: (sessionId: string) =>
     api.delete<void>(`/agent/sessions/${sessionId}`),
+
+  getCategories: () =>
+    api.get<AgentCategory[]>('/agent/categories'),
+
+  createCategory: (name: string) =>
+    api.post<AgentCategory>('/agent/categories', { name }),
+
+  renameCategory: (categoryId: string, name: string) =>
+    api.put<AgentCategory>(`/agent/categories/${categoryId}`, { name }),
+
+  deleteCategory: (categoryId: string) =>
+    api.delete<void>(`/agent/categories/${categoryId}`),
+
+  moveSessionCategory: (sessionId: string, categoryId: string | null) =>
+    api.put<AgentSession>(`/agent/sessions/${sessionId}/category`, { categoryId }),
 }

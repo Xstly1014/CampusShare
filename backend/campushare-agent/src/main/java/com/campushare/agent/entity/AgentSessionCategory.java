@@ -7,15 +7,14 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("agent_sessions")
-public class AgentSession implements Serializable {
+@TableName("agent_session_categories")
+public class AgentSessionCategory implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
@@ -24,22 +23,9 @@ public class AgentSession implements Serializable {
 
     private String userId;
 
-    private String title;
+    private String name;
 
-    private String status;
-
-    private Integer messageCount;
-
-    private Integer totalTokens;
-
-    private BigDecimal totalCost;
-
-    private LocalDateTime lastMessageAt;
-
-    private String metadata;
-
-    @TableField(updateStrategy = FieldStrategy.IGNORED)
-    private String categoryId;
+    private Integer sortOrder;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

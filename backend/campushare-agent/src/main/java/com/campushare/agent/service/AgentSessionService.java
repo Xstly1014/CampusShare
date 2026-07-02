@@ -18,5 +18,7 @@ public interface AgentSessionService {
 
     void deleteSession(String userId, String sessionId);
 
+    SessionResponse moveSessionCategory(String userId, String sessionId, String categoryId);
+
     List<TurnResponse> getSessionTurns(String userId, String sessionId);
 }

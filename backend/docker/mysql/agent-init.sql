@@ -26,10 +26,12 @@ CREATE TABLE agent_sessions (
   total_cost DECIMAL(10,4) DEFAULT 0 COMMENT '累计成本',
   last_message_at DATETIME COMMENT '最后消息时间',
   metadata TEXT COMMENT '元数据（JSON）',
+  category_id VARCHAR(36) DEFAULT NULL COMMENT '所属分类ID（NULL=未分类）',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（MyMetaObjectHandler 自动填充）',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间（MyMetaObjectHandler 自动填充）',
   INDEX idx_user_status (user_id, status) COMMENT '按用户查活跃会话',
-  INDEX idx_last_message (last_message_at) COMMENT '按最后消息时间排序'
+  INDEX idx_last_message (last_message_at) COMMENT '按最后消息时间排序',
+  INDEX idx_user_category (user_id, category_id) COMMENT '按用户分类查会话'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 会话主表';
 
 -- ========================================
@@ -214,3 +216,21 @@ CREATE TABLE IF NOT EXISTS agent_pending_writes (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   INDEX idx_status_retry (status, next_retry_at) COMMENT '拉取待重试任务'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 异步写入队列表';
+
+-- ========================================
+-- 12. 会话分类表（用户自建文件夹，用于会话归类）
+-- ========================================
+CREATE TABLE IF NOT EXISTS agent_session_categories (
+  id VARCHAR(36) PRIMARY KEY COMMENT '分类ID（UUID，MyBatis Plus ASSIGN_UUID）',
+  user_id VARCHAR(36) NOT NULL COMMENT '用户ID',
+  name VARCHAR(64) NOT NULL COMMENT '分类名称',
+  sort_order INT DEFAULT 0 COMMENT '排序（越小越靠前）',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（MyMetaObjectHandler 自动填充）',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间（MyMetaObjectHandler 自动填充）',
+  UNIQUE KEY uk_user_name (user_id, name) COMMENT '同用户分类名唯一',
+  INDEX idx_user_sort (user_id, sort_order) COMMENT '按用户排序查询'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 会话分类表';
+
+-- 兼容已存在库：为 agent_sessions 增加分类外键列与索引（幂等）
+ALTER TABLE agent_sessions ADD COLUMN IF NOT EXISTS category_id VARCHAR(36) DEFAULT NULL COMMENT '所属分类ID（NULL=未分类）' AFTER metadata;
+ALTER TABLE agent_sessions ADD INDEX IF NOT EXISTS idx_user_category (user_id, category_id);

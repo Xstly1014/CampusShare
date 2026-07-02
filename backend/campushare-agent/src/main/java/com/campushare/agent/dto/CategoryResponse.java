@@ -11,16 +11,12 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class SessionResponse {
+public class CategoryResponse {
 
     private String id;
     private String userId;
-    private String title;
-    private String status;
-    private Integer messageCount;
-    private Integer totalTokens;
-    private LocalDateTime lastMessageAt;
-    private String categoryId;
+    private String name;
+    private Integer sortOrder;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -73,6 +73,14 @@ public class AgentSessionServiceImpl implements AgentSessionService {
     }
 
     @Override
+    public SessionResponse moveSessionCategory(String userId, String sessionId, String categoryId) {
+        AgentSession session = getSessionAndVerifyOwner(userId, sessionId);
+        session.setCategoryId(categoryId);
+        sessionMapper.updateById(session);
+        return toResponse(session);
+    }
+
+    @Override
     public List<TurnResponse> getSessionTurns(String userId, String sessionId) {
         getSessionAndVerifyOwner(userId, sessionId);
         LambdaQueryWrapper<AgentTurn> wrapper = new LambdaQueryWrapper<>();
@@ -103,6 +111,7 @@ public class AgentSessionServiceImpl implements AgentSessionService {
                 .messageCount(session.getMessageCount())
                 .totalTokens(session.getTotalTokens())
                 .lastMessageAt(session.getLastMessageAt())
+                .categoryId(session.getCategoryId())
                 .createdAt(session.getCreatedAt())
                 .updatedAt(session.getUpdatedAt())
                 .build();
