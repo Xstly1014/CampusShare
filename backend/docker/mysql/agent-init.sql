@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS knowledge_articles (
   content_md5 CHAR(32) NOT NULL COMMENT '内容 MD5（检测变更，避免重复 embedding）',
   status ENUM('DRAFT','PUBLISHED','DEPRECATED') DEFAULT 'PUBLISHED' COMMENT '发布状态',
   version INT DEFAULT 1 COMMENT '版本号',
-  tags JSON COMMENT '标签列表',
+  tags VARCHAR(256) DEFAULT NULL COMMENT '标签列表（逗号分隔）',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX idx_topic_status (topic, status) COMMENT '按主题查已发布文档',
