@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 public class LoginRequest {
     
     /**
-     * 账号（用户名/手机号/邮箱）
+     * 账号（手机号/邮箱）
      */
     @NotBlank(message = "账号不能为空")
     private String account;

@@ -374,8 +374,6 @@ public class UserServiceImpl implements UserService {
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(User::getPhone, account)
                .or()
-               .eq(User::getUsername, account)
-               .or()
                .eq(User::getEmail, account);
         User user = userMapper.selectOne(wrapper);
         if (user != null) {
