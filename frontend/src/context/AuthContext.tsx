@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, ReactNode, useCallback } from 'react'
 import { authApi } from '../services/api'
 
+const TOKEN_KEY = 'campusshare_token'
+const REFRESH_TOKEN_KEY = 'campusshare_refresh_token'
+const USER_KEY = 'campusshare_user'
+
 interface User {
   id: string
   username: string
@@ -34,7 +38,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    const savedUser = sessionStorage.getItem('campusshare_user')
+    const savedUser = sessionStorage.getItem(USER_KEY)
     return savedUser ? JSON.parse(savedUser) : null
   })
   const [loading, setLoading] = useState(false)
@@ -45,9 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     try {
       const res = await authApi.login(account, password)
-      const { token, user: userData } = res.data
-      sessionStorage.setItem('campusshare_token', token)
-      sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
+      const { token, refreshToken, user: userData } = res.data
+      sessionStorage.setItem(TOKEN_KEY, token)
+      if (refreshToken) {
+        sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+      }
+      sessionStorage.setItem(USER_KEY, JSON.stringify(userData))
       setUser(userData)
     } finally {
       setLoading(false)
@@ -64,9 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     try {
       const res = await authApi.register(data)
-      const { token, user: userData } = res.data
-      sessionStorage.setItem('campusshare_token', token)
-      sessionStorage.setItem('campusshare_user', JSON.stringify(userData))
+      const { token, refreshToken, user: userData } = res.data
+      sessionStorage.setItem(TOKEN_KEY, token)
+      if (refreshToken) {
+        sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+      }
+      sessionStorage.setItem(USER_KEY, JSON.stringify(userData))
       setUser(userData)
     } finally {
       setLoading(false)
@@ -75,8 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setUser(null)
-    sessionStorage.removeItem('campusshare_token')
-    sessionStorage.removeItem('campusshare_user')
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(REFRESH_TOKEN_KEY)
+    sessionStorage.removeItem(USER_KEY)
   }, [])
 
   const sendCode = useCallback(async (account: string, type: string = 'phone') => {
