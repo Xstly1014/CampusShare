@@ -43,6 +43,7 @@ export default function AgentPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [streaming, setStreaming] = useState(false)
+  const [chatKey, setChatKey] = useState(0)
 
   const [categories, setCategories] = useState<AgentCategory[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
@@ -160,6 +161,8 @@ export default function AgentPage() {
     setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
     setCurrentSessionId(null)
     setSidebarOpen(false)
+    setChatKey(k => k + 1)
+    toast.success('已开始新对话')
   }
 
   const handleSwipeDelete = async (sessionId: string) => {
@@ -356,10 +359,10 @@ export default function AgentPage() {
           </div>
           <button
             onClick={startNewChat}
-            className="p-1.5 -mr-1.5 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-1.5 -mr-1.5 hover:bg-blue-50 active:scale-90 rounded-full transition-all duration-150 group"
             title="新对话"
           >
-            <Plus className="w-5 h-5 text-gray-600" />
+            <Plus className="w-5 h-5 text-gray-600 group-hover:text-blue-600 transition-colors" />
           </button>
         </div>
       </div>
@@ -380,7 +383,7 @@ export default function AgentPage() {
             <div className="p-3 space-y-2">
               <button
                 onClick={startNewChat}
-                className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-sm font-medium hover:bg-blue-100 active:scale-95 transition-all duration-150"
               >
                 <Plus className="w-4 h-4" />
                 新建对话
@@ -560,7 +563,7 @@ export default function AgentPage() {
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div key={chatKey} className="space-y-4 animate-chat-fade-in">
             {messages.map((msg) => {
               const isUser = msg.role === 'user'
               return (
