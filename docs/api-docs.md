@@ -1,6 +1,6 @@
 # CampusShare API 接口文档
 
-> **文档版本**: v1.0
+> **文档版本**: v2.0
 > **创建日期**: 2026-06-27
 > **Base URL**: `/api`
 > **数据格式**: JSON
@@ -1367,7 +1367,57 @@ Authorization: Bearer {token}
 
 ---
 
-## 十、错误码汇总
+## 十、AI智能助手模块（agent-service，端口8083）
+
+> agent-service 基于 Spring WebFlux 响应式框架，提供 SSE 流式对话、RAG 知库检索、帖子向量同步。
+> 所有 `/api/agent/**` 接口需经网关 JWT 认证，网关注入 `X-User-Id`/`X-Username` 头。
+> 内部运维端点 `/internal/agent/**` 不经网关，直接访问 8083 端口。
+
+### 10.1 AI 对话（SSE 流式）
+
+- **接口**: `POST /api/agent/chat`
+- **说明**: 与 AI 助手对话，响应为 SSE 流（`text/event-stream`），逐 token 返回
+- **是否需要登录**: 是
+
+**请求体**:
+
+```json
+{
+  "message": "怎么登录注册",
+  "sessionId": "可选，已有会话ID"
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `message` | string | 是 | 用户消息 |
+| `sessionId` | string | 否 | 已有会话ID，不传则新建会话 |
+
+**响应**: SSE 事件流（`data:` 前缀的 token 增量，以 `[DONE]` 结束）
+
+### 10.2 会话管理
+
+| 接口 | 方法 | 路径 | 说明 | 登录 |
+|------|------|------|------|------|
+| 会话列表 | GET | `/api/agent/sessions` | 获取用户历史会话 | 是 |
+| 会话详情 | GET | `/api/agent/sessions/{sessionId}` | 获取会话轮次记录 | 是 |
+| 删除会话 | DELETE | `/api/agent/sessions/{sessionId}` | 删除指定会话 | 是 |
+
+### 10.3 内部运维端点（不经网关，直接访问 8083）
+
+| 接口 | 方法 | 路径 | 说明 |
+|------|------|------|------|
+| 知识库重建索引 | POST | `/internal/agent/knowledge/reindex` | 扫描知识库文档重新 embedding 入库 |
+| 知识库状态 | GET | `/internal/agent/knowledge/status` | 查询知识库向量数量 |
+| 向量库总状态 | GET | `/internal/agent/vector/status` | 查询知识库+帖子向量数量 |
+| 帖子向量全量同步 | POST | `/internal/agent/post-vector/sync-all` | 从 post-service 拉取全量帖子向量化 |
+| 帖子向量单条同步 | POST | `/internal/agent/post-vector/sync/{postId}` | 同步单条帖子向量（增删改触发） |
+
+> ⚠️ 内部端点返回 `Mono<Result<T>>`（WebFlux 响应式），所有阻塞调用通过 `Schedulers.boundedElastic()` 执行。
+
+---
+
+## 十一、错误码汇总
 
 | 错误码 | 错误信息 | 可能原因 |
 |--------|---------|---------|
@@ -1390,7 +1440,7 @@ Authorization: Bearer {token}
 
 ---
 
-## 十一、版本历史
+## 十二、版本历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
@@ -1404,3 +1454,4 @@ Authorization: Bearer {token}
 | v1.7 | 2026-06-27 | 新增通知模块：通知列表(feed)、通知详情、标记已读、置顶、未读数；点赞/收藏/关注自动创建通知 |
 | v1.8 | 2026-06-29 | 新增创作者认证模块：认证统计/状态/申请/管理员审核；通知中心改为独立页面+分类Tab；文件大小上限提升至100MB |
 | v1.9 | 2026-06-30 | 新增隐私设置接口(5个开关)、通知偏好设置接口(3个开关)；UserDTO增加8个隐私/通知字段；修复OTel agent依赖与网关YAML配置 |
+| v2.0 | 2026-07-02 | 新增AI智能助手模块（第十章）：SSE流式对话、会话管理、知识库reindex、帖子向量同步等端点；登录接口明确仅支持手机号/邮箱（移除用户名登录）；修复agent-service WebFlux阻塞调用 |
