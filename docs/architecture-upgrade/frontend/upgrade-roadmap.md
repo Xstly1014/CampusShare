@@ -183,6 +183,21 @@
 
 ---
 
+### 1.4 轮询规范化（TanStack Query refetchInterval）
+
+**方案**：
+- 将所有手动 `setInterval` 轮询替换为 TanStack Query 的 `refetchInterval` 配置
+- `refetchIntervalInBackground: false` 确保页面不可见（后台Tab）时自动暂停轮询，节省资源
+- WebSocket 升级后（Phase 5.1），改为消息驱动的 `queryClient.invalidateQueries()` 替代轮询
+
+**已实施**：
+- ✅ NavBar 未读通知数：30秒轮询 → `useUnreadNotificationCount()`，未登录时自动禁用
+- ✅ 私信会话消息列表：5秒轮询 → `useConversationMessages()`，离开会话页面自动停止
+- ✅ 私信发送权限状态：5秒轮询 → `useCanSendMessage()`，离开会话页面自动停止
+- ✅ NotificationPage/NotificationBasketPage 迁移到 TanStack Query hooks
+
+---
+
 ## Phase 2: 工程化体系建设（P0/P1，1-2周）
 
 ### 2.1 测试体系搭建

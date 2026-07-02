@@ -1,11 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Heart, Star, UserPlus, MessageSquare, MessageCircle, Pin, ChevronRight, Bell } from 'lucide-react'
-import { notificationApi } from '../services/api'
-import type { NotificationItem } from '../services/api'
 import { formatTime } from '../utils/time'
-import { toast } from '../stores/toastStore'
 import NavBar from '../components/common/NavBar'
+import { useNotificationFeed } from '../hooks/queries/useNotifications'
+import type { NotificationItem } from '../services/notification'
 
 const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
   SYSTEM: { icon: <Bell className="w-5 h-5" />, color: 'bg-amber-50 text-amber-500' },
@@ -21,22 +19,7 @@ const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
 
 export default function NotificationPage() {
   const navigate = useNavigate()
-  const [feed, setFeed] = useState<NotificationItem[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchFeed = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await notificationApi.getFeed()
-      setFeed(res.data || [])
-    } catch {
-      toast.error('加载失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { fetchFeed() }, [fetchFeed])
+  const { data: feed = [], isLoading } = useNotificationFeed()
 
   const handleExpand = (item: NotificationItem) => {
     if (item.itemType === 'CONVERSATION' && item.otherUserId) {
@@ -46,24 +29,8 @@ export default function NotificationPage() {
     navigate(`/notifications/${item.itemType}`)
   }
 
-  const handlePin = async (e: React.MouseEvent, item: NotificationItem) => {
-    e.stopPropagation()
-    try {
-      await notificationApi.togglePin(item.itemType, item.otherUserId)
-      setFeed(prev => prev.map(f =>
-        f.itemType === item.itemType && f.otherUserId === item.otherUserId
-          ? { ...f, isPinned: !f.isPinned }
-          : f
-      ))
-      toast.success(item.isPinned ? '已取消置顶' : '已置顶')
-    } catch {
-      toast.error('操作失败')
-    }
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      {/* Header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-center">
           <span className="text-sm font-medium text-gray-900">通知</span>
@@ -71,7 +38,7 @@ export default function NotificationPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-4">
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-16">
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
           </div>

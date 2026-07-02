@@ -1,36 +1,19 @@
-import { useState, useEffect } from 'react'
 import { Home, Package, Bell, User, Sparkles } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { notificationApi } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
+import { useUnreadNotificationCount } from '../../hooks/queries/useNotifications'
 
 export default function NavBar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
-  const [unreadCount, setUnreadCount] = useState(0)
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setUnreadCount(0)
-      return
-    }
-    const fetchUnread = async () => {
-      try {
-        const res = await notificationApi.getUnreadCount()
-        setUnreadCount(res.data || 0)
-      } catch { /* ignore */ }
-    }
-    fetchUnread()
-    const interval = setInterval(fetchUnread, 30000)
-    return () => clearInterval(interval)
-  }, [location.pathname, isAuthenticated])
+  const { data: unreadCount = 0 } = useUnreadNotificationCount(isAuthenticated)
 
   const navItems = [
     { path: '/home', icon: Home, label: '首页' },
     { path: '/agent', icon: Sparkles, label: 'AI助手' },
     { path: '/warehouse', icon: Package, label: '仓库' },
-    { path: '/notifications', icon: Bell, label: '通知', badge: unreadCount },
+    { path: '/notifications', icon: Bell, label: '通知', badge: isAuthenticated ? unreadCount : 0 },
     { path: '/profile', icon: User, label: '我的' },
   ]
 

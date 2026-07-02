@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Bell, MessageSquare } from 'lucide-react'
-import { notificationApi } from '../services/api'
-import type { NotificationDetail } from '../services/api'
 import { formatTime } from '../utils/time'
-import { toast } from '../stores/toastStore'
+import { useNotificationDetail, useMarkNotificationsRead } from '../hooks/queries/useNotifications'
+import type { NotificationDetail } from '../services/notification'
 
 const basketTitleConfig: Record<string, string> = {
   SYSTEM: '系统通知',
@@ -20,23 +19,14 @@ const basketTitleConfig: Record<string, string> = {
 export default function NotificationBasketPage() {
   const navigate = useNavigate()
   const { basketType = '' } = useParams<{ basketType: string }>()
-  const [detail, setDetail] = useState<NotificationDetail[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: detail = [], isLoading } = useNotificationDetail(basketType)
+  const markAsReadMutation = useMarkNotificationsRead()
 
-  const fetchDetail = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await notificationApi.getDetail(basketType)
-      setDetail(res.data || [])
-      await notificationApi.markAsRead(basketType)
-    } catch {
-      toast.error('加载失败')
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (basketType) {
+      markAsReadMutation.mutate(basketType)
     }
   }, [basketType])
-
-  useEffect(() => { fetchDetail() }, [fetchDetail])
 
   const handleItemClick = (d: NotificationDetail) => {
     if (d.type === 'SYSTEM') return
@@ -64,7 +54,6 @@ export default function NotificationBasketPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      {/* Header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
@@ -80,7 +69,7 @@ export default function NotificationBasketPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-4">
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-16">
             <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
           </div>

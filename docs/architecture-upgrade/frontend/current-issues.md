@@ -8,99 +8,40 @@
 
 ## 一、数据层与状态管理问题（P0/P1）
 
-### 1.1 缺少服务端状态管理/数据缓存层
+### 1.1 缺少服务端状态管理/数据缓存层 ✅ 已完成
 
-**问题描述**：当前使用原生 `fetch` 封装（[http.ts](file:///E:/workspace_work/CampusShare/frontend/src/services/http.ts)），没有数据缓存、请求去重、自动重试、乐观更新、后台刷新等能力。
-
-**当前问题**：
-- 每次进入页面都重新发请求，没有缓存（切换标签页回来数据重新加载）
-- 相同请求并发发送没有去重（如同一页面多个组件请求同一个用户信息，会发多次）
-- 请求失败没有自动重试机制
-- 没有乐观更新的标准化方案（当前是手动改 state，失败回滚逻辑容易漏）
-- 分页数据没有缓存，翻页返回时需要重新加载
-- 没有请求取消机制（组件卸载时请求还在继续，可能导致内存泄漏或状态更新警告）
-- 没有后台自动刷新（数据可能是 stale 的）
-- 没有预加载能力
-
-**影响**：
-- 用户体验差：页面加载转圈多、返回列表数据丢失、重复请求浪费流量
-- 代码重复：每个页面都要自己写 loading/error/data 状态管理
-- 并发问题：竞态条件（旧请求覆盖新请求结果）
-- 维护成本高：状态散落在各个组件的 useState 中
-
-**严重程度**：🔴 P0
+**修复方案**：引入 TanStack Query v5（详见 [01-tanstack-query-integration.md](./01-tanstack-query-integration.md)）
 
 ---
 
-### 1.2 HTTP 客户端过于简陋
+### 1.2 HTTP 客户端过于简陋 ✅ 已完成
 
-**问题描述**：[http.ts](file:///E:/workspace_work/CampusShare/frontend/src/services/http.ts) 中手写的 fetch 封装功能非常基础：
-
-```typescript
-// 当前的问题：
-// 1. 没有请求/响应拦截器的灵活扩展机制
-// 2. 没有请求取消（AbortController）
-// 3. 没有超时控制
-// 4. 没有请求重试
-// 5. 没有进度监控（文件上传）
-// 6. Token 刷新逻辑没有统一处理（401时自动刷新Token）
-// 7. 错误处理简陋（直接throw Error，没有区分网络错误/业务错误/HTTP错误）
-// 8. 没有请求/响应转换的标准化
-```
-
-**影响**：
-- 功能缺失：大文件上传无法显示进度
-- Token 过期处理复杂：需要每个接口自己处理 401
-- 无法取消页面离开后的无用请求
-
-**严重程度**：🟡 P1
+**修复方案**：Axios 替换手写 fetch（详见 [02-axios-http-client.md](./02-axios-http-client.md)）。已支持拦截器、超时控制、统一错误处理、FormData自动处理、文件上传进度、Token刷新架构预留。
 
 ---
 
-### 1.3 状态管理分散且不规范
+### 1.3 状态管理分散且不规范 ✅ 已完成
 
-**问题描述**：
-- [toastStore.ts](file:///E:/workspace_work/CampusShare/frontend/src/stores/toastStore.ts) 用 Zustand，但只有 Toast 状态
-- [AuthContext.tsx](file:///E:/workspace_work/CampusShare/frontend/src/context/AuthContext.tsx) 用 React Context 管理认证状态，但 AuthContext 没有做性能优化（任何认证状态变化都会重渲染所有消费组件）
-- 其他业务状态（帖子列表、用户信息、通知等）都在各自页面的 useState 中，无法跨页面共享
-- 没有统一的状态持久化方案（目前 Token 存在 sessionStorage 中手动读写）
-
-**具体问题**：
-- 通知未读数需要每个页面都轮询一次，或者在 Context 中做轮询，但 AuthContext 已经承担了过多职责
-- 进入他人主页再返回，数据重新加载
-- 发帖后首页列表没有自动更新（需要手动刷新或返回刷新）
-
-**严重程度**：🟡 P1
+**修复方案**：Zustand 模块化拆分 + persist 中间件（详见 [04-zustand-state-management.md](./04-zustand-state-management.md)）。themeStore/uiStore/toastStore 按领域拆分，服务端状态(TanStack Query)与客户端状态(Zustand)边界明确。
 
 ---
 
-### 1.4 轮询效率低且实时性差
+### 1.4 轮询效率低且实时性差 ✅ 前端已规范化（WebSocket待后端）
 
-**问题描述**：私信 5 秒轮询、未读通知 30 秒轮询。
+**已完成**：所有手动 setInterval 轮询替换为 TanStack Query `refetchInterval`，页面后台自动暂停，离开页面自动停止。详见 Phase 1.4 升级路线。
 
-**问题**：
-- 实时性差：私信发送后对方最多 5 秒才能收到
-- 资源浪费：用户不活跃时也在持续轮询，浪费服务器资源和电量（移动端）
-- 轮询逻辑散落在各个组件中，没有统一管理
-- 多 Tab 打开时重复轮询
-
-**严重程度**：🟡 P1（后端 WebSocket 升级后同步改造）
+**遗留问题**（需后端 WebSocket 配合）：
+- 实时性仍为最多5秒延迟
+- 多Tab独立轮询
+- 后端就绪后升级为消息驱动刷新（Phase 5.1）
 
 ---
 
 ## 二、工程化问题（P0/P1）
 
-### 2.1 完全没有测试体系
+### 2.1 完全没有测试体系 ✅ 基础已搭建
 
-**问题描述**：没有任何单元测试、组件测试、E2E 测试。package.json 中没有测试相关依赖。
-
-**影响**：
-- 重构没有安全保障，改代码容易出 bug
-- 无法做回归测试
-- 无法保证代码质量
-- CI/CD 无法自动化验证
-
-**严重程度**：🔴 P0
+**修复方案**：Vitest + React Testing Library + happy-dom（详见 [03-vitest-testing.md](./03-vitest-testing.md)）。基础测试框架已搭建，17个工具函数测试已通过。后续需逐步补充组件测试和E2E测试。
 
 ---
 

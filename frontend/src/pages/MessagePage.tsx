@@ -1,43 +1,41 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ChevronLeft, Send, MessageSquare, Trash2 } from 'lucide-react'
-import { messageApi, userApi } from '../services/api'
-import { toast } from '../stores/toastStore'
+import { toast } from '../stores'
 import { useAuth } from '../context/AuthContext'
 import { formatTime } from '../utils/time'
-
-interface MessageItem {
-  id: string
-  senderId: string
-  senderName: string
-  senderAvatar?: string
-  receiverId: string
-  receiverName?: string
-  receiverAvatar?: string
-  content: string
-  isRead: number
-  isMine?: boolean
-  createTime: string
-}
+import {
+  useConversationList,
+  useConversationMessages,
+  useCanSendMessage,
+  useOtherUserProfile,
+  useSendMessage,
+  useHideConversation,
+  type MessageItem,
+} from '../hooks/queries/useMessages'
 
 export default function MessagePage() {
   const { userId } = useParams<{ userId: string }>()
   const navigate = useNavigate()
   const { user: currentUser } = useAuth()
 
-  const [conversations, setConversations] = useState<MessageItem[]>([])
-  const [messages, setMessages] = useState<MessageItem[]>([])
   const [newMessage, setNewMessage] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [canSend, setCanSend] = useState(true)
-  const [otherUser, setOtherUser] = useState<{ id: string; username: string; avatarUrl?: string } | null>(null)
   const [sending, setSending] = useState(false)
   const [hideConfirm, setHideConfirm] = useState<{ otherId: string; otherName: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const msgCountRef = useRef(0)
+
+  const { data: conversations = [], isLoading: listLoading } = useConversationList()
+  const { data: messages = [] } = useConversationMessages(userId)
+  const { data: canSend = true } = useCanSendMessage(userId)
+  const { data: otherUser } = useOtherUserProfile(userId)
+  const sendMessageMutation = useSendMessage()
+  const hideConversationMutation = useHideConversation()
 
   const hasSentMessage = messages.some(m => m.senderId === currentUser?.id)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const handleHideConversation = (e: React.MouseEvent, otherId: string, otherName: string) => {
     e.stopPropagation()
@@ -48,11 +46,7 @@ export default function MessagePage() {
     if (!hideConfirm) return
     const { otherId } = hideConfirm
     try {
-      await messageApi.hideConversation(otherId)
-      setConversations(prev => prev.filter(conv => {
-        const isMe = conv.senderId === currentUser?.id
-        return (isMe ? conv.receiverId : conv.senderId) !== otherId
-      }))
+      await hideConversationMutation.mutateAsync(otherId)
       toast.success('会话已隐藏')
     } catch {
       toast.error('隐藏失败')
@@ -60,62 +54,6 @@ export default function MessagePage() {
       setHideConfirm(null)
     }
   }
-
-  const fetchConversations = useCallback(async () => {
-    try {
-      const res = await messageApi.getList()
-      setConversations(res.data || [])
-    } catch { /* ignore */ }
-    finally { setLoading(false) }
-  }, [])
-
-  const fetchMessages = useCallback(async () => {
-    if (!userId) return
-    try {
-      const res = await messageApi.getConversation(userId)
-      const msgs = res.data || []
-      setMessages(msgs)
-      msgCountRef.current = msgs.length
-      const canRes = await messageApi.canSend(userId)
-      setCanSend(canRes.data)
-      const profileRes = await userApi.getUserProfile(userId)
-      if (profileRes.data) {
-        setOtherUser({ id: profileRes.data.id, username: profileRes.data.username, avatarUrl: profileRes.data.avatarUrl })
-      }
-    } catch { /* ignore */ }
-  }, [userId])
-
-  const pollCanSend = useCallback(async () => {
-    if (!userId) return
-    try {
-      const [canRes, convRes] = await Promise.all([
-        messageApi.canSend(userId),
-        messageApi.getConversation(userId),
-      ])
-      setCanSend(canRes.data)
-      const newMsgs = convRes.data || []
-      if (newMsgs.length !== msgCountRef.current) {
-        msgCountRef.current = newMsgs.length
-        setMessages(newMsgs)
-      }
-    } catch { /* ignore */ }
-  }, [userId])
-
-  useEffect(() => {
-    if (userId) {
-      fetchMessages()
-      pollTimerRef.current = setInterval(pollCanSend, 5000)
-      return () => {
-        if (pollTimerRef.current) clearInterval(pollTimerRef.current)
-      }
-    } else {
-      fetchConversations()
-    }
-  }, [userId, fetchMessages, fetchConversations, pollCanSend])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
 
   const handleSend = async () => {
     const content = newMessage.trim()
@@ -126,19 +64,10 @@ export default function MessagePage() {
     }
     setSending(true)
     try {
-      const res = await messageApi.send(userId, content)
-      setMessages((prev) => {
-        const updated = [...prev, res.data]
-        msgCountRef.current = updated.length
-        return updated
-      })
+      await sendMessageMutation.mutateAsync({ receiverId: userId, content })
       setNewMessage('')
-      const canRes = await messageApi.canSend(userId)
-      setCanSend(canRes.data)
     } catch (err) {
       toast.error((err as Error).message || '发送失败')
-      const canRes = await messageApi.canSend(userId)
-      setCanSend(canRes.data)
     } finally {
       setSending(false)
     }
@@ -158,7 +87,7 @@ export default function MessagePage() {
           </div>
         </div>
         <div className="max-w-5xl mx-auto px-4 py-4">
-          {loading ? (
+          {listLoading ? (
             <div className="text-center py-16"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
           ) : conversations.length > 0 ? (
             <div className="space-y-2">
@@ -239,7 +168,7 @@ export default function MessagePage() {
       <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-4 overflow-y-auto">
         {messages.length > 0 ? (
           <div className="space-y-3">
-            {messages.map((msg) => {
+            {messages.map((msg: MessageItem) => {
               const isMe = msg.senderId === currentUser?.id
               return (
                 <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
