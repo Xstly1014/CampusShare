@@ -231,6 +231,21 @@ CREATE TABLE IF NOT EXISTS agent_session_categories (
   INDEX idx_user_sort (user_id, sort_order) COMMENT '按用户排序查询'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 会话分类表';
 
--- 兼容已存在库：为 agent_sessions 增加分类外键列与索引（幂等）
-ALTER TABLE agent_sessions ADD COLUMN IF NOT EXISTS category_id VARCHAR(36) DEFAULT NULL COMMENT '所属分类ID（NULL=未分类）' AFTER metadata;
-ALTER TABLE agent_sessions ADD INDEX IF NOT EXISTS idx_user_category (user_id, category_id);
+-- 兼容已存在库：为 agent_sessions 增加分类列与索引
+-- 注意：ADD COLUMN IF NOT EXISTS 仅 MySQL 8.0.29+ 支持，故用存储过程实现跨版本幂等
+DROP PROCEDURE IF EXISTS migrate_agent_sessions_category;
+DELIMITER $$
+CREATE PROCEDURE migrate_agent_sessions_category()
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'category_id') THEN
+        ALTER TABLE agent_sessions ADD COLUMN category_id VARCHAR(36) DEFAULT NULL COMMENT '所属分类ID（NULL=未分类）' AFTER metadata;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND INDEX_NAME = 'idx_user_category') THEN
+        ALTER TABLE agent_sessions ADD INDEX idx_user_category (user_id, category_id);
+    END IF;
+END$$
+DELIMITER ;
+CALL migrate_agent_sessions_category();
+DROP PROCEDURE IF EXISTS migrate_agent_sessions_category;
