@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight, BadgeCheck, Crown } from 'lucide-react'
 import schoolsData from '../data/schools.json'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
+import { usePostDetail, usePostStatus, usePostComments, useInvalidatePosts } from '../hooks/queries'
+import { useTogglePostLike, useTogglePostStar, useCreateComment, useDeleteComment, useToggleCommentLike, useRecordDownload } from '../hooks/mutations'
 
 type PostType = 'resource' | 'discussion' | 'note'
 
@@ -127,14 +129,35 @@ export default function PostDetailPage() {
 
   const school = schoolsData.find((s) => s.id === schoolId)
 
-  const [post, setPost] = useState<BackendPost | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [isStarred, setIsStarred] = useState(false)
-  const [isLiked, setIsLiked] = useState(false)
-  const [starCount, setStarCount] = useState(0)
-  const [likeCount, setLikeCount] = useState(0)
-  const [toggling, setToggling] = useState(false)
-  const [comments, setComments] = useState<CommentItem[]>([])
+  const { data: postData, isLoading: loading } = usePostDetail(postId || '')
+  const { data: postStatus } = usePostStatus(postId || '')
+  const { data: rawComments = [] } = usePostComments(postId || '')
+
+  const comments: CommentItem[] = rawComments.map(c => ({
+    ...c,
+    liked: c.isLiked,
+    isAuthor: user?.id === c.userId,
+  }))
+
+  const post: BackendPost | null = postData ? {
+    ...postData,
+    isCreator: postData.authorRole === 'CREATOR' || postData.authorRole === 'ADMIN' || (postData.authorLevel && postData.authorLevel !== 'NONE')
+  } : null
+
+  const isStarred = postStatus?.starred ?? false
+  const isLiked = postStatus?.liked ?? false
+  const starCount = post?.starCount ?? 0
+  const likeCount = post?.likeCount ?? 0
+
+  const invalidatePosts = useInvalidatePosts()
+
+  const toggleLike = useTogglePostLike()
+  const toggleStar = useTogglePostStar()
+  const createComment = useCreateComment()
+  const deleteComment = useDeleteComment()
+  const toggleCommentLike = useToggleCommentLike()
+  const recordDownload = useRecordDownload()
+
   const [newComment, setNewComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
   const [replyTo, setReplyTo] = useState<CommentItem | null>(null)
@@ -143,54 +166,6 @@ export default function PostDetailPage() {
   const [editContent, setEditContent] = useState('')
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null)
   const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null)
-
-  const fetchPost = useCallback(async () => {
-    if (!postId) return
-    setLoading(true)
-    try {
-      const res = await postApi.getDetail(postId)
-      const p: BackendPost = {
-        ...res.data,
-        isCreator: res.data.authorRole === 'CREATOR' || res.data.authorRole === 'ADMIN' || (res.data.authorLevel && res.data.authorLevel !== 'NONE')
-      }
-      setPost(p)
-      setStarCount(p.starCount || 0)
-      setLikeCount(p.likeCount || 0)
-
-      if (isAuthenticated) {
-        try {
-          const statusRes = await postApi.getStatus(postId)
-          setIsStarred(statusRes.data.starred)
-          setIsLiked(statusRes.data.liked)
-        } catch {
-          setIsStarred(false)
-          setIsLiked(false)
-        }
-      }
-    } catch (err) {
-      toast.error((err as Error).message || '加载帖子失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [postId, isAuthenticated])
-
-  useEffect(() => {
-    fetchPost()
-  }, [fetchPost])
-
-  const fetchComments = useCallback(async () => {
-    if (!postId) return
-    try {
-      const res = await postApi.getComments(postId)
-      setComments(res.data || [])
-    } catch {
-      // ignore
-    }
-  }, [postId])
-
-  useEffect(() => {
-    fetchComments()
-  }, [fetchComments])
 
   useEffect(() => {
     if (comments.length === 0) return
@@ -220,26 +195,19 @@ export default function PostDetailPage() {
     }
     setSubmittingComment(true)
     try {
-      // For nested replies: parentId is always the root comment's id
-      // replyToUserId is the actual user being replied to
       let parentId = replyTo?.id
       let replyToUserId = replyTo?.userId
-      // If replying to a reply (not a root comment), use the root comment's parentId
       if (replyTo?.parentId) {
         parentId = replyTo.parentId
       }
-      const res = await postApi.createComment(
+      await createComment.mutateAsync({
         postId,
-        newComment.trim(),
+        content: newComment.trim(),
         parentId,
         replyToUserId,
-      )
-      setComments((prev) => [...prev, res.data])
+      })
       setNewComment('')
       setReplyTo(null)
-      if (post) {
-        setPost({ ...post, commentCount: post.commentCount + 1 })
-      }
     } catch (err) {
       toast.error((err as Error).message || '评论失败')
     } finally {
@@ -254,11 +222,7 @@ export default function PostDetailPage() {
       onConfirm: async () => {
         setConfirmDialog(null)
         try {
-          await postApi.deleteComment(commentId)
-          setComments((prev) => prev.filter((c) => c.id !== commentId))
-          if (post) {
-            setPost({ ...post, commentCount: Math.max(0, post.commentCount - 1) })
-          }
+          await deleteComment.mutateAsync({ commentId, postId: postId! })
           toast.success('删除成功')
         } catch (err) {
           toast.error((err as Error).message || '删除失败')
@@ -272,35 +236,7 @@ export default function PostDetailPage() {
       toast.warning('请先登录')
       return
     }
-    // Optimistic update
-    setComments((prev) =>
-      prev.map((c) =>
-        c.id === commentId
-          ? {
-              ...c,
-              liked: !c.liked,
-              likeCount: c.liked ? c.likeCount - 1 : c.likeCount + 1,
-            }
-          : c,
-      ),
-    )
-    try {
-      await postApi.toggleCommentLike(commentId)
-    } catch {
-      // Rollback
-      setComments((prev) =>
-        prev.map((c) =>
-          c.id === commentId
-            ? {
-                ...c,
-                liked: !c.liked,
-                likeCount: c.liked ? c.likeCount - 1 : c.likeCount + 1,
-              }
-            : c,
-        ),
-      )
-      toast.error('操作失败')
-    }
+    toggleCommentLike.mutate({ commentId, postId: postId! })
   }
 
   // ================================================================
@@ -311,22 +247,8 @@ export default function PostDetailPage() {
       toast.warning('请先登录')
       return
     }
-    if (!postId || toggling) return
-    setToggling(true)
-    const prevStarred = isStarred
-    setIsStarred(!prevStarred)
-    setStarCount(prevStarred ? starCount - 1 : starCount + 1)
-    try {
-      const res = await postApi.toggleStar(postId)
-      setIsStarred(res.data)
-      setStarCount(res.data ? starCount + 1 : starCount - 1)
-    } catch {
-      setIsStarred(prevStarred)
-      setStarCount(prevStarred ? starCount + 1 : starCount - 1)
-      toast.error('操作失败')
-    } finally {
-      setToggling(false)
-    }
+    if (!postId) return
+    toggleStar.mutate(postId)
   }
 
   const handleLike = async () => {
@@ -334,22 +256,8 @@ export default function PostDetailPage() {
       toast.warning('请先登录')
       return
     }
-    if (!postId || toggling) return
-    setToggling(true)
-    const prevLiked = isLiked
-    setIsLiked(!prevLiked)
-    setLikeCount(prevLiked ? likeCount - 1 : likeCount + 1)
-    try {
-      const res = await postApi.toggleLike(postId)
-      setIsLiked(res.data)
-      setLikeCount(res.data ? likeCount + 1 : likeCount - 1)
-    } catch {
-      setIsLiked(prevLiked)
-      setLikeCount(prevLiked ? likeCount + 1 : likeCount - 1)
-      toast.error('操作失败')
-    } finally {
-      setToggling(false)
-    }
+    if (!postId) return
+    toggleLike.mutate(postId)
   }
 
   const handleDeletePost = async () => {
@@ -361,6 +269,7 @@ export default function PostDetailPage() {
         setConfirmDialog(null)
         try {
           await postApi.delete(postId)
+          invalidatePosts.invalidateLists()
           toast.success('删除成功')
           navigate(-1)
         } catch (err) {
@@ -381,7 +290,7 @@ export default function PostDetailPage() {
     if (!postId || !editTitle.trim()) return
     try {
       await postApi.edit(postId, { title: editTitle.trim(), content: editContent })
-      setPost((prev) => prev ? { ...prev, title: editTitle.trim(), content: editContent } : prev)
+      invalidatePosts.invalidatePost(postId)
       setShowEditModal(false)
       toast.success('修改成功')
     } catch (err) {
@@ -522,7 +431,7 @@ export default function PostDetailPage() {
                         document.body.removeChild(a)
                         URL.revokeObjectURL(url)
                         toast.success('下载成功')
-                        if (postId) postApi.recordDownload(postId).catch(() => {})
+                        if (postId) recordDownload.mutate(postId)
                       } catch (err) {
                         toast.error((err as Error).message || '下载失败')
                       }
@@ -550,16 +459,14 @@ export default function PostDetailPage() {
             </span>
             <button
               onClick={handleStar}
-              disabled={toggling}
-              className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${isStarred ? 'text-orange-500' : 'hover:text-orange-500'}`}
+              className={`flex items-center gap-1.5 text-xs transition-colors ${isStarred ? 'text-orange-500' : 'hover:text-orange-500'}`}
             >
               <Star className={`w-4 h-4 ${isStarred ? 'fill-current' : ''}`} />
               {formatNumber(starCount)} 收藏
             </button>
             <button
               onClick={handleLike}
-              disabled={toggling}
-              className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
+              className={`flex items-center gap-1.5 text-xs transition-colors ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
             >
               <ThumbsUp className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
               {formatNumber(likeCount)} 点赞

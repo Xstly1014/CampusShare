@@ -6,8 +6,9 @@ import {
   Search
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
-import { categoryApi, userApi, Category } from '../services/api'
+import { userApi, Category } from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { useCategories } from '../hooks/queries'
 import schools from '../data/schools.json'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -56,20 +57,10 @@ interface UserResult {
 
 export default function HomePage() {
   const [searchKeyword, setSearchKeyword] = useState('')
-  const [categories, setCategories] = useState<Category[]>([])
   const [userResults, setUserResults] = useState<UserResult[]>([])
   const { user } = useAuth()
   const navigate = useNavigate()
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const catsRes = await categoryApi.getAll()
-        setCategories(catsRes.data || [])
-      } catch {}
-    }
-    fetchData()
-  }, [])
+  const { data: categories = [] } = useCategories()
 
   useEffect(() => {
     if (!searchKeyword.trim()) {

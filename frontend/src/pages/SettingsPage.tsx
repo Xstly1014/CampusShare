@@ -1,10 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, User, Mail, Phone, Lock, Eye, Bell, Globe, Send } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { toast } from '../stores/toastStore'
 import { userApi, authApi } from '../services/api'
 import type { PrivacySettings, NotificationSettings } from '../services/user'
+import { useCurrentUser, useInvalidateUsers } from '../hooks/queries'
+import { useUpdatePrivacy, useUpdateNotificationSettings } from '../hooks/mutations'
 
 type SettingsType = 'account' | 'privacy' | 'general' | 'help'
 
@@ -58,12 +60,16 @@ export default function SettingsPage() {
   const settingsType = (type as SettingsType) || 'account'
   const config = configMap[settingsType]
 
+  const { data: currentUser } = useCurrentUser()
+  const invalidateUsers = useInvalidateUsers()
+  const updatePrivacy = useUpdatePrivacy()
+  const updateNotificationSettings = useUpdateNotificationSettings()
+
   const [feedback, setFeedback] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   // Account security state
-  const [currentUser, setCurrentUser] = useState(user)
   const [modal, setModal] = useState<'password' | 'email' | 'phone' | null>(null)
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -77,98 +83,44 @@ export default function SettingsPage() {
   const [sendingCode, setSendingCode] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Privacy settings state
-  const [privacy, setPrivacy] = useState<PrivacySettings | null>(null)
-  const [privacyLoading, setPrivacyLoading] = useState(false)
-  const [privacySaving, setPrivacySaving] = useState(false)
+  // Privacy settings state - derived from currentUser
+  const privacy: PrivacySettings | null = currentUser ? {
+    publicPosts: currentUser.publicPosts ?? true,
+    publicStars: currentUser.publicStars ?? false,
+    publicLikes: currentUser.publicLikes ?? false,
+    publicHistory: currentUser.publicHistory ?? false,
+    searchable: currentUser.searchable ?? true,
+  } : null
 
-  // Notification settings state
-  const [notif, setNotif] = useState<NotificationSettings | null>(null)
-  const [notifLoading, setNotifLoading] = useState(false)
-  const [notifSaving, setNotifSaving] = useState(false)
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await userApi.getMe()
-        setCurrentUser(res.data)
-      } catch { /* ignore */ }
-    }
-    if (settingsType === 'account') fetchUser()
-  }, [settingsType])
-
-  useEffect(() => {
-    const fetchPrivacy = async () => {
-      setPrivacyLoading(true)
-      try {
-        const res = await userApi.getMe()
-        const data = res.data
-        setPrivacy({
-          publicPosts: data.publicPosts ?? true,
-          publicStars: data.publicStars ?? false,
-          publicLikes: data.publicLikes ?? false,
-          publicHistory: data.publicHistory ?? false,
-          searchable: data.searchable ?? true,
-        })
-      } catch {
-        /* ignore */
-      } finally {
-        setPrivacyLoading(false)
-      }
-    }
-    if (settingsType === 'privacy') fetchPrivacy()
-  }, [settingsType])
+  // Notification settings state - derived from currentUser
+  const notif: NotificationSettings | null = currentUser ? {
+    notifyMessages: currentUser.notifyMessages ?? true,
+    notifyReplies: currentUser.notifyReplies ?? true,
+    notifyLikes: currentUser.notifyLikes ?? false,
+  } : null
 
   const handlePrivacyToggle = async (field: keyof PrivacySettings, value: boolean) => {
-    if (!privacy) return
-    const prev = privacy
-    setPrivacy({ ...privacy, [field]: value })
-    setPrivacySaving(true)
-    try {
-      await userApi.updatePrivacy({ [field]: value })
-      toast.success('设置已更新')
-    } catch {
-      setPrivacy(prev)
-      toast.error('设置失败')
-    } finally {
-      setPrivacySaving(false)
-    }
+    updatePrivacy.mutate({ [field]: value } as Partial<PrivacySettings>, {
+      onSuccess: () => {
+        toast.success('设置已更新')
+        invalidateUsers.invalidateCurrentUser()
+      },
+      onError: () => {
+        toast.error('设置失败')
+      },
+    })
   }
 
-  useEffect(() => {
-    const fetchNotif = async () => {
-      setNotifLoading(true)
-      try {
-        const res = await userApi.getMe()
-        const data = res.data
-        setNotif({
-          notifyMessages: data.notifyMessages ?? true,
-          notifyReplies: data.notifyReplies ?? true,
-          notifyLikes: data.notifyLikes ?? false,
-        })
-      } catch {
-        /* ignore */
-      } finally {
-        setNotifLoading(false)
-      }
-    }
-    if (settingsType === 'general') fetchNotif()
-  }, [settingsType])
-
   const handleNotifToggle = async (field: keyof NotificationSettings, value: boolean) => {
-    if (!notif) return
-    const prev = notif
-    setNotif({ ...notif, [field]: value })
-    setNotifSaving(true)
-    try {
-      await userApi.updateNotificationSettings({ [field]: value })
-      toast.success('设置已更新')
-    } catch {
-      setNotif(prev)
-      toast.error('设置失败')
-    } finally {
-      setNotifSaving(false)
-    }
+    updateNotificationSettings.mutate({ [field]: value } as Partial<NotificationSettings>, {
+      onSuccess: () => {
+        toast.success('设置已更新')
+        invalidateUsers.invalidateCurrentUser()
+      },
+      onError: () => {
+        toast.error('设置失败')
+      },
+    })
   }
 
   const handleSendCode = async (account: string, type: 'phone' | 'email') => {
@@ -225,8 +177,8 @@ export default function SettingsPage() {
         newAccount,
         newVerifyCode,
       })
-      setCurrentUser(res.data)
       updateLocalStorageUser(res.data)
+      invalidateUsers.invalidateCurrentUser()
       toast.success('邮箱' + (isRebind ? '换绑' : '绑定') + '成功')
       closeModal()
     } catch (err) {
@@ -250,8 +202,8 @@ export default function SettingsPage() {
         newAccount,
         newVerifyCode,
       })
-      setCurrentUser(res.data)
       updateLocalStorageUser(res.data)
+      invalidateUsers.invalidateCurrentUser()
       toast.success('手机号' + (isRebind ? '换绑' : '绑定') + '成功')
       closeModal()
     } catch (err) {
@@ -443,20 +395,18 @@ export default function SettingsPage() {
         {settingsType === 'privacy' && (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-medium text-gray-400">隐私设置</p></div>
-            {privacyLoading ? (
+            {!privacy ? (
               <div className="text-center py-8">
                 <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
               </div>
-            ) : privacy ? (
-              <>
-                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的帖子" checked={privacy.publicPosts} onChange={(v) => handlePrivacyToggle('publicPosts', v)} disabled={privacySaving} />
-                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的收藏" checked={privacy.publicStars} onChange={(v) => handlePrivacyToggle('publicStars', v)} disabled={privacySaving} />
-                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的点赞" checked={privacy.publicLikes} onChange={(v) => handlePrivacyToggle('publicLikes', v)} disabled={privacySaving} />
-                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开浏览历史" checked={privacy.publicHistory} onChange={(v) => handlePrivacyToggle('publicHistory', v)} disabled={privacySaving} />
-                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="允许他人搜索到我" checked={privacy.searchable} onChange={(v) => handlePrivacyToggle('searchable', v)} disabled={privacySaving} />
-              </>
             ) : (
-              <p className="text-center text-sm text-gray-400 py-8">加载失败</p>
+              <>
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的帖子" checked={privacy.publicPosts} onChange={(v) => handlePrivacyToggle('publicPosts', v)} disabled={updatePrivacy.isPending} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的收藏" checked={privacy.publicStars} onChange={(v) => handlePrivacyToggle('publicStars', v)} disabled={updatePrivacy.isPending} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开我的点赞" checked={privacy.publicLikes} onChange={(v) => handlePrivacyToggle('publicLikes', v)} disabled={updatePrivacy.isPending} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="公开浏览历史" checked={privacy.publicHistory} onChange={(v) => handlePrivacyToggle('publicHistory', v)} disabled={updatePrivacy.isPending} />
+                <ToggleRow icon={<Eye className="w-4 h-4 text-gray-400" />} label="允许他人搜索到我" checked={privacy.searchable} onChange={(v) => handlePrivacyToggle('searchable', v)} disabled={updatePrivacy.isPending} />
+              </>
             )}
           </div>
         )}
@@ -464,18 +414,16 @@ export default function SettingsPage() {
         {settingsType === 'general' && (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50"><p className="text-xs font-medium text-gray-400">通用设置</p></div>
-            {notifLoading ? (
+            {!notif ? (
               <div className="text-center py-8">
                 <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
               </div>
-            ) : notif ? (
-              <>
-                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="新消息通知" checked={notif.notifyMessages} onChange={(v) => handleNotifToggle('notifyMessages', v)} disabled={notifSaving} />
-                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="帖子回复通知" checked={notif.notifyReplies} onChange={(v) => handleNotifToggle('notifyReplies', v)} disabled={notifSaving} />
-                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="点赞收藏通知" checked={notif.notifyLikes} onChange={(v) => handleNotifToggle('notifyLikes', v)} disabled={notifSaving} />
-              </>
             ) : (
-              <p className="text-center text-sm text-gray-400 py-8">加载失败</p>
+              <>
+                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="新消息通知" checked={notif.notifyMessages} onChange={(v) => handleNotifToggle('notifyMessages', v)} disabled={updateNotificationSettings.isPending} />
+                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="帖子回复通知" checked={notif.notifyReplies} onChange={(v) => handleNotifToggle('notifyReplies', v)} disabled={updateNotificationSettings.isPending} />
+                <ToggleRow icon={<Bell className="w-4 h-4 text-gray-400" />} label="点赞收藏通知" checked={notif.notifyLikes} onChange={(v) => handleNotifToggle('notifyLikes', v)} disabled={updateNotificationSettings.isPending} />
+              </>
             )}
             <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-50">
               <Globe className="w-4 h-4 text-gray-400" />
