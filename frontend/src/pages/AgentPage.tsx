@@ -48,7 +48,9 @@ export default function AgentPage() {
   const streamContentRef = useRef<string>('')
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, streaming])
 
   const fetchSessions = useCallback(async () => {
@@ -365,7 +367,6 @@ export default function AgentPage() {
             <Send className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-xs text-gray-400 text-center pb-2">AI 回答仅供参考，请核实重要信息</p>
       </div>
 
       <NavBar />
