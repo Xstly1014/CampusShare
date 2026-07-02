@@ -4,7 +4,7 @@
 > 如果你对 RAG / MCP / Tool / Function Calling / 上下文工程 / 提示词工程 / 记忆系统等概念感到模糊，从这里开始。
 
 - **创建日期：** 2026-07-01
-- **当前阶段：** MVP Week 1（骨架已搭通，基础对话可用）
+- **当前阶段：** MVP Week 2（RAG 已接入，会话分类已完成，Markdown 渲染已上线）
 
 ---
 
@@ -42,13 +42,18 @@ flowchart TB
     subgraph AgentService["agent-service (端口 8083, WebFlux)"]
 
         subgraph ControllerLayer["控制器层"]
-            AC["AgentController<br/>/chat + /sessions CRUD"]
+            AC["AgentController<br/>/chat + /sessions + /categories CRUD"]
+            IAC["InternalAgentController<br/>/internal/agent/* 内部 API"]
         end
 
         subgraph ServiceLayer["服务层"]
-            ChatService["AgentChatService<br/>上下文构建 + 流式编排"]
+            ChatService["AgentChatService<br/>上下文构建 + 流式编排 + RAG 注入"]
             SessionService["AgentSessionService<br/>会话生命周期"]
+            CategoryService["AgentSessionCategoryService<br/>会话分类 CRUD"]
             RateLimiter["AgentRateLimiter<br/>Redis 限流 10次/分"]
+            RetrievalService["RetrievalService<br/>向量+关键词 RRF 融合"]
+            KnowledgeService["KnowledgeIngestionService<br/>知识库分块 + 向量化"]
+            PostVectorService["PostVectorService<br/>帖子向量同步"]
         end
 
         subgraph CoreEngine["核心引擎（规划中）"]
@@ -117,10 +122,13 @@ flowchart TB
 
     AC --> ChatService
     AC --> SessionService
+    AC --> CategoryService
     AC --> RateLimiter
+    IAC --> KnowledgeService
+    IAC --> PostVectorService
 
+    ChatService --> RetrievalService
     ChatService --> CoreEngine
-    CoreEngine --> RetrievalLayer
     CoreEngine --> ToolLayer
     ChatService --> ContextLayer
     ChatService --> MemoryLayer
@@ -128,7 +136,7 @@ flowchart TB
     ChatService --> ResilienceLayer
     CoreEngine --> SafetyLayer
 
-    RetrievalLayer --> EmbeddingClient
+    RetrievalService --> EmbeddingClient
     ToolLayer --> FeignClients
     FeignClients --> UserService
     FeignClients --> PostService
@@ -137,6 +145,8 @@ flowchart TB
     DeepSeekClient --> DeepSeekAPI
     EmbeddingClient --> BGEService
 
+    KnowledgeService --> PostgreSQL
+    PostVectorService --> PostgreSQL
     AgentService --> MySQL
     AgentService --> PostgreSQL
     AgentService --> Redis
@@ -146,29 +156,33 @@ flowchart TB
     style AgentService fill:#d4edda,stroke:#28a745
     style GW fill:#d4edda,stroke:#28a745
     style AC fill:#d4edda,stroke:#28a745
+    style IAC fill:#d4edda,stroke:#28a745
     style ChatService fill:#d4edda,stroke:#28a745
     style SessionService fill:#d4edda,stroke:#28a745
+    style CategoryService fill:#d4edda,stroke:#28a745
     style RateLimiter fill:#d4edda,stroke:#28a745
+    style RetrievalService fill:#d4edda,stroke:#28a745
+    style KnowledgeService fill:#d4edda,stroke:#28a745
+    style PostVectorService fill:#d4edda,stroke:#28a745
     style DeepSeekClient fill:#d4edda,stroke:#28a745
     style CircuitBreaker fill:#d4edda,stroke:#28a745
     style RetryHandler fill:#d4edda,stroke:#28a745
     style TokenCounter fill:#d4edda,stroke:#28a745
     style MySQL fill:#d4edda,stroke:#28a745
+    style PostgreSQL fill:#d4edda,stroke:#28a745
     style Redis fill:#d4edda,stroke:#28a745
     style DeepSeekAPI fill:#d4edda,stroke:#28a745
-
-    %% Schema 就绪
-    style PostgreSQL fill:#fff3cd,stroke:#ffc107
-    style PromptManager fill:#fff3cd,stroke:#ffc107
+    style BGEService fill:#d4edda,stroke:#28a745
+    style HybridRetrieval fill:#d4edda,stroke:#28a745
+    style EmbeddingClient fill:#d4edda,stroke:#28a745
+    style PromptManager fill:#d4edda,stroke:#28a745
 
     %% 规划中
     style IntentClassifier fill:#f8f9fa,stroke:#6c757d
     style QueryRewriter fill:#f8f9fa,stroke:#6c757d
     style Orchestrator fill:#f8f9fa,stroke:#6c757d
     style Reflector fill:#f8f9fa,stroke:#6c757d
-    style HybridRetrieval fill:#f8f9fa,stroke:#6c757d
     style Reranker fill:#f8f9fa,stroke:#6c757d
-    style EmbeddingClient fill:#f8f9fa,stroke:#6c757d
     style ToolRegistry fill:#f8f9fa,stroke:#6c757d
     style ToolExecutor fill:#f8f9fa,stroke:#6c757d
     style FeignClients fill:#f8f9fa,stroke:#6c757d
@@ -178,7 +192,6 @@ flowchart TB
     style LongTermMemory fill:#f8f9fa,stroke:#6c757d
     style InputGuard fill:#f8f9fa,stroke:#6c757d
     style OutputGuard fill:#f8f9fa,stroke:#6c757d
-    style BGEService fill:#f8f9fa,stroke:#6c757d
     style UserService fill:#d4edda,stroke:#28a745
     style PostService fill:#d4edda,stroke:#28a745
 ```
@@ -277,11 +290,11 @@ flowchart LR
 | **Tool / 工具** | Agent 可调用的具体能力，如搜索帖子、查询知识库 | 10 个工具：search_posts / get_post_detail / search_knowledge 等 | 未实现 |
 | **Skill / 技能** | 多个 Tool 的组合封装，实现更复杂的高层能力 | MVP 不引入，远期可考虑（如"搜索+总结+引用"封装为 Skill） | 未规划 |
 | **MCP** | Anthropic 提出的工具调用标准化协议，让工具可跨 Agent 复用 | 远期评估，MVP 不引入。当前用自研 ToolRegistry + Function Calling | 未规划 |
-| **RAG** | 检索增强生成：先检索相关知识，再让 LLM 基于检索结果回答 | 三路并行检索（向量+关键词+结构化）→ RRF 融合 → Reranker 精排 | 未实现 |
-| **Embedding** | 把文本转成向量，让计算机能算"语义相似度" | BGE-M3 模型，1024 维，部署为独立 bge-service (端口 8084) | 未实现 |
-| **向量数据库** | 专门存储和检索向量的数据库 | PG-Vector (PostgreSQL + pgvector 插件)，HNSW 索引 | Schema 就绪 |
-| **混合检索** | 多种检索方式并行，取长补短 | 向量(语义) + MySQL FULLTEXT(关键词) + SQL(结构化) 三路并行 | 未实现 |
-| **RRF** | Reciprocal Rank Fusion，多路检索结果的融合算法 | `score(d) = Σ 1/(k + rank_i(d))`，k=60 | 未实现 |
+| **RAG** | 检索增强生成：先检索相关知识，再让 LLM 基于检索结果回答 | 两路并行检索（知识库向量+关键词 + 帖子向量）→ RRF 融合 → 注入上下文 | ✅ 已实现 |
+| **Embedding** | 把文本转成向量，让计算机能算"语义相似度" | BGE-M3 模型，1024 维，SiliconFlow 云端 API | ✅ 已实现 |
+| **向量数据库** | 专门存储和检索向量的数据库 | PG-Vector (PostgreSQL + pgvector 插件)，HNSW 索引 | ✅ 已实现 |
+| **混合检索** | 多种检索方式并行，取长补短 | 向量(语义) + pg_trgm(关键词) 两路并行 + 帖子向量检索 | ✅ 已实现 |
+| **RRF** | Reciprocal Rank Fusion，多路检索结果的融合算法 | `score(d) = Σ 1/(k + rank_i(d))`，k=60 | ✅ 已实现 |
 | **Reranker** | 对检索结果做二次精排，提升 Top-K 质量 | bge-reranker-v2-m3，进阶阶段引入 | 未实现 |
 | **上下文工程** | 决定给 LLM "看什么"——在有限的 token 预算内放最有价值的信息 | L0-L5 六层分层装载，token 预算分配 | 未实现 |
 | **提示词工程** | 决定对 LLM "怎么说"——设计 System Prompt、Few-shot、输出格式 | L1-L4 四层分层，版本管理，意图分类+改写合并调用 | 部分（PromptConstants 已有基础版） |
@@ -390,7 +403,7 @@ sequenceDiagram
     Chat->>DB: 更新 Session (messageCount, totalTokens, lastMessageAt)
 ```
 
-> **注意：** 上图展示的是**完整目标流程**。当前 MVP 骨架只实现了步骤 1、6、7——没有意图分类、查询改写、RAG 检索、ReAct 循环。当前流程是：用户消息 → 直接发给 DeepSeek → 流式返回 → 持久化。
+> **注意：** 上图展示的是**完整目标流程**。当前已实现步骤 1、4（RAG 检索）、6、7——意图分类、查询改写、ReAct 循环尚未实现。当前流程是：用户消息 → RAG 检索（知识库向量+关键词 + 帖子向量）→ 检索结果注入上下文 → DeepSeek 流式生成 → 持久化。
 
 ---
 
@@ -448,12 +461,12 @@ flowchart TD
 
 | 组件 | 作用 | 技术选型 | 部署方式 | 状态 |
 |------|------|----------|----------|------|
-| Embedding 模型 | 文本 → 1024维向量 | BGE-M3 (智源/BAAI) | 独立 bge-service 容器 (TEI 镜像, 端口 8084) | 未实现 |
-| 向量数据库 | 存储和检索向量 | PG-Vector (PostgreSQL 16 + pgvector) | agent-postgres 容器 (端口 5432) | Schema 就绪 |
-| 向量索引 | 加速近似最近邻搜索 | HNSW (m=16, ef_construction=64, ef_search=40) | PG-Vector 内建 | Schema 就绪 |
-| 关键词检索 | 精确匹配关键词 | MySQL FULLTEXT (MVP) → Elasticsearch (远期) | MySQL 容器 | 未实现 |
-| 结构化检索 | 按分类/学校/类型精确过滤 | SQL WHERE + 计数加权 | MySQL 容器 | 未实现 |
-| RRF 融合 | 多路结果合并 | `score = Σ 1/(60 + rank)` | agent-service 内 | 未实现 |
+| Embedding 模型 | 文本 → 1024维向量 | BGE-M3 (智源/BAAI), SiliconFlow API | SiliconFlow 云端 API | ✅ 已接入 |
+| 向量数据库 | 存储和检索向量 | PG-Vector (PostgreSQL 16 + pgvector) | agent-postgres 容器 (端口 5432) | ✅ 已接入 |
+| 向量索引 | 加速近似最近邻搜索 | HNSW (m=16, ef_construction=64, ef_search=40) | PG-Vector 内建 | ✅ 已使用 |
+| 关键词检索 | 精确匹配关键词 | pg_trgm + GIN 索引 (MVP) → Elasticsearch (远期) | PostgreSQL 容器 | ✅ 已使用 (pg_trgm) |
+| 结构化检索 | 按分类/学校/类型精确过滤 | SQL WHERE + 计数加权 | PostgreSQL 容器 | 未实现 |
+| RRF 融合 | 多路结果合并 | `score = Σ 1/(60 + rank)` | agent-service 内 | ✅ 已使用 |
 | Reranker | 二次精排 | bge-reranker-v2-m3 | bge-service 容器 | 未实现 (进阶) |
 
 ---
@@ -694,10 +707,10 @@ sequenceDiagram
 | `session` | `{sessionId}` | 会话创建/确认 | ✅ 已实现 |
 | `status` | `{stage: "retrieving"}` | 阶段状态更新 | 未实现 |
 | `tool` | `{name, status, summary}` | 工具调用开始/结束 | 未实现 |
-| `delta` | `{content: "token"}` | LLM 逐 token 输出 | ✅ 已实现 |
+| `delta` | 纯文本 token | LLM 逐 token 输出 | ✅ 已实现 |
 | `refs` | `[{n, type, id, title}]` | 引用列表 | 未实现 |
 | `clarify` | `{message, options}` | 需要用户澄清 | 未实现 |
-| `error` | `{message, partial_answer}` | 错误（含已生成部分） | ✅ 已实现 |
+| `error` | `{message}` | 错误 | ✅ 已实现 |
 | `done` | `[DONE]` | 流结束 | ✅ 已实现 |
 
 ---
@@ -791,15 +804,15 @@ flowchart LR
 | 主生成模型 | DeepSeek-V3 | deepseek-v4-flash | 意图/改写/ReAct/答案生成 | ✅ 已接入 | — |
 | 推理反思模型 | DeepSeek-R1 | deepseek-reasoner | 离线深度反思 | 未实现 | 进阶阶段 |
 | 兜底模型 | 豆包 doubao-pro | — | 主模型连续失败时切换 | 未实现 | 进阶阶段 |
-| Embedding 模型 | BGE-M3 | BAAI/bge-m3 | 文本→1024维向量 | 未实现 | Week 2 |
+| Embedding 模型 | BGE-M3 | BAAI/bge-m3 | 文本→1024维向量 | ✅ 已接入 (SiliconFlow) | 远期可本地 TEI |
 | Reranker 模型 | bge-reranker-v2-m3 | — | 检索结果精排 | 未实现 | 进阶阶段 |
 
 ### 10.2 数据存储
 
 | 存储 | 技术 | 用途 | 端口 | 状态 |
 |------|------|------|------|------|
-| MySQL | 8.0 | 业务表（会话/轮次/记忆/知识库/工具注册） | 3306 | ✅ 已接入 |
-| PostgreSQL | 16 + pgvector | 向量存储（帖子向量/知识向量） | 5432 | Schema 就绪 |
+| MySQL | 8.0 | 业务表（会话/轮次/记忆/知识库/工具注册/会话分类） | 3306 | ✅ 已接入 |
+| PostgreSQL | 16 + pgvector | 向量存储（帖子向量/知识向量） | 5432 | ✅ 已接入 |
 | Redis | 7 | 限流/短期记忆/SSE缓存/工具缓存 | 6379 | ✅ 已接入 |
 
 ### 10.3 框架与中间件
@@ -815,7 +828,7 @@ flowchart LR
 | 监控 | Micrometer + Prometheus | 指标采集 | ✅ 已使用 | — |
 | 链路追踪 | OpenTelemetry | 分布式追踪 | ✅ 已使用 | → Tempo |
 | 限流 | Redis INCR | 用户级限流 | ✅ 已使用 | — |
-| 向量检索 | pgvector 0.1.6 | PostgreSQL 向量操作 | 依赖已引入 | → Milvus (远期) |
+| 向量检索 | pgvector 0.1.6 | PostgreSQL 向量操作 + HNSW 索引 | ✅ 已使用 | → Milvus (远期) |
 
 ### 10.4 前端
 
@@ -824,7 +837,9 @@ flowchart LR
 | React + TypeScript | 聊天 UI | ✅ 已使用 |
 | fetch + ReadableStream | SSE 客户端 | ✅ 已使用 |
 | Zustand | 状态管理（规划） | 未实现 |
-| Markdown 渲染 | AI 回复格式化 | 未实现 |
+| Markdown 渲染 (react-markdown) | AI 回复格式化 | ✅ 已使用 |
+| SwipeToDelete 组件 | 左滑删除/移动会话 | ✅ 已使用 |
+| 会话分类管理 | 文件夹分组管理会话 | ✅ 已使用 |
 | 引用角标 | [1] [2] 可点击引用 | 未实现 |
 
 ---
@@ -837,7 +852,7 @@ flowchart LR
 flowchart LR
     subgraph MVP["MVP 阶段 (4-6 周)"]
         M1["Week 1<br/>后端骨架 + DB<br/>✅ 已完成"]
-        M2["Week 2<br/>知识库 + 向量索引<br/>BGE-M3 部署"]
+        M2["Week 2<br/>RAG + 会话分类<br/>Markdown 渲染<br/>✅ 已完成"]
         M3["Week 3<br/>检索 + 意图<br/>Agent ReAct 核心"]
         M4["Week 4<br/>SSE 流式<br/>前端联调"]
         M5["Week 5<br/>安全护栏<br/>监控看板"]
@@ -868,7 +883,7 @@ flowchart LR
     进阶 -->|验收: P95≤8s, 采纳率≥60%| 远期
 
     style M1 fill:#d4edda,stroke:#28a745
-    style M2 fill:#fff3cd,stroke:#ffc107
+    style M2 fill:#d4edda,stroke:#28a745
     style M3 fill:#f8f9fa,stroke:#6c757d
     style M4 fill:#f8f9fa,stroke:#6c757d
     style M5 fill:#f8f9fa,stroke:#6c757d
@@ -902,7 +917,7 @@ flowchart TB
             UserService["user-service<br/>:8081"]
             PostService["post-service<br/>:8082"]
             AgentService["agent-service<br/>:8083<br/>WebFlux, 1536m"]
-            BGEService["bge-service<br/>:8084 (规划中)<br/>TEI 镜像, 2GB+"]
+            BGEService["BGE Embedding<br/>SiliconFlow 云端 (当前)<br/>→ TEI 本地 (远期)"]
         end
 
         subgraph 数据基础设施["数据基础设施"]
@@ -942,8 +957,8 @@ flowchart TB
     Tempo --> Grafana
 
     style AgentService fill:#d4edda,stroke:#28a745,stroke-width:2px
-    style BGEService fill:#f8f9fa,stroke:#6c757d,stroke-dasharray: 5 5
-    style PostgreSQL3 fill:#fff3cd,stroke:#ffc107
+    style BGEService fill:#d4edda,stroke:#28a745
+    style PostgreSQL3 fill:#d4edda,stroke:#28a745
 ```
 
 ### 容器资源分配
@@ -952,7 +967,7 @@ flowchart TB
 |------|----------|-----|-------------|----------|
 | agent-service | 1536m | — | 90s | DNS: 8.8.8.8, 114.114.114.114 |
 | agent-postgres | — | — | 10s | pgvector/pg16 镜像 |
-| bge-service (规划) | 2GB+ | — | 60s | TEI 镜像, GPU 可选 |
+| BGE Embedding | 云端 (SiliconFlow) | — | — | 当前用云端 API，远期可本地部署 TEI |
 | mysql | — | — | 30s | 共享实例 |
 | redis | — | — | 10s | — |
 
@@ -1002,33 +1017,64 @@ flowchart TB
 
 ---
 
-## 14. 当前实现状态总览（截至 2026-07-01）
+## 14. 当前实现状态总览（截至 2026-07-02）
 
-### ✅ 已实现（MVP Week 1）
+### ✅ 已实现（MVP Week 1 + Week 2）
+
+#### 对话与会话
 
 | 能力 | 实现文件 | 说明 |
 |------|----------|------|
-| SSE 流式对话 | AgentController + AgentChatService + DeepSeekClient | 用户发消息 → DeepSeek 流式返回 → 前端逐字渲染 |
-| 会话管理 | AgentSessionService + AgentController | 创建/查询/列表/归档/删除/历史轮次 |
-| 多轮上下文 | AgentChatService.buildMessages | 自动携带最近 10 轮历史 |
-| LLM 弹性 | ResilienceConfig + DeepSeekClient | 熔断(50%→30s) + 重试(3次) + 连接池 |
-| 用户限流 | AgentRateLimiter | Redis 固定窗口 10 次/分/用户 |
-| Token 计量 | AgentChatService (jtokkit) | prompt/completion/total tokens |
-| 鉴权 | AgentController (jwtUtils) | JWT 解析 + 会话归属校验 |
-| 前端 UI | AgentPage.tsx + agent.ts | 聊天界面 + 流式渲染 + 历史会话 |
+| SSE 流式对话 | `AgentController` + `AgentChatService` + `DeepSeekClient` | 用户发消息 → RAG 检索 → DeepSeek 流式返回 → 前端逐字渲染 |
+| 会话管理 | `AgentSessionService` + `AgentController` | 创建/查询/列表/归档/删除/历史轮次 |
+| 多轮上下文 | `AgentChatService.buildMessages` | 自动携带最近 10 轮历史 |
+| LLM 弹性 | `ResilienceConfig` + `DeepSeekClient` | 熔断(50%→30s) + 重试(3次指数退避) + 连接池 |
+| 用户限流 | `AgentRateLimiter` | Redis 固定窗口 10 次/分/用户 |
+| Token 计量 | `AgentChatService` (jtokkit) | prompt/completion/total tokens |
+| 鉴权 | `AgentController` (jwtUtils) | JWT 解析 + 会话归属校验 |
+
+#### 会话分类管理
+
+| 能力 | 实现文件 | 说明 |
+|------|----------|------|
+| 分类 CRUD | `AgentSessionCategoryService` + `AgentController` | 创建/重命名/删除分类，删除时自动移出会话 |
+| 会话移动 | `AgentSessionService` + 左滑操作 | 左滑"分类"按钮移动会话到分类，可移出分类 (categoryId = null) |
+| 前端分组展示 | `AgentPage.tsx` `useMemo` 分组 | 按 categoryId 客户端分组，文件夹折叠展开 |
+| 左滑交互 | `SwipeToDelete.tsx` | Pointer Events 手势系统，支持"分类"+"删除"双按钮，受控 openSwipeId |
+
+#### RAG 检索
+
+| 能力 | 实现文件 | 说明 |
+|------|----------|------|
+| 向量检索 | `RetrievalService` + `post_vectors` / `knowledge_vectors` | PG-Vector HNSW 索引，余弦距离，top-10 |
+| 关键词检索 | `RetrievalService` + pg_trgm GIN 索引 | 知识库标题+内容的 trgm 相似度检索，top-10 |
+| RRF 融合 | `RetrievalService.reciprocalRankFusion` | 三路结果（帖子向量 + 知识向量 + 知识关键词）RRF 融合，k=60，top-5 |
+| Embedding | `EmbeddingService` + SiliconFlow BGE-M3 API | 1024 维向量，批量向量化 |
+| 知识库向量化 | `KnowledgeIngestionService` + `KnowledgeScheduler` | 定时同步 FAQ/教程，分块+向量化写入 knowledge_vectors |
+| 帖子向量化 | `PostVectorService` + `PostVectorScheduler` | 定时同步新帖，向量化写入 post_vectors |
+| 内部 API | `InternalAgentController` | `/internal/agent/knowledge/*` + `/internal/agent/posts/*` 内部同步接口 |
+
+#### 前端 UI
+
+| 能力 | 实现文件 | 说明 |
+|------|----------|------|
+| 聊天界面 | `AgentPage.tsx` + `agent.ts` | 侧边栏会话列表 + 主区对话 + 输入框 |
+| Markdown 渲染 | `AgentPage.tsx` + `react-markdown` | AI 消息支持 Markdown（标题/粗体/列表/代码块/链接） |
+| 流式渲染 | `agent.ts` `fetch` + `ReadableStream` | SSE delta 事件逐字追加 |
+| 新建对话反馈 | `AgentPage.tsx` | 按钮按压动画 + Toast 提示 + 消息渐入 |
+| 响应式布局 | `AgentPage.tsx` | 移动端底部弹窗 / 桌面端居中 Modal |
 
 ### 🟡 Schema 就绪，无 Java 代码
 
 | 能力 | 数据库表 | 说明 |
 |------|----------|------|
-| PostgreSQL 向量库 | post_vectors, knowledge_vectors | HNSW 索引已建，无 PgVectorConfig 类 |
-| 长期记忆 | user_memory, user_memory_evidence, user_memory_history | 三表已建，无 MemoryService |
-| 上下文快照 | agent_context_snapshots | 表已建，AgentChatService 未写入 |
-| 工具注册表 | agent_tool_registry | 表已建，无工具执行框架 |
-| 知识库 | knowledge_articles | 表已建，无 CRUD 服务 |
-| 会话审计 | agent_session_events | 表已建，归档/删除时未记录 |
-| 异步写入队列 | agent_pending_writes | 表已建，无队列处理器 |
-| 工具错误归档 | agent_tool_errors | 表已建，无错误记录 |
+| 长期记忆 | `user_memory`, `user_memory_evidence`, `user_memory_history` | 三表已建，无 MemoryService |
+| 上下文快照 | `agent_context_snapshots` | 表已建，AgentChatService 未写入 |
+| 工具注册表 | `agent_tool_registry` | 表已建，无工具执行框架 |
+| 知识库原文 | `knowledge_articles` | 表已建，向量同步走内部 API 直写，无 CRUD 服务 |
+| 会话审计 | `agent_session_events` | 表已建，归档/删除时未记录 |
+| 异步写入队列 | `agent_pending_writes` | 表已建，无队列处理器 |
+| 工具错误归档 | `agent_tool_errors` | 表已建，无错误记录 |
 
 ### ⬜ 规划中，尚未开始
 
@@ -1036,9 +1082,7 @@ flowchart TB
 |------|----------|------|
 | 意图分类器 | Week 3 | DeepSeek-V3 JSON 输出 |
 | 查询改写器 | Week 3 | DeepSeek-V3 |
-| RAG 混合检索 | Week 3 | BGE-M3 + PG-Vector + MySQL FULLTEXT |
 | Agent ReAct 循环 | Week 3 | Function Calling + 工具执行器 |
-| BGE Embedding 服务 | Week 2 | TEI 镜像部署 |
 | Feign 跨服务调用 | Week 3 | PostFeignClient + UserFeignClient |
 | 工具执行框架 | Week 3 | ToolRegistry + Function Calling |
 | 上下文工程 L0-L5 | Week 3-4 | ContextBuilder + TokenCounter |
@@ -1049,8 +1093,9 @@ flowchart TB
 | 评估体系 | 进阶 | 黄金集 + LLM-Judge |
 | 多 Agent 编排 | 远期 | Planner + Specialist + Critic |
 | MCP 协议 | 远期 | 评估是否引入 |
-| 前端 Markdown 渲染 | Week 4 | react-markdown |
 | 前端引用角标 | Week 4 | [1] [2] 可点击 |
+| SSE status/tool/clarify 事件 | Week 3-4 | 后端阶段状态推送 |
+
 
 ---
 
