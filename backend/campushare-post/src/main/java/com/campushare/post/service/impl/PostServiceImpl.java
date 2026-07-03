@@ -31,11 +31,14 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -230,20 +233,19 @@ public class PostServiceImpl implements PostService {
         Post post = getPostById(postId);
         String redisKey = REDIS_KEY_STAR + postId + ":" + userId;
 
-        PostStar existing = postStarMapper.selectOne(
-                new LambdaQueryWrapper<PostStar>()
-                        .eq(PostStar::getPostId, postId)
-                        .eq(PostStar::getUserId, userId));
+        int deleted = postStarMapper.delete(new LambdaQueryWrapper<PostStar>()
+                .eq(PostStar::getPostId, postId)
+                .eq(PostStar::getUserId, userId));
 
-        if (existing != null) {
-            postStarMapper.deleteById(existing.getId());
+        if (deleted > 0) {
             postMapper.update(null, new LambdaUpdateWrapper<Post>()
                     .eq(Post::getId, postId)
                     .setSql("star_count = GREATEST(0, star_count - 1)"));
             redisTemplate.delete(redisKey);
-            log.info("用户 {} 取消收藏帖子 {}", userId, postId);
             return false;
-        } else {
+        }
+
+        try {
             PostStar star = PostStar.builder()
                     .postId(postId)
                     .userId(userId)
@@ -254,19 +256,11 @@ public class PostServiceImpl implements PostService {
                     .eq(Post::getId, postId)
                     .setSql("star_count = star_count + 1"));
             redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
-            try {
-                UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
-                req.setUserId(post.getAuthorId());
-                req.setSenderId(userId);
-                req.setType("STAR");
-                req.setTargetId(postId);
-                req.setTargetTitle(post.getTitle());
-                req.setSchoolId(post.getSchoolId());
-                userFeignClient.createNotification(req);
-            } catch (Exception e) {
-                log.warn("Feign调用创建收藏通知失败: {}", e.getMessage());
-            }
-            log.info("用户 {} 收藏帖子 {}", userId, postId);
+            sendNotificationAfterCommit(post.getAuthorId(), userId, "STAR", postId, post.getTitle(), post.getSchoolId());
+            return true;
+        } catch (DuplicateKeyException e) {
+            log.debug("收藏并发冲突，用户 {} 帖子 {} 已被其他线程收藏，幂等返回", userId, postId);
+            redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
             return true;
         }
     }
@@ -277,20 +271,19 @@ public class PostServiceImpl implements PostService {
         Post post = getPostById(postId);
         String redisKey = REDIS_KEY_LIKE + postId + ":" + userId;
 
-        PostLike existing = postLikeMapper.selectOne(
-                new LambdaQueryWrapper<PostLike>()
-                        .eq(PostLike::getPostId, postId)
-                        .eq(PostLike::getUserId, userId));
+        int deleted = postLikeMapper.delete(new LambdaQueryWrapper<PostLike>()
+                .eq(PostLike::getPostId, postId)
+                .eq(PostLike::getUserId, userId));
 
-        if (existing != null) {
-            postLikeMapper.deleteById(existing.getId());
+        if (deleted > 0) {
             postMapper.update(null, new LambdaUpdateWrapper<Post>()
                     .eq(Post::getId, postId)
                     .setSql("like_count = GREATEST(0, like_count - 1)"));
             redisTemplate.delete(redisKey);
-            log.info("用户 {} 取消点赞帖子 {}", userId, postId);
             return false;
-        } else {
+        }
+
+        try {
             PostLike like = PostLike.builder()
                     .postId(postId)
                     .userId(userId)
@@ -301,19 +294,11 @@ public class PostServiceImpl implements PostService {
                     .eq(Post::getId, postId)
                     .setSql("like_count = like_count + 1"));
             redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
-            try {
-                UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
-                req.setUserId(post.getAuthorId());
-                req.setSenderId(userId);
-                req.setType("LIKE");
-                req.setTargetId(postId);
-                req.setTargetTitle(post.getTitle());
-                req.setSchoolId(post.getSchoolId());
-                userFeignClient.createNotification(req);
-            } catch (Exception e) {
-                log.warn("Feign调用创建点赞通知失败: {}", e.getMessage());
-            }
-            log.info("用户 {} 点赞帖子 {}", userId, postId);
+            sendNotificationAfterCommit(post.getAuthorId(), userId, "LIKE", postId, post.getTitle(), post.getSchoolId());
+            return true;
+        } catch (DuplicateKeyException e) {
+            log.debug("点赞并发冲突，用户 {} 帖子 {} 已被其他线程点赞，幂等返回", userId, postId);
+            redisTemplate.opsForValue().set(redisKey, "1", REDIS_CACHE_TTL_DAYS, TimeUnit.DAYS);
             return true;
         }
     }
@@ -672,5 +657,28 @@ public class PostServiceImpl implements PostService {
         dto.setViewCount(post.getViewCount());
         dto.setCreateTime(post.getCreateTime());
         return dto;
+    }
+
+    private void sendNotificationAfterCommit(String authorId, String senderId, String type,
+                                             String targetId, String targetTitle, String schoolId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
+                        req.setUserId(authorId);
+                        req.setSenderId(senderId);
+                        req.setType(type);
+                        req.setTargetId(targetId);
+                        req.setTargetTitle(targetTitle);
+                        req.setSchoolId(schoolId);
+                        userFeignClient.createNotification(req);
+                    } catch (Exception e) {
+                        log.warn("异步发送{}通知失败: postId={}, error={}", type, targetId, e.getMessage());
+                    }
+                });
+            }
+        });
     }
 }
