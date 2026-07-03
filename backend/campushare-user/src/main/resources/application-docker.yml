@@ -36,6 +36,11 @@ spring:
           timeout: 30000
           writetimeout: 30000
 
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
 feign:
   httpclient:
     enabled: true
@@ -74,6 +79,9 @@ server:
 file:
   upload-path: /app/uploads/
   access-url: /files/
+  max-concurrent-uploads: 10
+  min-free-space-mb: 500
+  max-file-size-mb: 100
 
 logging:
   level:
