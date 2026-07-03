@@ -97,6 +97,30 @@ PROJECT_INSIGHTS.md
 # Agent 工作流文档（本地记录，不提交）
 AGENT-WORKFLOW.md
 
+# 内部设计/规划文档（不提交到GitHub）
+# 保留 docs/agent-assistant/knowledge-docs/（知识库源文件，构建需要）
+docs/agent-assistant/00-overview/
+docs/agent-assistant/01-requirements/
+docs/agent-assistant/02-architecture/
+docs/agent-assistant/03-llm-strategy/
+docs/agent-assistant/04-intent-understanding/
+docs/agent-assistant/05-knowledge-base/
+docs/agent-assistant/06-retrieval/
+docs/agent-assistant/07-agent-design/
+docs/agent-assistant/08-prompt-engineering/
+docs/agent-assistant/09-context-engineering/
+docs/agent-assistant/10-tools-and-apis/
+docs/agent-assistant/11-frontend-integration/
+docs/agent-assistant/12-backend-microservice/
+docs/agent-assistant/13-evaluation/
+docs/agent-assistant/14-safety-and-guardrails/
+docs/agent-assistant/15-observability/
+docs/agent-assistant/16-technical-references/
+docs/agent-assistant/17-roadmap/
+docs/agent-assistant/18-glossary.md
+docs/agent-assistant/architecture-overview.md
+docs/architecture-upgrade/
+
 # 简历文件（本地，不提交到GitHub）
 /简历.pdf
 /resume/
