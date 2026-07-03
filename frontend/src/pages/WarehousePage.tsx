@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import NavBar from '../components/common/NavBar'
+import BackToTopButton from '../components/common/BackToTopButton'
 import SwipeToDelete from '../components/common/SwipeToDelete'
 import type { WarehouseStats } from '../services/api'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
+import { useScrollRestoration } from '../hooks/useScrollRestoration'
 import {
   Package,
   Upload,
@@ -189,6 +191,9 @@ export default function WarehousePage() {
   const deletingRef = useRef(false)
   const loadingRef = useRef(false)
   const observerRef = useRef<HTMLDivElement>(null)
+
+  // 从详情页返回时恢复滚动位置；按 tab 隔离，ready 信号为列表加载完成
+  useScrollRestoration(`warehouse:${activeTab}`, !listLoading)
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -842,6 +847,7 @@ export default function WarehousePage() {
         </div>
       </div>
 
+      <BackToTopButton right={16} bottom={88} />
       <NavBar />
     </div>
   )

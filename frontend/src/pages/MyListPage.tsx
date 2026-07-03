@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
+import BackToTopButton from '../components/common/BackToTopButton'
+import { useScrollRestoration } from '../hooks/useScrollRestoration'
 
 type ListType = 'history' | 'starred' | 'liked' | 'mine' | 'comments'
 
@@ -168,6 +170,9 @@ export default function MyListPage() {
   const [hasMore, setHasMore] = useState(false)
   const loadingRef = useRef(false)
   const observerRef = useRef<HTMLDivElement>(null)
+
+  // 从详情页返回时恢复滚动位置；按列表类型隔离，ready 信号为加载完成
+  useScrollRestoration(`mylist:${listType}`, !loading)
 
   const loadPage = useCallback(
     async (pageNum: number, isLoadMore = false) => {
@@ -458,6 +463,8 @@ export default function MyListPage() {
           <div className="py-6 text-center text-xs text-gray-400">共 {total} 条记录</div>
         )}
       </div>
+
+      <BackToTopButton right={24} bottom={24} />
     </div>
   )
 }
