@@ -24,6 +24,8 @@ build/
 
 # Testing
 coverage/
+playwright-report/
+test-results/
 
 # Environment
 .env

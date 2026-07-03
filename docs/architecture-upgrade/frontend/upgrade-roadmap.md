@@ -200,41 +200,25 @@
 
 ## Phase 2: 工程化体系建设（P0/P1，1-2周）
 
-### 2.1 测试体系搭建
+### 2.1 测试体系搭建 ✅ 基础框架已完成
 
-**选型决策**：
-- **单元测试/组件测试**：Vitest + React Testing Library
-- **E2E 测试**：Playwright（而非 Cypress，Playwright 更现代、更快、多浏览器支持）
+**已实施**：
+1. 安装 `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `@testing-library/user-event` + `happy-dom`
+2. vite.config.ts 配置 vitest（happy-dom环境、setup文件、覆盖率v8）
+3. src/test/setup.ts 引入 jest-dom matchers
+4. 新增 `package.json` scripts：`test`、`test:watch`、`test:coverage`
+5. 工具函数测试：time.ts(10个)、utils.ts(7个)全部通过
+6. **Playwright E2E基础**：
+   - 安装 `@playwright/test`，创建 `playwright.config.ts`（CI自动启动preview server，本地连dev server:5173）
+   - 创建 `e2e/auth.spec.ts` 示例smoke测试
+   - 新增 `test:e2e`、`test:e2e:ui` 命令
+   - 创建 `tsconfig.node.json` 为e2e测试提供类型支持
+   - 配置playwright-report/test-results到.gitignore和.prettierignore
 
-**理由**：
-- Vitest 与 Vite 原生集成，速度极快，兼容 Jest API
-- React Testing Library 是测试 React 组件的标准库，以用户行为为中心
-- Playwright 由微软维护，支持 Chromium/Firefox/WebKit，自动等待、网络拦截能力强
-
-**实施步骤**：
-
-1. **安装依赖**：
-   ```bash
-   npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
-   npm install -D @playwright/test
-   ```
-
-2. **配置 Vitest**：
-   - vite.config.ts 中添加 test 配置
-   - 设置 setup 文件，引入 jest-dom matchers
-   - 配置测试覆盖率（c8）
-
-3. **编写测试用例**（从核心功能开始）：
-   - 工具函数测试（utils/ 下所有函数）
-   - 自定义 hooks 测试
-   - 核心组件测试（LoginForm、Toast、NavBar）
-   - 关键流程 E2E 测试（注册→登录→发帖→评论→登出）
-
-4. **验证标准**：
-   - [ ] `npm run test` 能运行单元测试
-   - [ ] `npm run test:e2e` 能运行 E2E 测试
-   - [ ] 核心工具函数覆盖率 100%
-   - [ ] CI 配置后自动运行测试
+**待完成**：
+- 组件测试（LoginForm、Toast、NavBar等核心组件）
+- 完整E2E流程测试（注册→登录→发帖→评论→登出）
+- 运行 `npx playwright install` 安装浏览器二进制（首次使用E2E前需要）
 
 ---
 
@@ -457,9 +441,16 @@
 **实施**：
 1. 全局 Suspense + Skeleton 骨架屏
 2. 按钮点击 loading 状态防止重复提交
-3. 路由切换进度条（nprogress 类似效果）
+3. ~~路由切换进度条（nprogress）~~ ✅ 已完成
 4. 乐观更新（TanStack Query mutation onMutate 已支持）
 5. 离线检测：断网时提示，网络恢复自动刷新数据
+
+**NProgress已实施**：
+- 安装 `nprogress` + `@types/nprogress`，创建 [NavigationProgress.tsx](file:///E:/workspace_work/CampusShare/frontend/src/components/common/NavigationProgress.tsx) 组件
+- 使用 `useLocation` 监听路由变化，路由切换时显示顶部蓝色进度条（主题色#2563EB）
+- 进度条颜色自定义匹配项目主题，隐藏spinner
+- 在App.tsx中全局挂载（AuthProvider内部、Router外部），确保所有路由切换都能触发
+- 最小显示时间250ms，防止快速导航闪烁
 
 ---
 
@@ -483,7 +474,10 @@
 5. **动画**：Framer Motion 添加页面转场动画、微交互
 6. **移动端优化**：PWA、触摸手势、下拉刷新（已有部分，完善）
 7. **SEO 优化**：虽然是SPA，但要考虑社交分享meta标签、React Helmet Async
-8. **Bundle 分析**：rollup-plugin-visualizer 分析包大小，优化大依赖（按需引入 lodash-es、moment 换 dayjs 等）
+8. ~~Bundle 分析~~ ✅ 已完成：rollup-plugin-visualizer + manualChunks 分包
+   - 安装 `rollup-plugin-visualizer`，通过 `ANALYZE=true npm run analyze` 生成 `dist/stats.html` 可视化包分析报告
+   - vite.config.ts 配置 `manualChunks` 将vendor代码拆分为：react-vendor(react/react-dom/react-router-dom)、query-vendor(tanstack-query)、ui-vendor(lucide-react)、sentry-vendor
+   - 优化浏览器缓存：vendor chunk变化频率低于app代码，可长期缓存
 
 ---
 
