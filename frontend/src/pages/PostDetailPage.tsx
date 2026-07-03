@@ -1,12 +1,34 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ChevronLeft, Star, MessageSquare, Eye, Download, Send, ThumbsUp, FileText, Share2, Trash2, Edit3, CornerDownRight, BadgeCheck, Crown } from 'lucide-react'
+import {
+  ChevronLeft,
+  Star,
+  MessageSquare,
+  Eye,
+  Download,
+  Send,
+  ThumbsUp,
+  FileText,
+  Share2,
+  Trash2,
+  Edit3,
+  CornerDownRight,
+  BadgeCheck,
+  Crown,
+} from 'lucide-react'
 import schoolsData from '../data/schools.json'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
 import { usePostDetail, usePostStatus, usePostComments, useInvalidatePosts } from '../hooks/queries'
-import { useTogglePostLike, useTogglePostStar, useCreateComment, useDeleteComment, useToggleCommentLike, useRecordDownload } from '../hooks/mutations'
+import {
+  useTogglePostLike,
+  useTogglePostStar,
+  useCreateComment,
+  useDeleteComment,
+  useToggleCommentLike,
+  useRecordDownload,
+} from '../hooks/mutations'
 
 type PostType = 'resource' | 'discussion' | 'note'
 
@@ -88,11 +110,16 @@ interface BackendPost {
 
 function getCreatorLevelColor(level?: string): string {
   switch (level) {
-    case 'AUTHORITY': return 'text-yellow-500'
-    case 'SENIOR': return 'text-orange-500'
-    case 'INTERMEDIATE': return 'text-purple-500'
-    case 'JUNIOR': return 'text-blue-500'
-    default: return 'text-blue-500'
+    case 'AUTHORITY':
+      return 'text-yellow-500'
+    case 'SENIOR':
+      return 'text-orange-500'
+    case 'INTERMEDIATE':
+      return 'text-purple-500'
+    case 'JUNIOR':
+      return 'text-blue-500'
+    default:
+      return 'text-blue-500'
   }
 }
 
@@ -133,16 +160,21 @@ export default function PostDetailPage() {
   const { data: postStatus } = usePostStatus(postId || '')
   const { data: rawComments = [] } = usePostComments(postId || '')
 
-  const comments: CommentItem[] = rawComments.map(c => ({
+  const comments: CommentItem[] = rawComments.map((c) => ({
     ...c,
     liked: c.isLiked,
     isAuthor: user?.id === c.userId,
   }))
 
-  const post: BackendPost | null = postData ? {
-    ...postData,
-    isCreator: postData.authorRole === 'CREATOR' || postData.authorRole === 'ADMIN' || (postData.authorLevel && postData.authorLevel !== 'NONE')
-  } : null
+  const post: BackendPost | null = postData
+    ? {
+        ...postData,
+        isCreator:
+          postData.authorRole === 'CREATOR' ||
+          postData.authorRole === 'ADMIN' ||
+          (postData.authorLevel && postData.authorLevel !== 'NONE'),
+      }
+    : null
 
   const isStarred = postStatus?.starred ?? false
   const isLiked = postStatus?.liked ?? false
@@ -164,7 +196,11 @@ export default function PostDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
-  const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
   const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -196,7 +232,7 @@ export default function PostDetailPage() {
     setSubmittingComment(true)
     try {
       let parentId = replyTo?.id
-      let replyToUserId = replyTo?.userId
+      const replyToUserId = replyTo?.userId
       if (replyTo?.parentId) {
         parentId = replyTo.parentId
       }
@@ -342,7 +378,7 @@ export default function PostDetailPage() {
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
           <span className="text-sm font-medium text-gray-900">
-            {school ? school.name : (post?.subCategoryName || post?.categoryName || '帖子详情')}
+            {school ? school.name : post?.subCategoryName || post?.categoryName || '帖子详情'}
           </span>
           <div className="flex items-center gap-1">
             {isPostAuthor && (
@@ -371,7 +407,9 @@ export default function PostDetailPage() {
       {/* 帖子内容 */}
       <div className="max-w-5xl mx-auto px-4 py-4">
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium mb-4 inline-block ${typeColors[postType]}`}>
+          <span
+            className={`text-xs px-2.5 py-1 rounded-full font-medium mb-4 inline-block ${typeColors[postType]}`}
+          >
             {typeLabels[postType]}
           </span>
 
@@ -381,16 +419,24 @@ export default function PostDetailPage() {
             <div className="flex items-center gap-3">
               <img
                 onClick={() => navigate(`/user/${post.authorId}`)}
-                src={post.authorAvatar
-                  ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
-                  : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`}
+                src={
+                  post.authorAvatar
+                    ? post.authorAvatar.startsWith('/files/')
+                      ? `/api${post.authorAvatar}`
+                      : post.authorAvatar
+                    : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
+                }
                 alt={post.authorName || post.authorId}
                 className="w-10 h-10 rounded-full cursor-pointer"
               />
               <div>
                 <p className="text-sm font-medium text-gray-900 flex items-center gap-0.5">
                   {post.authorName || post.authorId.slice(0, 8)}
-                  {post.authorLevel && post.authorLevel !== 'NONE' && <span title="认证创作者"><CreatorLevelIcon level={post.authorLevel} /></span>}
+                  {post.authorLevel && post.authorLevel !== 'NONE' && (
+                    <span title="认证创作者">
+                      <CreatorLevelIcon level={post.authorLevel} />
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-gray-400">{formatTime(post.createTime)}</p>
               </div>
@@ -401,7 +447,9 @@ export default function PostDetailPage() {
             <>
               {post.content && (
                 <div className="mb-5">
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {post.content}
+                  </p>
                 </div>
               )}
               {post.fileUrl && (
@@ -410,10 +458,14 @@ export default function PostDetailPage() {
                     <FileText className="w-6 h-6 text-blue-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{post.fileName || post.title}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {post.fileName || post.title}
+                    </p>
                     <p className="text-xs text-gray-400">
                       {post.fileType?.toUpperCase()}
-                      {post.fileSize ? ` · ${post.fileSize >= 1048576 ? (post.fileSize / 1048576).toFixed(2) + ' MB' : (post.fileSize / 1024).toFixed(1) + ' KB'}` : ''}
+                      {post.fileSize
+                        ? ` · ${post.fileSize >= 1048576 ? (post.fileSize / 1048576).toFixed(2) + ' MB' : (post.fileSize / 1024).toFixed(1) + ' KB'}`
+                        : ''}
                     </p>
                   </div>
                   <button
@@ -448,7 +500,9 @@ export default function PostDetailPage() {
 
           {postType === 'discussion' && post.content && (
             <div className="mb-5">
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {post.content}
+              </p>
             </div>
           )}
 
@@ -486,7 +540,11 @@ export default function PostDetailPage() {
           <div className="bg-white rounded-2xl border border-gray-100 px-4">
             {topLevelComments.length > 0 ? (
               topLevelComments.map((comment) => (
-                <div key={comment.id} id={`comment-${comment.id}`} className={`transition-colors duration-500 rounded-lg ${highlightedCommentId === comment.id ? 'bg-yellow-50 -mx-2 px-2' : ''}`}>
+                <div
+                  key={comment.id}
+                  id={`comment-${comment.id}`}
+                  className={`transition-colors duration-500 rounded-lg ${highlightedCommentId === comment.id ? 'bg-yellow-50 -mx-2 px-2' : ''}`}
+                >
                   {/* Top-level comment */}
                   <CommentRow
                     comment={comment}
@@ -496,25 +554,41 @@ export default function PostDetailPage() {
                   />
                   {/* Replies (楼中楼) - all replies under root comment, ordered by time */}
                   {getReplies(comment.id).map((reply) => (
-                    <div key={reply.id} id={`comment-${reply.id}`} className={`flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0 transition-colors duration-500 rounded-lg ${highlightedCommentId === reply.id ? 'bg-yellow-50 -mx-2 px-2' : ''}`}>
+                    <div
+                      key={reply.id}
+                      id={`comment-${reply.id}`}
+                      className={`flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0 transition-colors duration-500 rounded-lg ${highlightedCommentId === reply.id ? 'bg-yellow-50 -mx-2 px-2' : ''}`}
+                    >
                       <CornerDownRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
                       <img
                         onClick={() => navigate(`/user/${reply.userId}`)}
-                        src={reply.avatarUrl.startsWith('/files/') ? `/api${reply.avatarUrl}` : reply.avatarUrl}
+                        src={
+                          reply.avatarUrl.startsWith('/files/')
+                            ? `/api${reply.avatarUrl}`
+                            : reply.avatarUrl
+                        }
                         alt={reply.username}
                         className="w-7 h-7 rounded-full flex-shrink-0 cursor-pointer"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <div className="flex items-center gap-1 flex-wrap">
-                            <span className="text-xs font-medium text-gray-900">{reply.username}</span>
+                            <span className="text-xs font-medium text-gray-900">
+                              {reply.username}
+                            </span>
                             {reply.replyToUsername && (
-                              <span className="text-xs text-gray-400">回复 <span className="text-blue-500">@{reply.replyToUsername}</span></span>
+                              <span className="text-xs text-gray-400">
+                                回复 <span className="text-blue-500">@{reply.replyToUsername}</span>
+                              </span>
                             )}
                           </div>
-                          <span className="text-xs text-gray-400">{formatTime(reply.createTime)}</span>
+                          <span className="text-xs text-gray-400">
+                            {formatTime(reply.createTime)}
+                          </span>
                         </div>
-                        <p className="text-sm text-gray-700 leading-relaxed mb-1">{reply.content}</p>
+                        <p className="text-sm text-gray-700 leading-relaxed mb-1">
+                          {reply.content}
+                        </p>
                         <div className="flex items-center gap-4">
                           <button
                             onClick={() => handleCommentLike(reply.id)}
@@ -558,9 +632,7 @@ export default function PostDetailPage() {
         <div className="max-w-5xl mx-auto px-4 py-3">
           {replyTo && (
             <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-xs text-gray-500">
-                回复 @{replyTo.username}
-              </span>
+              <span className="text-xs text-gray-500">回复 @{replyTo.username}</span>
               <button
                 onClick={() => setReplyTo(null)}
                 className="text-xs text-gray-400 hover:text-gray-600"
@@ -591,8 +663,14 @@ export default function PostDetailPage() {
 
       {/* 编辑帖子弹窗 */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowEditModal(false)}>
-          <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-lg font-bold text-gray-900 mb-5">编辑帖子</h2>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">标题</label>
@@ -635,7 +713,10 @@ export default function PostDetailPage() {
 
       {/* 自定义确认弹窗 */}
       {confirmDialog && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setConfirmDialog(null)}>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
+          onClick={() => setConfirmDialog(null)}
+        >
           <div className="bg-white w-72 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold text-gray-900 mb-2">{confirmDialog.title}</h3>
             <p className="text-sm text-gray-500 mb-5">{confirmDialog.message}</p>
@@ -672,12 +753,13 @@ function CommentRow({
   onReply: (comment: CommentItem) => void
 }) {
   const navigate = useNavigate()
-  const { user } = useAuth()
   return (
     <div className="flex gap-3 py-4 border-b border-gray-50 last:border-0">
       <img
         onClick={() => navigate(`/user/${comment.userId}`)}
-        src={comment.avatarUrl.startsWith('/files/') ? `/api${comment.avatarUrl}` : comment.avatarUrl}
+        src={
+          comment.avatarUrl.startsWith('/files/') ? `/api${comment.avatarUrl}` : comment.avatarUrl
+        }
         alt={comment.username}
         className="w-9 h-9 rounded-full flex-shrink-0 cursor-pointer"
       />

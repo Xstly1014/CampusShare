@@ -7,7 +7,7 @@ interface RegisterFormProps {
     account: string,
     username: string,
     password: string,
-    verifyCode: string
+    verifyCode: string,
   ) => void
   onSwitchToLogin: () => void
   onSendCode?: (account: string, type: string) => Promise<boolean>
@@ -86,21 +86,27 @@ export default function RegisterForm({
       </div>
 
       <div className="flex justify-center items-center space-x-2 mb-8">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-          step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
-        }`}>
+        <div
+          className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
+          }`}
+        >
           1
         </div>
         <div className={`w-16 h-1 ${step >= 2 ? 'bg-blue-600' : 'bg-gray-300'}`} />
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-          step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
-        }`}>
+        <div
+          className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
+          }`}
+        >
           2
         </div>
         <div className={`w-16 h-1 ${step >= 3 ? 'bg-blue-600' : 'bg-gray-300'}`} />
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-          step >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
-        }`}>
+        <div
+          className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            step >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'
+          }`}
+        >
           3
         </div>
       </div>

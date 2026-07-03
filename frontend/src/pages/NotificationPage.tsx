@@ -1,5 +1,14 @@
 import { useNavigate } from 'react-router-dom'
-import { Heart, Star, UserPlus, MessageSquare, MessageCircle, Pin, ChevronRight, Bell } from 'lucide-react'
+import {
+  Heart,
+  Star,
+  UserPlus,
+  MessageSquare,
+  MessageCircle,
+  Pin,
+  ChevronRight,
+  Bell,
+} from 'lucide-react'
 import { formatTime } from '../utils/time'
 import NavBar from '../components/common/NavBar'
 import { useNotificationFeed } from '../hooks/queries/useNotifications'
@@ -55,14 +64,26 @@ export default function NotificationPage() {
                   {item.itemType === 'CONVERSATION' ? (
                     <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600">
                       {item.otherUserAvatar ? (
-                        <img src={item.otherUserAvatar.startsWith('/files/') ? `/api${item.otherUserAvatar}` : item.otherUserAvatar} alt={item.otherUserName || ''} className="w-full h-full object-cover" />
+                        <img
+                          src={
+                            item.otherUserAvatar.startsWith('/files/')
+                              ? `/api${item.otherUserAvatar}`
+                              : item.otherUserAvatar
+                          }
+                          alt={item.otherUserName || ''}
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
-                        <span className="text-white font-bold">{(item.otherUserName || '?').substring(0, 1).toUpperCase()}</span>
+                        <span className="text-white font-bold">
+                          {(item.otherUserName || '?').substring(0, 1).toUpperCase()}
+                        </span>
                       )}
                     </div>
                   ) : (
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${config.color}`}>
-                      {config.icon}
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${config?.color}`}
+                    >
+                      {config?.icon}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
@@ -80,7 +101,12 @@ export default function NotificationPage() {
                     <span className="text-xs text-gray-400">{formatTime(item.latestTime)}</span>
                     <ChevronRight className="w-4 h-4 text-gray-300" />
                   </div>
-                  {item.isPinned && <Pin className="w-3.5 h-3.5 text-blue-500 absolute top-1 right-1" fill="currentColor" />}
+                  {item.isPinned && (
+                    <Pin
+                      className="w-3.5 h-3.5 text-blue-500 absolute top-1 right-1"
+                      fill="currentColor"
+                    />
+                  )}
                 </div>
               )
             })}

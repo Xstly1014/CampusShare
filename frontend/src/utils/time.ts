@@ -46,7 +46,7 @@ export function formatTime(dateStr: string): string {
   const dateDay = date.getDay()
   // Days since start of this week (Monday-based)
   const nowWeekStart = new Date(now)
-  const nowOffset = (nowDay === 0 ? 6 : nowDay - 1) // days since Monday
+  const nowOffset = nowDay === 0 ? 6 : nowDay - 1 // days since Monday
   nowWeekStart.setDate(now.getDate() - nowOffset)
   nowWeekStart.setHours(0, 0, 0, 0)
 

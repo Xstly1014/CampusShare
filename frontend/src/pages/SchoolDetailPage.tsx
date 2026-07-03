@@ -20,7 +20,8 @@ import {
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
 import schoolsData from '../data/schools.json'
-import { fileApi, postApi, PostType } from '../services/api'
+import type { PostType } from '../services/api'
+import { fileApi, postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
 type SortType = 'latest' | 'hottest' | 'active'
@@ -72,18 +73,6 @@ interface PostView {
   content?: string
 }
 
-const typeLabels: Record<PostType, string> = {
-  resource: '资料',
-  discussion: '讨论',
-  note: '笔记',
-}
-
-const typeColors: Record<PostType, string> = {
-  resource: 'bg-blue-100 text-blue-700',
-  discussion: 'bg-orange-100 text-orange-700',
-  note: 'bg-green-100 text-green-700',
-}
-
 const SCHOOL_HEADER_COLORS = [
   { bg: 'bg-rose-50', text: 'text-rose-600' },
   { bg: 'bg-orange-50', text: 'text-orange-600' },
@@ -102,7 +91,7 @@ const SCHOOL_HEADER_COLORS = [
 function hashSchoolId(id: string): number {
   let h = 0
   for (let i = 0; i < id.length; i++) {
-    h = ((h << 5) - h) + id.charCodeAt(i)
+    h = (h << 5) - h + id.charCodeAt(i)
     h |= 0
   }
   return Math.abs(h)
@@ -140,11 +129,16 @@ function formatNumber(n: number): string {
 
 function getCreatorLevelColor(level?: string): string {
   switch (level) {
-    case 'AUTHORITY': return 'text-yellow-500'
-    case 'SENIOR': return 'text-orange-500'
-    case 'INTERMEDIATE': return 'text-purple-500'
-    case 'JUNIOR': return 'text-blue-500'
-    default: return 'text-blue-500'
+    case 'AUTHORITY':
+      return 'text-yellow-500'
+    case 'SENIOR':
+      return 'text-orange-500'
+    case 'INTERMEDIATE':
+      return 'text-purple-500'
+    case 'JUNIOR':
+      return 'text-blue-500'
+    default:
+      return 'text-blue-500'
   }
 }
 
@@ -186,7 +180,10 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
   const hasFile = !!post.fileUrl && !isImage
 
   return (
-    <div onClick={handleClick} className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer">
+    <div
+      onClick={handleClick}
+      className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
+    >
       {/* 顶部作者栏 */}
       <div className="flex items-center gap-2 mb-2">
         <img
@@ -207,19 +204,35 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
       {/* 内容区 */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-            post.type === 'resource' 
-              ? 'bg-blue-50 text-blue-600' 
-              : 'bg-orange-50 text-orange-600'
-          }`}>
+          <span
+            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+              post.type === 'resource' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'
+            }`}
+          >
             {post.type === 'resource' ? '资料' : '讨论'}
           </span>
         </div>
-        <h3 className="text-base font-semibold text-gray-900 leading-snug" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+        <h3
+          className="text-base font-semibold text-gray-900 leading-snug"
+          style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
           {post.title}
         </h3>
         {post.content && post.content.trim() && (
-          <p className="text-sm text-gray-600 mt-1" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+          <p
+            className="text-sm text-gray-600 mt-1"
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
             {post.content.replace(/<[^>]*>/g, '')}
           </p>
         )}
@@ -256,7 +269,10 @@ function PostCard({ post, schoolId, onStar }: PostCardProps) {
           {post.comments}
         </span>
         <button
-          onClick={(e) => { e.stopPropagation(); onStar(post.id) }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onStar(post.id)
+          }}
           className={`flex items-center gap-1 transition-colors ${
             post.isStarred ? 'text-orange-500' : 'hover:text-orange-500'
           }`}
@@ -306,14 +322,20 @@ export default function SchoolDetailPage() {
         } catch {
           return { id: p.id, starred: false }
         }
+      }),
+    )
+      .then((results) => {
+        setStarredPosts((prev) => {
+          const next = new Set(prev)
+          results.forEach((r) => {
+            if (r.starred) next.add(r.id)
+          })
+          return next
+        })
       })
-    ).then(results => {
-      setStarredPosts(prev => {
-        const next = new Set(prev)
-        results.forEach(r => { if (r.starred) next.add(r.id) })
-        return next
+      .catch(() => {
+        // Silent failure - star status loading errors are non-critical for display
       })
-    }).catch(() => {})
   }
 
   useEffect(() => {
@@ -345,9 +367,15 @@ export default function SchoolDetailPage() {
             id: p.authorId,
             username: p.authorName || p.authorId.slice(0, 8),
             avatar: p.authorAvatar
-              ? (p.authorAvatar.startsWith('/files/') ? `/api${p.authorAvatar}` : p.authorAvatar)
+              ? p.authorAvatar.startsWith('/files/')
+                ? `/api${p.authorAvatar}`
+                : p.authorAvatar
               : `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
-            isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE'),
+            isCreator: !!(
+              p.authorRole === 'CREATOR' ||
+              p.authorRole === 'ADMIN' ||
+              (p.authorLevel && p.authorLevel !== 'NONE')
+            ),
             authorLevel: p.authorLevel,
           },
           createdAt: p.createTime,
@@ -375,7 +403,9 @@ export default function SchoolDetailPage() {
     }
 
     doLoad()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [schoolId, filterType, sortType, refreshTrigger])
 
   const handleLoadMore = useCallback(async () => {
@@ -400,9 +430,15 @@ export default function SchoolDetailPage() {
           id: p.authorId,
           username: p.authorName || p.authorId.slice(0, 8),
           avatar: p.authorAvatar
-            ? (p.authorAvatar.startsWith('/files/') ? `/api${p.authorAvatar}` : p.authorAvatar)
+            ? p.authorAvatar.startsWith('/files/')
+              ? `/api${p.authorAvatar}`
+              : p.authorAvatar
             : `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorId}`,
-          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE'),
+          isCreator: !!(
+            p.authorRole === 'CREATOR' ||
+            p.authorRole === 'ADMIN' ||
+            (p.authorLevel && p.authorLevel !== 'NONE')
+          ),
           authorLevel: p.authorLevel,
         },
         createdAt: p.createTime,
@@ -418,7 +454,7 @@ export default function SchoolDetailPage() {
         content: p.content,
       }))
 
-      setPosts(prev => [...prev, ...viewPosts])
+      setPosts((prev) => [...prev, ...viewPosts])
       setPage(nextPage)
       setHasMore(postList.length === PAGE_SIZE)
       loadStarStatus(postList)
@@ -436,11 +472,11 @@ export default function SchoolDetailPage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
+        if (entries[0]?.isIntersecting) {
           handleLoadMore()
         }
       },
-      { rootMargin: '200px' }
+      { rootMargin: '200px' },
     )
 
     observer.observe(sentinel)
@@ -528,7 +564,7 @@ export default function SchoolDetailPage() {
       setPostTitle('')
       setPostContent('')
       setUploadedFile(null)
-      setRefreshTrigger(n => n + 1)
+      setRefreshTrigger((n) => n + 1)
     } catch (err) {
       toast.error((err as Error).message || '发布失败')
     } finally {
@@ -545,7 +581,7 @@ export default function SchoolDetailPage() {
         (p) =>
           p.title.toLowerCase().includes(searchKeyword.toLowerCase()) ||
           p.author.username.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-          (p.content && p.content.toLowerCase().includes(searchKeyword.toLowerCase()))
+          (p.content && p.content.toLowerCase().includes(searchKeyword.toLowerCase())),
       )
     }
 
@@ -567,10 +603,8 @@ export default function SchoolDetailPage() {
     // Update star count optimistically
     setPosts((prev) =>
       prev.map((p) =>
-        p.id === postId
-          ? { ...p, stars: wasStarred ? p.stars - 1 : p.stars + 1 }
-          : p
-      )
+        p.id === postId ? { ...p, stars: wasStarred ? p.stars - 1 : p.stars + 1 } : p,
+      ),
     )
     try {
       await postApi.toggleStar(postId)
@@ -587,10 +621,8 @@ export default function SchoolDetailPage() {
       })
       setPosts((prev) =>
         prev.map((p) =>
-          p.id === postId
-            ? { ...p, stars: wasStarred ? p.stars + 1 : p.stars - 1 }
-            : p
-        )
+          p.id === postId ? { ...p, stars: wasStarred ? p.stars + 1 : p.stars - 1 } : p,
+        ),
       )
       toast.error((err as Error).message || '操作失败')
     }
@@ -623,16 +655,21 @@ export default function SchoolDetailPage() {
               <ChevronLeft className="w-5 h-5 text-gray-600" />
             </button>
             {(() => {
-              const headerColor = SCHOOL_HEADER_COLORS[hashSchoolId(school.id) % SCHOOL_HEADER_COLORS.length]
+              const headerColor =
+                SCHOOL_HEADER_COLORS[hashSchoolId(school.id) % SCHOOL_HEADER_COLORS.length]!
               return (
-                <div className={`w-9 h-9 rounded-xl ${headerColor.bg} flex items-center justify-center flex-shrink-0`}>
+                <div
+                  className={`w-9 h-9 rounded-xl ${headerColor.bg} flex items-center justify-center flex-shrink-0`}
+                >
                   <GraduationCap className={`w-5 h-5 ${headerColor.text}`} />
                 </div>
               )
             })()}
             <div>
               <h1 className="text-base font-semibold text-gray-900">{school.name}</h1>
-              <p className="text-xs text-gray-400">{realResourceCount !== null ? realResourceCount : school.resourceCount} 份资料</p>
+              <p className="text-xs text-gray-400">
+                {realResourceCount !== null ? realResourceCount : school.resourceCount} 份资料
+              </p>
             </div>
           </div>
         </div>
@@ -679,9 +716,7 @@ export default function SchoolDetailPage() {
             <button
               onClick={() => setSortType('latest')}
               className={`px-3 py-1.5 text-xs rounded-full transition-colors flex items-center gap-1 ${
-                sortType === 'latest'
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:bg-gray-100'
+                sortType === 'latest' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}
             >
               <Clock className="w-3 h-3" />
@@ -701,9 +736,7 @@ export default function SchoolDetailPage() {
             <button
               onClick={() => setSortType('active')}
               className={`px-3 py-1.5 text-xs rounded-full transition-colors flex items-center gap-1 ${
-                sortType === 'active'
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:bg-gray-100'
+                sortType === 'active' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}
             >
               <MessageSquare className="w-3 h-3" />
@@ -876,9 +909,7 @@ export default function SchoolDetailPage() {
                   maxLength={2000}
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-transparent transition-all resize-none"
                 />
-                <p className="text-xs text-gray-400 mt-1 text-right">
-                  {postContent.length}/2000
-                </p>
+                <p className="text-xs text-gray-400 mt-1 text-right">{postContent.length}/2000</p>
               </div>
 
               {/* 文件上传 */}
@@ -896,7 +927,8 @@ export default function SchoolDetailPage() {
                         {uploadedFile.name}
                       </p>
                       <p className="text-xs text-gray-400">
-                        {uploadedFile.type.toUpperCase()} · {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
+                        {uploadedFile.type.toUpperCase()} ·{' '}
+                        {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
                       </p>
                     </div>
                     <button

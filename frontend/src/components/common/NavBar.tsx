@@ -33,15 +33,15 @@ export default function NavBar() {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex flex-col items-center justify-center py-2 px-3 transition-colors relative ${active
-                  ? 'text-blue-600'
-                  : 'text-gray-600 hover:text-blue-600'
-                  }`}
+                className={`flex flex-col items-center justify-center py-2 px-3 transition-colors relative ${
+                  active ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
+                }`}
               >
                 <div className="relative">
                   <Icon
-                    className={`w-6 h-6 ${active ? 'scale-110' : ''
-                      } transition-transform duration-200`}
+                    className={`w-6 h-6 ${
+                      active ? 'scale-110' : ''
+                    } transition-transform duration-200`}
                   />
                   {showBadge && (
                     <span className="absolute -top-1 -right-1.5 min-w-[16px] h-[16px] bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center px-0.5 font-medium">

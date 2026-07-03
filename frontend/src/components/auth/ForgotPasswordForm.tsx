@@ -6,7 +6,7 @@ interface ForgotPasswordFormProps {
     resetType: 'phone' | 'email',
     account: string,
     verifyCode: string,
-    newPassword: string
+    newPassword: string,
   ) => void
   onSwitchToLogin: () => void
   onSendCode?: (account: string, type: string) => Promise<boolean>

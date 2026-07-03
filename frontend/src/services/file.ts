@@ -1,4 +1,5 @@
-import { api, UploadOptions, UploadProgress } from './http'
+import type { UploadOptions, UploadProgress } from './http'
+import { api } from './http'
 
 export interface UploadResult {
   url: string

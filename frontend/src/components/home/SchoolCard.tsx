@@ -30,7 +30,7 @@ const SCHOOL_COLORS = [
 function hashCode(str: string): number {
   let h = 0
   for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h) + str.charCodeAt(i)
+    h = (h << 5) - h + str.charCodeAt(i)
     h |= 0
   }
   return Math.abs(h)
@@ -38,7 +38,7 @@ function hashCode(str: string): number {
 
 export default function SchoolCard({ school, onClick }: SchoolCardProps) {
   const colorIdx = hashCode(school.id) % SCHOOL_COLORS.length
-  const color = SCHOOL_COLORS[colorIdx]
+  const color = SCHOOL_COLORS[colorIdx]!
 
   return (
     <div
@@ -46,7 +46,9 @@ export default function SchoolCard({ school, onClick }: SchoolCardProps) {
       className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
     >
       <div className="flex items-start gap-3">
-        <div className={`w-12 h-12 rounded-xl ${color.bg} flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform`}>
+        <div
+          className={`w-12 h-12 rounded-xl ${color.bg} flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform`}
+        >
           <GraduationCap className={`w-6 h-6 ${color.text}`} />
         </div>
         <div className="flex-1 min-w-0 pt-0.5">

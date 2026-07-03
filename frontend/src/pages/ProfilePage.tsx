@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import NavBar from '../components/common/NavBar'
-import { postApi, fileApi, userApi, creatorApi, CreatorStatus } from '../services/api'
+import type { CreatorStatus } from '../services/api'
+import { postApi, fileApi, userApi, creatorApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import {
   User,
@@ -33,28 +34,41 @@ const OUTPUT_SIZE = 400
 
 function getCreatorLevelName(level?: string): string {
   switch (level) {
-    case 'AUTHORITY': return '权威创作者'
-    case 'SENIOR': return '高级创作者'
-    case 'INTERMEDIATE': return '中级创作者'
-    case 'JUNIOR': return '初级创作者'
-    default: return '认证创作者'
+    case 'AUTHORITY':
+      return '权威创作者'
+    case 'SENIOR':
+      return '高级创作者'
+    case 'INTERMEDIATE':
+      return '中级创作者'
+    case 'JUNIOR':
+      return '初级创作者'
+    default:
+      return '认证创作者'
   }
 }
 
 function getCreatorLevelColor(level?: string): string {
   switch (level) {
-    case 'AUTHORITY': return 'text-yellow-500'
-    case 'SENIOR': return 'text-orange-500'
-    case 'INTERMEDIATE': return 'text-purple-500'
-    case 'JUNIOR': return 'text-blue-500'
-    default: return 'text-amber-500'
+    case 'AUTHORITY':
+      return 'text-yellow-500'
+    case 'SENIOR':
+      return 'text-orange-500'
+    case 'INTERMEDIATE':
+      return 'text-purple-500'
+    case 'JUNIOR':
+      return 'text-blue-500'
+    default:
+      return 'text-amber-500'
   }
 }
 
 function ProfileCreatorIcon({ level, size = 'w-5 h-5' }: { level?: string; size?: string }) {
   if (!level || level === 'NONE') {
     return (
-      <span className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0" title="认证创作者">
+      <span
+        className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0"
+        title="认证创作者"
+      >
         <span className="text-white text-[10px] font-bold leading-none">V</span>
       </span>
     )
@@ -62,12 +76,28 @@ function ProfileCreatorIcon({ level, size = 'w-5 h-5' }: { level?: string; size?
   const colorClass = getCreatorLevelColor(level)
   const levelName = getCreatorLevelName(level)
   if (level === 'AUTHORITY' || level === 'SENIOR') {
-    return <span title={levelName}><Crown className={`${size} ${colorClass}`} /></span>
+    return (
+      <span title={levelName}>
+        <Crown className={`${size} ${colorClass}`} />
+      </span>
+    )
   }
-  return <span title={levelName}><BadgeCheck className={`${size} ${colorClass}`} /></span>
+  return (
+    <span title={levelName}>
+      <BadgeCheck className={`${size} ${colorClass}`} />
+    </span>
+  )
 }
 
-function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (blob: Blob) => void; onCancel: () => void }) {
+function AvatarCropper({
+  src,
+  onConfirm,
+  onCancel,
+}: {
+  src: string
+  onConfirm: (blob: Blob) => void
+  onCancel: () => void
+}) {
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
@@ -90,19 +120,24 @@ function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     setDragging(true)
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    const touch = 'touches' in e ? e.touches[0] : null
+    const clientX = touch ? touch.clientX : (e as React.MouseEvent).clientX
+    const clientY = touch ? touch.clientY : (e as React.MouseEvent).clientY
     dragStart.current = { x: clientX, y: clientY, ox: offset.x, oy: offset.y }
   }
 
-  const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!dragging) return
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    const dx = clientX - dragStart.current.x
-    const dy = clientY - dragStart.current.y
-    setOffset({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy })
-  }, [dragging])
+  const handleMouseMove = useCallback(
+    (e: MouseEvent | TouchEvent) => {
+      if (!dragging) return
+      const touch = 'touches' in e ? e.touches[0] : null
+      const clientX = touch ? touch.clientX : (e as MouseEvent).clientX
+      const clientY = touch ? touch.clientY : (e as MouseEvent).clientY
+      const dx = clientX - dragStart.current.x
+      const dy = clientY - dragStart.current.y
+      setOffset({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy })
+    },
+    [dragging],
+  )
 
   const handleMouseUp = useCallback(() => {
     setDragging(false)
@@ -159,16 +194,26 @@ function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (
       0,
       0,
       OUTPUT_SIZE,
-      OUTPUT_SIZE
+      OUTPUT_SIZE,
     )
-    canvas.toBlob((blob) => {
-      if (blob) onConfirm(blob)
-    }, 'image/jpeg', 0.92)
+    canvas.toBlob(
+      (blob) => {
+        if (blob) onConfirm(blob)
+      },
+      'image/jpeg',
+      0.92,
+    )
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center" onClick={onCancel}>
-      <div className="bg-gray-900 w-full max-w-sm rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-gray-900 w-full max-w-sm rounded-2xl p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="text-white text-center text-base font-semibold mb-4">移动和缩放</h3>
         <div
           className="relative mx-auto overflow-hidden"
@@ -176,10 +221,7 @@ function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (
           onMouseDown={handleMouseDown}
           onTouchStart={handleMouseDown}
         >
-          <div
-            className="absolute inset-0 cursor-move"
-            style={{ touchAction: 'none' }}
-          >
+          <div className="absolute inset-0 cursor-move" style={{ touchAction: 'none' }}>
             <img
               ref={imgRef}
               src={src}
@@ -203,33 +245,61 @@ function AvatarCropper({ src, onConfirm, onCancel }: { src: string; onConfirm: (
               <defs>
                 <mask id="circleMask">
                   <rect width="100%" height="100%" fill="white" />
-                  <circle cx={CROP_SIZE / 2} cy={CROP_SIZE / 2} r={CROP_SIZE / 2 - 2} fill="black" />
+                  <circle
+                    cx={CROP_SIZE / 2}
+                    cy={CROP_SIZE / 2}
+                    r={CROP_SIZE / 2 - 2}
+                    fill="black"
+                  />
                 </mask>
               </defs>
               <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#circleMask)" />
-              <circle cx={CROP_SIZE / 2} cy={CROP_SIZE / 2} r={CROP_SIZE / 2 - 2} fill="none" stroke="white" strokeWidth="2" />
+              <circle
+                cx={CROP_SIZE / 2}
+                cy={CROP_SIZE / 2}
+                r={CROP_SIZE / 2 - 2}
+                fill="none"
+                stroke="white"
+                strokeWidth="2"
+              />
             </svg>
           </div>
         </div>
 
         {imgLoaded && (
           <div className="flex items-center justify-center gap-4 mt-4">
-            <button onClick={() => handleZoom(-0.1)} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+            <button
+              onClick={() => handleZoom(-0.1)}
+              className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            >
               <ZoomOut className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2 text-white/60 text-xs">
               <Move className="w-3.5 h-3.5" />
               <span>拖动调整</span>
             </div>
-            <button onClick={() => handleZoom(0.1)} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+            <button
+              onClick={() => handleZoom(0.1)}
+              className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            >
               <ZoomIn className="w-4 h-4" />
             </button>
           </div>
         )}
 
         <div className="flex gap-3 mt-5">
-          <button onClick={onCancel} className="flex-1 py-2.5 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20 transition-colors">取消</button>
-          <button onClick={handleConfirm} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">确定</button>
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 bg-white/10 text-white rounded-xl text-sm font-medium hover:bg-white/20 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            确定
+          </button>
         </div>
       </div>
     </div>
@@ -248,7 +318,11 @@ export default function ProfilePage() {
   const [stats, setStats] = useState({ totalViews: 0, totalLikes: 0, totalStars: 0, postCount: 0 })
   const [commentCount, setCommentCount] = useState(0)
   const [followStats, setFollowStats] = useState({ following: 0, followers: 0, mutual: 0 })
-  const [statsModal, setStatsModal] = useState<{ title: string; value: number; suffix: string } | null>(null)
+  const [statsModal, setStatsModal] = useState<{
+    title: string
+    value: number
+    suffix: string
+  } | null>(null)
   const [cropperSrc, setCropperSrc] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [creatorStatus, setCreatorStatus] = useState<CreatorStatus | null>(null)
@@ -266,7 +340,9 @@ export default function ProfilePage() {
         }
         if (u.username) setEditUsername(u.username)
         sessionStorage.setItem('campusshare_user', JSON.stringify(u))
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     fetchUser()
   }, [])
@@ -274,15 +350,16 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [historyRes, starredRes, likedRes, statsRes, commentsRes, followRes, creatorRes] = await Promise.all([
-          postApi.getHistory(1, 1),
-          postApi.getStarred(1, 1),
-          postApi.getLiked(1, 1),
-          postApi.getMyPostStats(),
-          postApi.getMyComments(),
-          userApi.getFollowStats(),
-          creatorApi.getStatus(),
-        ])
+        const [historyRes, starredRes, likedRes, statsRes, commentsRes, followRes, creatorRes] =
+          await Promise.all([
+            postApi.getHistory(1, 1),
+            postApi.getStarred(1, 1),
+            postApi.getLiked(1, 1),
+            postApi.getMyPostStats(),
+            postApi.getMyComments(),
+            userApi.getFollowStats(),
+            creatorApi.getStatus(),
+          ])
         setCounts({
           browse: historyRes.data?.total || 0,
           starred: starredRes.data?.total || 0,
@@ -292,17 +369,49 @@ export default function ProfilePage() {
         setCommentCount((commentsRes.data || []).length)
         setFollowStats(followRes.data || { following: 0, followers: 0, mutual: 0 })
         setCreatorStatus(creatorRes.data || null)
-      } catch (err) { /* ignore */ }
+      } catch (err) {
+        /* ignore */
+      }
     }
     fetchData()
   }, [])
 
   const listEntries = [
-    { key: 'mine', label: '我的帖子', icon: <FileText className="w-5 h-5" />, count: stats.postCount, color: 'bg-indigo-50 text-indigo-600' },
-    { key: 'comments', label: '我的回复', icon: <MessageSquare className="w-5 h-5" />, count: commentCount, color: 'bg-teal-50 text-teal-600' },
-    { key: 'history', label: '浏览历史', icon: <Clock className="w-5 h-5" />, count: counts.browse, color: 'bg-blue-50 text-blue-600' },
-    { key: 'starred', label: '我的收藏', icon: <Star className="w-5 h-5" />, count: counts.starred, color: 'bg-orange-50 text-orange-600' },
-    { key: 'liked', label: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, count: counts.liked, color: 'bg-red-50 text-red-600' },
+    {
+      key: 'mine',
+      label: '我的帖子',
+      icon: <FileText className="w-5 h-5" />,
+      count: stats.postCount,
+      color: 'bg-indigo-50 text-indigo-600',
+    },
+    {
+      key: 'comments',
+      label: '我的回复',
+      icon: <MessageSquare className="w-5 h-5" />,
+      count: commentCount,
+      color: 'bg-teal-50 text-teal-600',
+    },
+    {
+      key: 'history',
+      label: '浏览历史',
+      icon: <Clock className="w-5 h-5" />,
+      count: counts.browse,
+      color: 'bg-blue-50 text-blue-600',
+    },
+    {
+      key: 'starred',
+      label: '我的收藏',
+      icon: <Star className="w-5 h-5" />,
+      count: counts.starred,
+      color: 'bg-orange-50 text-orange-600',
+    },
+    {
+      key: 'liked',
+      label: '我的点赞',
+      icon: <ThumbsUp className="w-5 h-5" />,
+      count: counts.liked,
+      color: 'bg-red-50 text-red-600',
+    },
   ]
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -350,7 +459,7 @@ export default function ProfilePage() {
 
   const handleSaveProfile = async () => {
     try {
-      const res = await userApi.updateProfile({
+      await userApi.updateProfile({
         username: editUsername.trim() || undefined,
         bio: editBio,
       })
@@ -375,7 +484,7 @@ export default function ProfilePage() {
   }
 
   const getAvatarSrc = (url: string | null) => {
-    if (!url) return null
+    if (!url) return undefined
     return url.startsWith('/files/') ? `/api${url}` : url
   }
 
@@ -390,9 +499,15 @@ export default function ProfilePage() {
                 onClick={openFilePicker}
               >
                 {avatar ? (
-                  <img src={getAvatarSrc(avatar)} alt="头像" className="w-full h-full object-cover" />
+                  <img
+                    src={getAvatarSrc(avatar)}
+                    alt="头像"
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <span className="text-white text-xl font-bold">{user?.username?.substring(0, 1).toUpperCase() || 'U'}</span>
+                  <span className="text-white text-xl font-bold">
+                    {user?.username?.substring(0, 1).toUpperCase() || 'U'}
+                  </span>
                 )}
               </div>
               <button
@@ -401,16 +516,26 @@ export default function ProfilePage() {
               >
                 <Camera className="w-3 h-3 text-white" />
               </button>
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
             </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-gray-900">{user?.username || '用户'}</h1>
-                {(creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')) && (
+                {(creatorStatus?.status === 'APPROVED' ||
+                  (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')) && (
                   <ProfileCreatorIcon level={creatorStatus?.creatorLevel} size="w-5 h-5" />
                 )}
-                <button onClick={() => setShowEditModal(true)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                >
                   <Edit3 className="w-3.5 h-3.5 text-gray-400" />
                 </button>
               </div>
@@ -431,27 +556,51 @@ export default function ProfilePage() {
           </div>
 
           <div className="grid grid-cols-3 gap-2 mt-5">
-            <button onClick={() => setStatsModal({ title: '总浏览', value: stats.totalViews, suffix: '个总浏览' })} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+            <button
+              onClick={() =>
+                setStatsModal({ title: '总浏览', value: stats.totalViews, suffix: '个总浏览' })
+              }
+              className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors"
+            >
               <p className="text-base font-bold text-gray-900">{stats.totalViews}</p>
               <p className="text-xs text-gray-400 mt-0.5">总浏览</p>
             </button>
-            <button onClick={() => setStatsModal({ title: '获赞', value: stats.totalLikes, suffix: '个赞' })} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+            <button
+              onClick={() =>
+                setStatsModal({ title: '获赞', value: stats.totalLikes, suffix: '个赞' })
+              }
+              className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors"
+            >
               <p className="text-base font-bold text-gray-900">{stats.totalLikes}</p>
               <p className="text-xs text-gray-400 mt-0.5">获赞</p>
             </button>
-            <button onClick={() => setStatsModal({ title: '被收藏', value: stats.totalStars, suffix: '次收藏' })} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+            <button
+              onClick={() =>
+                setStatsModal({ title: '被收藏', value: stats.totalStars, suffix: '次收藏' })
+              }
+              className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors"
+            >
               <p className="text-base font-bold text-gray-900">{stats.totalStars}</p>
               <p className="text-xs text-gray-400 mt-0.5">被收藏</p>
             </button>
-            <button onClick={() => navigate('/profile/following')} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+            <button
+              onClick={() => navigate('/profile/following')}
+              className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors"
+            >
               <p className="text-base font-bold text-gray-900">{followStats.following}</p>
               <p className="text-xs text-gray-400 mt-0.5">关注</p>
             </button>
-            <button onClick={() => navigate('/profile/followers')} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+            <button
+              onClick={() => navigate('/profile/followers')}
+              className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors"
+            >
               <p className="text-base font-bold text-gray-900">{followStats.followers}</p>
               <p className="text-xs text-gray-400 mt-0.5">粉丝</p>
             </button>
-            <button onClick={() => navigate('/profile/mutual')} className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors">
+            <button
+              onClick={() => navigate('/profile/mutual')}
+              className="text-center hover:bg-gray-50 rounded-lg py-2 transition-colors"
+            >
               <p className="text-base font-bold text-gray-900">{followStats.mutual}</p>
               <p className="text-xs text-gray-400 mt-0.5">互关</p>
             </button>
@@ -470,36 +619,42 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-amber-900">
-                {creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
+                {creatorStatus?.status === 'APPROVED' ||
+                (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
                   ? getCreatorLevelName(creatorStatus?.creatorLevel)
                   : creatorStatus?.status === 'PENDING'
-                  ? '认证审核中'
-                  : creatorStatus?.status === 'REJECTED'
-                  ? '认证被驳回'
-                  : '认证创作者'}
+                    ? '认证审核中'
+                    : creatorStatus?.status === 'REJECTED'
+                      ? '认证被驳回'
+                      : '认证创作者'}
               </p>
               <p className="text-xs text-amber-600">
-                {creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
+                {creatorStatus?.status === 'APPROVED' ||
+                (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
                   ? '点击查看等级详情与权益'
                   : creatorStatus?.status === 'PENDING'
-                  ? '申请已提交，七个工作日内完成审核'
-                  : creatorStatus?.status === 'REJECTED'
-                  ? '点击重新申请'
-                  : '申请认证，享受专属权益'}
+                    ? '申请已提交，七个工作日内完成审核'
+                    : creatorStatus?.status === 'REJECTED'
+                      ? '点击重新申请'
+                      : '申请认证，享受专属权益'}
               </p>
             </div>
           </div>
           <button
-            onClick={(e) => { e.stopPropagation(); navigate('/creator-verification') }}
+            onClick={(e) => {
+              e.stopPropagation()
+              navigate('/creator-verification')
+            }}
             className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-full hover:bg-amber-600 transition-colors flex-shrink-0"
           >
-            {creatorStatus?.status === 'APPROVED' || (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
+            {creatorStatus?.status === 'APPROVED' ||
+            (creatorStatus?.creatorLevel && creatorStatus.creatorLevel !== 'NONE')
               ? '查看详情'
               : creatorStatus?.status === 'PENDING'
-              ? '查看详情'
-              : creatorStatus?.status === 'REJECTED'
-              ? '重新申请'
-              : '立即申请'}
+                ? '查看详情'
+                : creatorStatus?.status === 'REJECTED'
+                  ? '重新申请'
+                  : '立即申请'}
           </button>
         </div>
       </div>
@@ -510,11 +665,16 @@ export default function ProfilePage() {
             <button
               key={entry.key}
               onClick={() => navigate(`/profile/${entry.key}`)}
-              className={`w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-50 transition-colors ${idx < listEntries.length - 1 ? 'border-b border-gray-50' : ''
-                }`}
+              className={`w-full flex items-center gap-3 px-4 py-4 hover:bg-gray-50 transition-colors ${
+                idx < listEntries.length - 1 ? 'border-b border-gray-50' : ''
+              }`}
             >
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${entry.color}`}>{entry.icon}</div>
-              <span className="flex-1 text-left text-sm text-gray-700 font-medium">{entry.label}</span>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${entry.color}`}>
+                {entry.icon}
+              </div>
+              <span className="flex-1 text-left text-sm text-gray-700 font-medium">
+                {entry.label}
+              </span>
               {entry.count > 0 && <span className="text-xs text-gray-400">{entry.count}</span>}
               <ChevronRight className="w-4 h-4 text-gray-300" />
             </button>
@@ -525,7 +685,10 @@ export default function ProfilePage() {
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           {user?.isAdmin && (
-            <button onClick={() => navigate('/admin/creator')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+            <button
+              onClick={() => navigate('/admin/creator')}
+              className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50"
+            >
               <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
                 <Shield className="w-4 h-4 text-red-600" />
               </div>
@@ -533,28 +696,40 @@ export default function ProfilePage() {
               <ChevronRight className="w-4 h-4 text-gray-300" />
             </button>
           )}
-          <button onClick={() => navigate('/settings/account')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <button
+            onClick={() => navigate('/settings/account')}
+            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50"
+          >
             <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
               <User className="w-4 h-4 text-blue-600" />
             </div>
             <span className="flex-1 text-left text-sm text-gray-700">账号与安全</span>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </button>
-          <button onClick={() => navigate('/settings/privacy')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <button
+            onClick={() => navigate('/settings/privacy')}
+            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50"
+          >
             <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
               <Shield className="w-4 h-4 text-green-600" />
             </div>
             <span className="flex-1 text-left text-sm text-gray-700">隐私设置</span>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </button>
-          <button onClick={() => navigate('/settings/general')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <button
+            onClick={() => navigate('/settings/general')}
+            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors border-b border-gray-50"
+          >
             <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
               <Settings className="w-4 h-4 text-purple-600" />
             </div>
             <span className="flex-1 text-left text-sm text-gray-700">通用设置</span>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </button>
-          <button onClick={() => navigate('/settings/help')} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => navigate('/settings/help')}
+            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors"
+          >
             <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center">
               <HelpCircle className="w-4 h-4 text-gray-600" />
             </div>
@@ -565,26 +740,49 @@ export default function ProfilePage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 mt-3 mb-6">
-        <button onClick={logout} className="w-full bg-white rounded-2xl border border-gray-100 py-3.5 flex items-center justify-center gap-2 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors">
+        <button
+          onClick={logout}
+          className="w-full bg-white rounded-2xl border border-gray-100 py-3.5 flex items-center justify-center gap-2 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors"
+        >
           <LogOut className="w-4 h-4" />
           退出登录
         </button>
       </div>
 
       {statsModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setStatsModal(null)}>
-          <div className="bg-gradient-to-br from-blue-500 to-purple-600 w-64 rounded-3xl p-8 text-center" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+          onClick={() => setStatsModal(null)}
+        >
+          <div
+            className="bg-gradient-to-br from-blue-500 to-purple-600 w-64 rounded-3xl p-8 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
             <p className="text-white/80 text-sm mb-2">{statsModal.title}</p>
             <p className="text-white text-5xl font-bold mb-3">{statsModal.value}</p>
-            <p className="text-white/70 text-sm">你迄今为止获得了{statsModal.value}{statsModal.suffix}哦~</p>
-            <button onClick={() => setStatsModal(null)} className="mt-5 px-6 py-2 bg-white/20 text-white rounded-full text-sm font-medium hover:bg-white/30 transition-colors">关闭</button>
+            <p className="text-white/70 text-sm">
+              你迄今为止获得了{statsModal.value}
+              {statsModal.suffix}哦~
+            </p>
+            <button
+              onClick={() => setStatsModal(null)}
+              className="mt-5 px-6 py-2 bg-white/20 text-white rounded-full text-sm font-medium hover:bg-white/30 transition-colors"
+            >
+              关闭
+            </button>
           </div>
         </div>
       )}
 
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => !uploadingAvatar && setShowEditModal(false)}>
-          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
+          onClick={() => !uploadingAvatar && setShowEditModal(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-lg font-bold text-gray-900 mb-5">编辑资料</h2>
 
             <div className="flex justify-center mb-5">
@@ -594,12 +792,21 @@ export default function ProfilePage() {
                   onClick={openFilePicker}
                 >
                   {avatar ? (
-                    <img src={getAvatarSrc(avatar)} alt="头像" className="w-full h-full object-cover" />
+                    <img
+                      src={getAvatarSrc(avatar)}
+                      alt="头像"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
-                    <span className="text-white text-2xl font-bold">{user?.username?.substring(0, 1).toUpperCase() || 'U'}</span>
+                    <span className="text-white text-2xl font-bold">
+                      {user?.username?.substring(0, 1).toUpperCase() || 'U'}
+                    </span>
                   )}
                 </div>
-                <button onClick={openFilePicker} className="absolute bottom-0 right-0 w-7 h-7 bg-gray-900 rounded-full flex items-center justify-center cursor-pointer hover:bg-gray-800">
+                <button
+                  onClick={openFilePicker}
+                  className="absolute bottom-0 right-0 w-7 h-7 bg-gray-900 rounded-full flex items-center justify-center cursor-pointer hover:bg-gray-800"
+                >
                   <Camera className="w-3.5 h-3.5 text-white" />
                 </button>
               </div>
@@ -626,15 +833,31 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setShowEditModal(false)} disabled={uploadingAvatar} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-40">取消</button>
-              <button onClick={handleSaveProfile} disabled={uploadingAvatar} className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40">{uploadingAvatar ? '上传中...' : '保存'}</button>
+              <button
+                onClick={() => setShowEditModal(false)}
+                disabled={uploadingAvatar}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-40"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={uploadingAvatar}
+                className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40"
+              >
+                {uploadingAvatar ? '上传中...' : '保存'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {cropperSrc && (
-        <AvatarCropper src={cropperSrc} onConfirm={handleCropConfirm} onCancel={() => setCropperSrc(null)} />
+        <AvatarCropper
+          src={cropperSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={() => setCropperSrc(null)}
+        />
       )}
 
       <NavBar />

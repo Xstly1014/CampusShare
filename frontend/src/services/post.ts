@@ -48,27 +48,31 @@ export const postApi = {
     fileSize?: number
   }) => api.post('/posts', data),
 
-  edit: (postId: string, data: {
-    schoolId?: string
-    categoryId?: string
-    subCategoryId?: string
-    title?: string
-    content?: string
-    fileUrl?: string
-    fileName?: string
-    fileType?: string
-    fileSize?: number
-  }) => api.put(`/posts/${postId}`, data),
+  edit: (
+    postId: string,
+    data: {
+      schoolId?: string
+      categoryId?: string
+      subCategoryId?: string
+      title?: string
+      content?: string
+      fileUrl?: string
+      fileName?: string
+      fileType?: string
+      fileSize?: number
+    },
+  ) => api.put(`/posts/${postId}`, data),
 
   delete: (postId: string) => api.delete(`/posts/${postId}`),
 
   getDetail: (postId: string) => api.get(`/posts/${postId}`),
 
-  getStatus: (postId: string) => api.get<{ starred: boolean; liked: boolean }>(`/posts/${postId}/status`),
+  getStatus: (postId: string) =>
+    api.get<{ starred: boolean; liked: boolean }>(`/posts/${postId}/status`),
 
   getBySchool: (
     schoolId: string,
-    params: { postType?: string; sortType?: string; page?: number; size?: number } = {}
+    params: { postType?: string; sortType?: string; page?: number; size?: number } = {},
   ) => {
     const query = new URLSearchParams()
     if (params.postType) query.set('postType', params.postType)
@@ -83,16 +87,13 @@ export const postApi = {
 
   toggleLike: (postId: string) => api.post(`/posts/${postId}/like`),
 
-  getHistory: (page: number = 1, size: number = 50) =>
-    api.get(`/posts/history?page=${page}&size=${size}`),
+  getHistory: (page = 1, size = 50) => api.get(`/posts/history?page=${page}&size=${size}`),
 
-  getStarred: (page: number = 1, size: number = 50) =>
-    api.get(`/posts/starred?page=${page}&size=${size}`),
+  getStarred: (page = 1, size = 50) => api.get(`/posts/starred?page=${page}&size=${size}`),
 
-  getLiked: (page: number = 1, size: number = 50) =>
-    api.get(`/posts/liked?page=${page}&size=${size}`),
+  getLiked: (page = 1, size = 50) => api.get(`/posts/liked?page=${page}&size=${size}`),
 
-  getMyPosts: (page: number = 1, size: number = 50, postType?: string, keyword?: string) => {
+  getMyPosts: (page = 1, size = 50, postType?: string, keyword?: string) => {
     const params = new URLSearchParams()
     params.set('page', String(page))
     params.set('size', String(size))
@@ -101,13 +102,16 @@ export const postApi = {
     return api.get(`/posts/mine?${params.toString()}`)
   },
 
-  getMyPostStats: () => api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>('/posts/my-stats'),
+  getMyPostStats: () =>
+    api.get<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>(
+      '/posts/my-stats',
+    ),
 
   getWarehouseStats: () => api.get<WarehouseStats>('/posts/warehouse-stats'),
 
   recordDownload: (postId: string) => api.post(`/posts/${postId}/download`),
 
-  getMyDownloads: (page: number = 1, size: number = 50, keyword?: string) => {
+  getMyDownloads: (page = 1, size = 50, keyword?: string) => {
     const params = new URLSearchParams()
     params.set('page', String(page))
     params.set('size', String(size))

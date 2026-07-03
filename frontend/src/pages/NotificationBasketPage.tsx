@@ -88,15 +88,27 @@ export default function NotificationBasketPage() {
                   {d.type === 'SYSTEM' ? (
                     <Bell className="w-5 h-5" />
                   ) : d.senderAvatar ? (
-                    <img src={d.senderAvatar.startsWith('/files/') ? `/api${d.senderAvatar}` : d.senderAvatar} alt={d.senderName} className="w-full h-full object-cover" />
+                    <img
+                      src={
+                        d.senderAvatar.startsWith('/files/')
+                          ? `/api${d.senderAvatar}`
+                          : d.senderAvatar
+                      }
+                      alt={d.senderName}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
-                    <span className="text-white text-sm font-bold">{d.senderName?.substring(0, 1).toUpperCase()}</span>
+                    <span className="text-white text-sm font-bold">
+                      {d.senderName?.substring(0, 1).toUpperCase()}
+                    </span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   {d.type === 'SYSTEM' ? (
                     <>
-                      <p className="text-sm font-medium text-gray-900">{d.targetId || '系统通知'}</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {d.targetId || '系统通知'}
+                      </p>
                       <p className="text-xs text-gray-500 mt-0.5">{d.targetTitle}</p>
                     </>
                   ) : (
@@ -112,11 +124,15 @@ export default function NotificationBasketPage() {
                         {d.type === 'STRANGER_MSG' && ` 给你发了一条消息`}
                         {d.targetTitle && `：${d.targetTitle}`}
                       </p>
-                      {d.content && <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{d.content}</p>}
+                      {d.content && (
+                        <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{d.content}</p>
+                      )}
                     </>
                   )}
                 </div>
-                <span className="text-xs text-gray-400 flex-shrink-0">{formatTime(d.createTime)}</span>
+                <span className="text-xs text-gray-400 flex-shrink-0">
+                  {formatTime(d.createTime)}
+                </span>
               </div>
             ))}
           </div>

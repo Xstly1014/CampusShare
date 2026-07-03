@@ -9,7 +9,9 @@ export function useTogglePostLike() {
     mutationFn: (postId: string) => postApi.toggleLike(postId),
     onMutate: async (postId) => {
       await queryClient.cancelQueries({ queryKey: POSTS_KEYS.status(postId) })
-      const previousStatus = queryClient.getQueryData<{ starred: boolean; liked: boolean }>(POSTS_KEYS.status(postId))
+      const previousStatus = queryClient.getQueryData<{ starred: boolean; liked: boolean }>(
+        POSTS_KEYS.status(postId),
+      )
       queryClient.setQueryData(POSTS_KEYS.status(postId), (old: any) => ({
         ...old,
         liked: !old?.liked,
@@ -34,7 +36,9 @@ export function useTogglePostStar() {
     mutationFn: (postId: string) => postApi.toggleStar(postId),
     onMutate: async (postId) => {
       await queryClient.cancelQueries({ queryKey: POSTS_KEYS.status(postId) })
-      const previousStatus = queryClient.getQueryData<{ starred: boolean; liked: boolean }>(POSTS_KEYS.status(postId))
+      const previousStatus = queryClient.getQueryData<{ starred: boolean; liked: boolean }>(
+        POSTS_KEYS.status(postId),
+      )
       queryClient.setQueryData(POSTS_KEYS.status(postId), (old: any) => ({
         ...old,
         starred: !old?.starred,

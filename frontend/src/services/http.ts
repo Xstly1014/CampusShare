@@ -1,4 +1,5 @@
-import axios, { AxiosError, AxiosProgressEvent, InternalAxiosRequestConfig } from 'axios'
+import type { AxiosError, AxiosProgressEvent, InternalAxiosRequestConfig } from 'axios'
+import axios from 'axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -14,13 +15,13 @@ const REFRESH_TOKEN_KEY = 'campusshare_refresh_token'
 const USER_KEY = 'campusshare_user'
 
 let isRefreshing = false
-let failedQueue: Array<{
+let failedQueue: {
   resolve: (token: string) => void
   reject: (error: any) => void
-}> = []
+}[] = []
 
 function processQueue(error: any, token: string | null = null) {
-  failedQueue.forEach(prom => {
+  failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error)
     } else {
@@ -98,11 +99,11 @@ instance.interceptors.response.use(
         return new Promise<string>((resolve, reject) => {
           failedQueue.push({ resolve, reject })
         })
-          .then(token => {
+          .then((token) => {
             originalRequest.headers.Authorization = `Bearer ${token}`
             return instance(originalRequest)
           })
-          .catch(err => Promise.reject(err))
+          .catch((err) => Promise.reject(err))
       }
 
       originalRequest._retry = true
@@ -158,8 +159,7 @@ export interface UploadOptions {
 }
 
 export const api = {
-  get: <T = any>(url: string) =>
-    instance.get<any, ApiResponse<T>>(url),
+  get: <T = any>(url: string) => instance.get<any, ApiResponse<T>>(url),
 
   post: <T = any>(url: string, body?: any, options?: UploadOptions) =>
     instance.post<any, ApiResponse<T>>(url, body, {
@@ -176,13 +176,11 @@ export const api = {
         : undefined,
     }),
 
-  put: <T = any>(url: string, body?: any) =>
-    instance.put<any, ApiResponse<T>>(url, body),
+  put: <T = any>(url: string, body?: any) => instance.put<any, ApiResponse<T>>(url, body),
 
-  delete: <T = any>(url: string) =>
-    instance.delete<any, ApiResponse<T>>(url),
+  delete: <T = any>(url: string) => instance.delete<any, ApiResponse<T>>(url),
 
-  upload: <T = any>(url: string, file: File, fieldName: string = 'file', options?: UploadOptions) => {
+  upload: <T = any>(url: string, file: File, fieldName = 'file', options?: UploadOptions) => {
     const formData = new FormData()
     formData.append(fieldName, file)
     return instance.post<any, ApiResponse<T>>(url, formData, {

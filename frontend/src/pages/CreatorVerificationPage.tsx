@@ -16,7 +16,8 @@ import {
   Sparkles,
   Shield,
 } from 'lucide-react'
-import { creatorApi, CreatorStats, CreatorStatus } from '../services/api'
+import type { CreatorStats, CreatorStatus } from '../services/api'
+import { creatorApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
 const getCreatorLevelInfo = (level?: string) => {
@@ -88,7 +89,10 @@ function LevelIcon({ level, className }: { level?: string; className?: string })
     return (
       <span className="relative inline-flex">
         <Crown className={`${className} ${info.color}`} />
-        <BadgeCheck className={`${className} ${info.color} absolute -bottom-1 -right-1 bg-white rounded-full`} style={{ width: '60%', height: '60%' }} />
+        <BadgeCheck
+          className={`${className} ${info.color} absolute -bottom-1 -right-1 bg-white rounded-full`}
+          style={{ width: '60%', height: '60%' }}
+        />
       </span>
     )
   }
@@ -182,7 +186,9 @@ export default function CreatorVerificationPage() {
       ])
       setStats(statsRes.data)
       setStatus(statusRes.data)
-    } catch {}
+    } catch {
+      // Silent refresh - background data refresh errors are non-critical
+    }
   }
 
   const handleSubmit = async () => {
@@ -237,7 +243,7 @@ export default function CreatorVerificationPage() {
   const isApproved = status?.status === 'APPROVED'
   const isPending = status?.status === 'PENDING' || status?.hasPendingApplication
   const isRejected = status?.status === 'REJECTED'
-  const currentLevel = isApproved ? (status?.creatorLevel || stats?.creatorLevel || 'NONE') : 'NONE'
+  const currentLevel = isApproved ? status?.creatorLevel || stats?.creatorLevel || 'NONE' : 'NONE'
   const levelInfo = getCreatorLevelInfo(currentLevel)
   const isSenior = currentLevel === 'SENIOR'
   const isAuthority = currentLevel === 'AUTHORITY'
@@ -250,7 +256,9 @@ export default function CreatorVerificationPage() {
       <div className="space-y-4">
         <div className={`rounded-2xl p-5 border ${levelInfo.bgColor} ${levelInfo.borderColor}`}>
           <div className="flex items-center gap-4 mb-5">
-            <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${levelInfo.gradientFrom} ${levelInfo.gradientTo} flex items-center justify-center flex-shrink-0 shadow-lg`}>
+            <div
+              className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${levelInfo.gradientFrom} ${levelInfo.gradientTo} flex items-center justify-center flex-shrink-0 shadow-lg`}
+            >
               {currentLevel === 'AUTHORITY' ? (
                 <Crown className="w-8 h-8 text-white" fill="white" />
               ) : currentLevel === 'SENIOR' ? (
@@ -263,7 +271,9 @@ export default function CreatorVerificationPage() {
               <div className="flex items-center gap-2">
                 <p className={`text-xl font-bold ${levelInfo.color}`}>{levelInfo.name}</p>
                 {currentLevel === 'AUTHORITY' && (
-                  <span className="px-2 py-0.5 bg-yellow-400 text-yellow-900 text-xs font-bold rounded-full">权威</span>
+                  <span className="px-2 py-0.5 bg-yellow-400 text-yellow-900 text-xs font-bold rounded-full">
+                    权威
+                  </span>
                 )}
               </div>
               <p className="text-sm text-gray-500 mt-1">恭喜你已成为认证创作者</p>
@@ -294,15 +304,15 @@ export default function CreatorVerificationPage() {
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp className="w-5 h-5 text-gray-600" />
               <h3 className="text-sm font-bold text-gray-900">升级进度</h3>
-              <span className="text-xs text-gray-400 ml-auto">
-                距{stats.nextLevelName}还差
-              </span>
+              <span className="text-xs text-gray-400 ml-auto">距{stats.nextLevelName}还差</span>
             </div>
 
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs text-gray-500">综合进度</span>
-                <span className={`text-xs font-medium ${levelInfo.color}`}>{stats.progressPercent}%</span>
+                <span className={`text-xs font-medium ${levelInfo.color}`}>
+                  {stats.progressPercent}%
+                </span>
               </div>
               <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
                 <div
@@ -323,7 +333,9 @@ export default function CreatorVerificationPage() {
                   {stats.postsToNext > 0 && (
                     <span className="text-orange-500 ml-1">还差 {stats.postsToNext}</span>
                   )}
-                  {stats.postsToNext === 0 && <Check className="w-4 h-4 text-green-500 inline ml-1" />}
+                  {stats.postsToNext === 0 && (
+                    <Check className="w-4 h-4 text-green-500 inline ml-1" />
+                  )}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -334,9 +346,13 @@ export default function CreatorVerificationPage() {
                 <span className="text-sm text-gray-500">
                   {formatNumber(stats.totalLikes)}
                   {stats.likesToNext > 0 && (
-                    <span className="text-orange-500 ml-1">还差 {formatNumber(stats.likesToNext)}</span>
+                    <span className="text-orange-500 ml-1">
+                      还差 {formatNumber(stats.likesToNext)}
+                    </span>
                   )}
-                  {stats.likesToNext === 0 && <Check className="w-4 h-4 text-green-500 inline ml-1" />}
+                  {stats.likesToNext === 0 && (
+                    <Check className="w-4 h-4 text-green-500 inline ml-1" />
+                  )}
                 </span>
               </div>
               {stats.viewsToNext !== undefined && upgradeRequirements[stats.nextLevel]?.views && (
@@ -348,9 +364,13 @@ export default function CreatorVerificationPage() {
                   <span className="text-sm text-gray-500">
                     {formatNumber(stats.totalViews)}
                     {stats.viewsToNext > 0 && (
-                      <span className="text-orange-500 ml-1">还差 {formatNumber(stats.viewsToNext)}</span>
+                      <span className="text-orange-500 ml-1">
+                        还差 {formatNumber(stats.viewsToNext)}
+                      </span>
                     )}
-                    {stats.viewsToNext === 0 && <Check className="w-4 h-4 text-green-500 inline ml-1" />}
+                    {stats.viewsToNext === 0 && (
+                      <Check className="w-4 h-4 text-green-500 inline ml-1" />
+                    )}
                   </span>
                 </div>
               )}
@@ -366,7 +386,9 @@ export default function CreatorVerificationPage() {
               </div>
               <div className="flex-1">
                 <p className="text-base font-bold text-yellow-900">申请权威创作者</p>
-                <p className="text-sm text-yellow-600 mt-0.5">你已达到高级创作者等级，可申请权威认证</p>
+                <p className="text-sm text-yellow-600 mt-0.5">
+                  你已达到高级创作者等级，可申请权威认证
+                </p>
               </div>
             </div>
             <button
@@ -376,7 +398,9 @@ export default function CreatorVerificationPage() {
             >
               {submittingAuthority ? '提交中...' : '申请权威创作者'}
             </button>
-            <p className="text-xs text-yellow-600 text-center mt-2">提交后七个工作日内完成审核，请耐心等待</p>
+            <p className="text-xs text-yellow-600 text-center mt-2">
+              提交后七个工作日内完成审核，请耐心等待
+            </p>
           </div>
         )}
 
@@ -387,7 +411,9 @@ export default function CreatorVerificationPage() {
             </div>
             <div>
               <p className="text-base font-bold text-yellow-900">权威认证申请审核中</p>
-              <p className="text-sm text-yellow-600 mt-1">我们将在七个工作日内完成审核，请耐心等待</p>
+              <p className="text-sm text-yellow-600 mt-1">
+                我们将在七个工作日内完成审核，请耐心等待
+              </p>
             </div>
           </div>
         )}
@@ -399,11 +425,11 @@ export default function CreatorVerificationPage() {
           </div>
           <div className="space-y-3">
             {levelBenefits.map((benefit) => {
-              const benefitLevelInfo = getCreatorLevelInfo(benefit.level)
               const isCurrentOrAbove =
-                (currentLevel === 'AUTHORITY') ||
+                currentLevel === 'AUTHORITY' ||
                 (currentLevel === 'SENIOR' && benefit.level !== 'AUTHORITY') ||
-                (currentLevel === 'INTERMEDIATE' && (benefit.level === 'JUNIOR' || benefit.level === 'INTERMEDIATE')) ||
+                (currentLevel === 'INTERMEDIATE' &&
+                  (benefit.level === 'JUNIOR' || benefit.level === 'INTERMEDIATE')) ||
                 (currentLevel === 'JUNIOR' && benefit.level === 'JUNIOR')
               return (
                 <div
@@ -416,9 +442,13 @@ export default function CreatorVerificationPage() {
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <benefit.icon className={`w-5 h-5 ${benefit.color}`} />
-                    <span className={`text-sm font-semibold ${benefit.color}`}>{benefit.title}</span>
+                    <span className={`text-sm font-semibold ${benefit.color}`}>
+                      {benefit.title}
+                    </span>
                     {currentLevel === benefit.level && (
-                      <span className="px-1.5 py-0.5 bg-white text-xs font-medium rounded text-gray-500">当前等级</span>
+                      <span className="px-1.5 py-0.5 bg-white text-xs font-medium rounded text-gray-500">
+                        当前等级
+                      </span>
                     )}
                     {isCurrentOrAbove && currentLevel !== benefit.level && (
                       <Check className="w-4 h-4 text-green-500 ml-auto" />
@@ -454,9 +484,13 @@ export default function CreatorVerificationPage() {
       </div>
       <div>
         <p className="text-base font-bold text-blue-900">审核中</p>
-        <p className="text-sm text-blue-600 mt-1">您的认证申请已提交，我们将在七个工作日内完成审核，请耐心等待</p>
+        <p className="text-sm text-blue-600 mt-1">
+          您的认证申请已提交，我们将在七个工作日内完成审核，请耐心等待
+        </p>
         {status?.totalLikes !== undefined && status?.totalPosts !== undefined && (
-          <p className="text-xs text-blue-400 mt-2">申请数据：获赞 {status.totalLikes?.toLocaleString()} · 帖子 {status.totalPosts}</p>
+          <p className="text-xs text-blue-400 mt-2">
+            申请数据：获赞 {status.totalLikes?.toLocaleString()} · 帖子 {status.totalPosts}
+          </p>
         )}
       </div>
     </div>
@@ -469,19 +503,24 @@ export default function CreatorVerificationPage() {
       </div>
       <div>
         <p className="text-base font-bold text-red-900">认证被驳回</p>
-        <p className="text-sm text-red-600 mt-1">驳回原因：{status?.rejectReason || '资料不符合要求'}</p>
+        <p className="text-sm text-red-600 mt-1">
+          驳回原因：{status?.rejectReason || '资料不符合要求'}
+        </p>
         <p className="text-xs text-red-400 mt-1">请修改资料后重新申请</p>
       </div>
     </div>
   )
 
-  const canApply = stats?.meetsRequirements && (!isPending)
+  const canApply = stats?.meetsRequirements && !isPending
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors"
+          >
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
           <span className="text-sm font-medium text-gray-900">创作者认证</span>
@@ -543,7 +582,9 @@ export default function CreatorVerificationPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${stats.totalLikes >= stats.requiredLikes ? 'bg-green-50' : 'bg-gray-100'}`}>
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center ${stats.totalLikes >= stats.requiredLikes ? 'bg-green-50' : 'bg-gray-100'}`}
+                      >
                         {stats.totalLikes >= stats.requiredLikes ? (
                           <Check className="w-4 h-4 text-green-600" />
                         ) : (
@@ -551,17 +592,25 @@ export default function CreatorVerificationPage() {
                         )}
                       </div>
                       <div>
-                        <p className="text-sm text-gray-700">总获赞数 ≥ {stats.requiredLikes.toLocaleString()}</p>
-                        <p className="text-xs text-gray-400">当前：{stats.totalLikes.toLocaleString()}</p>
+                        <p className="text-sm text-gray-700">
+                          总获赞数 ≥ {stats.requiredLikes.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          当前：{stats.totalLikes.toLocaleString()}
+                        </p>
                       </div>
                     </div>
                     {stats.totalLikes < stats.requiredLikes && (
-                      <span className="text-xs text-orange-500">还差 {(stats.requiredLikes - stats.totalLikes).toLocaleString()}</span>
+                      <span className="text-xs text-orange-500">
+                        还差 {(stats.requiredLikes - stats.totalLikes).toLocaleString()}
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${stats.totalPosts >= stats.requiredPosts ? 'bg-green-50' : 'bg-gray-100'}`}>
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center ${stats.totalPosts >= stats.requiredPosts ? 'bg-green-50' : 'bg-gray-100'}`}
+                      >
                         {stats.totalPosts >= stats.requiredPosts ? (
                           <Check className="w-4 h-4 text-green-600" />
                         ) : (
@@ -574,7 +623,9 @@ export default function CreatorVerificationPage() {
                       </div>
                     </div>
                     {stats.totalPosts < stats.requiredPosts && (
-                      <span className="text-xs text-orange-500">还差 {stats.requiredPosts - stats.totalPosts} 篇</span>
+                      <span className="text-xs text-orange-500">
+                        还差 {stats.requiredPosts - stats.totalPosts} 篇
+                      </span>
                     )}
                   </div>
                 </div>
@@ -586,7 +637,9 @@ export default function CreatorVerificationPage() {
                 <h3 className="text-sm font-bold text-gray-900 mb-4">实名认证</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">真实姓名</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      真实姓名
+                    </label>
                     <input
                       type="text"
                       value={realName}
@@ -596,7 +649,9 @@ export default function CreatorVerificationPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">身份证号</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      身份证号
+                    </label>
                     <input
                       type="text"
                       value={idCard}
@@ -619,7 +674,9 @@ export default function CreatorVerificationPage() {
                   >
                     {submitting ? '提交中...' : '提交认证申请'}
                   </button>
-                  <p className="text-xs text-gray-400 text-center">提交后七个工作日内完成审核，请耐心等待</p>
+                  <p className="text-xs text-gray-400 text-center">
+                    提交后七个工作日内完成审核，请耐心等待
+                  </p>
                 </div>
               </div>
             )}

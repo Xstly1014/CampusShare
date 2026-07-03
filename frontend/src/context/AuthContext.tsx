@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react'
+import type { ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback } from 'react'
 import { authApi } from '../services/api'
 
 const TOKEN_KEY = 'campusshare_token'
@@ -61,27 +62,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const register = useCallback(async (data: {
-    registerType: string
-    account: string
-    username: string
-    password: string
-    verifyCode: string
-  }) => {
-    setLoading(true)
-    try {
-      const res = await authApi.register(data)
-      const { token, refreshToken, user: userData } = res.data
-      sessionStorage.setItem(TOKEN_KEY, token)
-      if (refreshToken) {
-        sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+  const register = useCallback(
+    async (data: {
+      registerType: string
+      account: string
+      username: string
+      password: string
+      verifyCode: string
+    }) => {
+      setLoading(true)
+      try {
+        const res = await authApi.register(data)
+        const { token, refreshToken, user: userData } = res.data
+        sessionStorage.setItem(TOKEN_KEY, token)
+        if (refreshToken) {
+          sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+        }
+        sessionStorage.setItem(USER_KEY, JSON.stringify(userData))
+        setUser(userData)
+      } finally {
+        setLoading(false)
       }
-      sessionStorage.setItem(USER_KEY, JSON.stringify(userData))
-      setUser(userData)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    },
+    [],
+  )
 
   const logout = useCallback(() => {
     setUser(null)
@@ -90,25 +94,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(USER_KEY)
   }, [])
 
-  const sendCode = useCallback(async (account: string, type: string = 'phone') => {
+  const sendCode = useCallback(async (account: string, type = 'phone') => {
     await authApi.sendCode(account, type)
   }, [])
 
-  const resetPassword = useCallback(async (account: string, verifyCode: string, newPassword: string) => {
-    await authApi.resetPassword(account, verifyCode, newPassword)
-  }, [])
+  const resetPassword = useCallback(
+    async (account: string, verifyCode: string, newPassword: string) => {
+      await authApi.resetPassword(account, verifyCode, newPassword)
+    },
+    [],
+  )
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      isAuthenticated,
-      loading,
-      login,
-      register,
-      logout,
-      sendCode,
-      resetPassword,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated,
+        loading,
+        login,
+        register,
+        logout,
+        sendCode,
+        resetPassword,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

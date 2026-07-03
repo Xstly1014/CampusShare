@@ -1,9 +1,25 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Send, Bot, User, Sparkles, Plus, Trash2, Menu, X, MessageSquare, Folder, FolderOpen, ChevronDown, ChevronRight, FolderInput, MoreVertical, Pencil } from 'lucide-react'
+import {
+  Send,
+  Bot,
+  User,
+  Sparkles,
+  Plus,
+  Trash2,
+  Menu,
+  X,
+  MessageSquare,
+  Folder,
+  FolderOpen,
+  ChevronDown,
+  ChevronRight,
+  FolderInput,
+  MoreVertical,
+  Pencil,
+} from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { agentApi, chatStream } from '../services/agent'
-import type { AgentSession, AgentTurn, AgentCategory } from '../services/agent'
+import type { AgentSession, AgentCategory } from '../services/agent'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
 import NavBar from '../components/common/NavBar'
@@ -29,7 +45,6 @@ const WELCOME_MESSAGE = `你好！我是 CampusShare 智能助手 👋
 const SESSION_STORAGE_KEY = 'agent_current_session_id'
 
 export default function AgentPage() {
-  const navigate = useNavigate()
   const { user } = useAuth()
 
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -70,14 +85,18 @@ export default function AgentPage() {
     try {
       const res = await agentApi.getSessions()
       setSessions(res.data || [])
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [])
 
   const fetchCategories = useCallback(async () => {
     try {
       const res = await agentApi.getCategories()
       setCategories(res.data || [])
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [])
 
   useEffect(() => {
@@ -89,14 +108,17 @@ export default function AgentPage() {
     const groups: Record<string, AgentSession[]> = { uncategorized: [] }
     for (const cat of categories) groups[cat.id] = []
     for (const s of sessions) {
-      const key = s.categoryId && categories.some(c => c.id === s.categoryId) ? s.categoryId! : 'uncategorized'
-      groups[key].push(s)
+      const key =
+        s.categoryId && categories.some((c) => c.id === s.categoryId)
+          ? s.categoryId!
+          : 'uncategorized'
+      groups[key]!.push(s)
     }
     return groups
   }, [sessions, categories])
 
   const toggleGroup = (key: string) => {
-    setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }))
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
   const closeSidebar = () => {
@@ -154,7 +176,6 @@ export default function AgentPage() {
     if (savedId) {
       loadSession(savedId)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const startNewChat = () => {
@@ -162,14 +183,14 @@ export default function AgentPage() {
     setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
     setCurrentSessionId(null)
     setSidebarOpen(false)
-    setChatKey(k => k + 1)
+    setChatKey((k) => k + 1)
     toast.success('已开始新对话')
   }
 
   const handleSwipeDelete = async (sessionId: string) => {
     try {
       await agentApi.deleteSession(sessionId)
-      setSessions(prev => prev.filter(s => s.id !== sessionId))
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId))
       setOpenSwipeId(null)
       if (currentSessionId === sessionId) {
         startNewChat()
@@ -254,31 +275,25 @@ export default function AgentPage() {
     const userMsgId = `u-${Date.now()}`
     const assistantMsgId = `a-${Date.now()}`
 
-    setMessages(prev => [
-      ...prev,
-      { id: userMsgId, role: 'user', content },
-    ])
+    setMessages((prev) => [...prev, { id: userMsgId, role: 'user', content }])
     setInputValue('')
     setSending(true)
     setStreaming(true)
     abortRef.current = false
     streamContentRef.current = ''
 
-    setMessages(prev => [
-      ...prev,
-      { id: assistantMsgId, role: 'assistant', content: '' },
-    ])
+    setMessages((prev) => [...prev, { id: assistantMsgId, role: 'assistant', content: '' }])
 
     try {
       await chatStream(content, currentSessionId, {
         onDelta: (delta: string) => {
           if (abortRef.current) return
           streamContentRef.current += delta
-          setMessages(prev => prev.map(m =>
-            m.id === assistantMsgId
-              ? { ...m, content: streamContentRef.current }
-              : m
-          ))
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, content: streamContentRef.current } : m,
+            ),
+          )
         },
         onDone: () => {
           setStreaming(false)
@@ -287,11 +302,11 @@ export default function AgentPage() {
         onError: (message: string) => {
           setStreaming(false)
           if (!streamContentRef.current) {
-            setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId
-                ? { ...m, content: `抱歉，出错了：${message}` }
-                : m
-            ))
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId ? { ...m, content: `抱歉，出错了：${message}` } : m,
+              ),
+            )
           } else {
             toast.error(message)
           }
@@ -328,7 +343,10 @@ export default function AgentPage() {
     >
       <div
         onClick={() => {
-          if (openSwipeId === s.id) { setOpenSwipeId(null); return }
+          if (openSwipeId === s.id) {
+            setOpenSwipeId(null)
+            return
+          }
           loadSession(s.id)
         }}
         className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer ${
@@ -373,7 +391,7 @@ export default function AgentPage() {
         <div className="fixed inset-0 bg-black/30 z-40" onClick={closeSidebar}>
           <div
             className="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl flex flex-col"
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <span className="text-sm font-semibold text-gray-900">历史会话</span>
@@ -399,20 +417,35 @@ export default function AgentPage() {
             </div>
             <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
               {/* 分类折叠组 */}
-              {categories.map(cat => {
+              {categories.map((cat) => {
                 const expanded = expandedGroups[cat.id] !== false
                 const groupSessions = groupedSessions[cat.id] || []
                 return (
                   <div key={cat.id}>
                     <div className="flex items-center gap-1 px-2 py-1.5 relative">
-                      <button onClick={() => toggleGroup(cat.id)} className="p-0.5 hover:bg-gray-100 rounded">
-                        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
+                      <button
+                        onClick={() => toggleGroup(cat.id)}
+                        className="p-0.5 hover:bg-gray-100 rounded"
+                      >
+                        {expanded ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                        )}
                       </button>
-                      {expanded ? <FolderOpen className="w-4 h-4 text-amber-500" /> : <Folder className="w-4 h-4 text-amber-500" />}
-                      <span className="text-xs font-medium text-gray-600 flex-1 truncate">{cat.name}</span>
+                      {expanded ? (
+                        <FolderOpen className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <Folder className="w-4 h-4 text-amber-500" />
+                      )}
+                      <span className="text-xs font-medium text-gray-600 flex-1 truncate">
+                        {cat.name}
+                      </span>
                       <span className="text-[10px] text-gray-400">{groupSessions.length}</span>
                       <button
-                        onClick={() => setOpenMenuCategoryId(openMenuCategoryId === cat.id ? null : cat.id)}
+                        onClick={() =>
+                          setOpenMenuCategoryId(openMenuCategoryId === cat.id ? null : cat.id)
+                        }
                         className="p-1 hover:bg-gray-100 rounded"
                       >
                         <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
@@ -435,9 +468,7 @@ export default function AgentPage() {
                       )}
                     </div>
                     {expanded && groupSessions.length > 0 && (
-                      <div className="space-y-1 pl-2">
-                        {groupSessions.map(renderSessionItem)}
-                      </div>
+                      <div className="space-y-1 pl-2">{groupSessions.map(renderSessionItem)}</div>
                     )}
                   </div>
                 )
@@ -446,12 +477,21 @@ export default function AgentPage() {
               {/* 未分类组 */}
               <div>
                 <div className="flex items-center gap-1 px-2 py-1.5">
-                  <button onClick={() => toggleGroup('uncategorized')} className="p-0.5 hover:bg-gray-100 rounded">
-                    {expandedGroups['uncategorized'] !== false ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
+                  <button
+                    onClick={() => toggleGroup('uncategorized')}
+                    className="p-0.5 hover:bg-gray-100 rounded"
+                  >
+                    {expandedGroups['uncategorized'] !== false ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                    )}
                   </button>
                   <MessageSquare className="w-4 h-4 text-gray-400" />
                   <span className="text-xs font-medium text-gray-500 flex-1">未分类</span>
-                  <span className="text-[10px] text-gray-400">{groupedSessions['uncategorized']?.length || 0}</span>
+                  <span className="text-[10px] text-gray-400">
+                    {groupedSessions['uncategorized']?.length || 0}
+                  </span>
                 </div>
                 {expandedGroups['uncategorized'] !== false && (
                   <div className="space-y-1 pl-2">
@@ -472,14 +512,24 @@ export default function AgentPage() {
 
       {/* 分类 CRUD Modal */}
       {showCategoryModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowCategoryModal(false)}>
-          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold text-gray-900 mb-5">{editingCategory ? '重命名分类' : '新建分类'}</h2>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
+          onClick={() => setShowCategoryModal(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-gray-900 mb-5">
+              {editingCategory ? '重命名分类' : '新建分类'}
+            </h2>
             <input
               type="text"
               value={categoryName}
-              onChange={e => setCategoryName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSaveCategory() }}
+              onChange={(e) => setCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveCategory()
+              }}
               placeholder="输入分类名称"
               autoFocus
               maxLength={64}
@@ -487,7 +537,11 @@ export default function AgentPage() {
             />
             <div className="flex gap-3 mt-5">
               <button
-                onClick={() => { setShowCategoryModal(false); setEditingCategory(null); setCategoryName('') }}
+                onClick={() => {
+                  setShowCategoryModal(false)
+                  setEditingCategory(null)
+                  setCategoryName('')
+                }}
                 className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
               >
                 取消
@@ -505,12 +559,18 @@ export default function AgentPage() {
 
       {/* 分类选择器 Modal（移动会话） */}
       {showMovePicker && moveTargetSessionId && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowMovePicker(false)}>
-          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
+          onClick={() => setShowMovePicker(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-lg font-bold text-gray-900 mb-5">选择分类</h2>
             <div className="space-y-1">
               {(() => {
-                const targetSession = sessions.find(s => s.id === moveTargetSessionId)
+                const targetSession = sessions.find((s) => s.id === moveTargetSessionId)
                 const hasCategory = !!targetSession?.categoryId
                 return (
                   <>
@@ -523,21 +583,28 @@ export default function AgentPage() {
                         移出分类
                       </button>
                     )}
-                    {categories.map(cat => (
+                    {categories.map((cat) => (
                       <button
                         key={cat.id}
                         onClick={() => handleMoveToCategory(cat.id)}
                         className={`w-full flex items-center gap-3 px-3 py-3 text-left text-sm rounded-xl hover:bg-gray-50 ${
-                          targetSession?.categoryId === cat.id ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                          targetSession?.categoryId === cat.id
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'text-gray-700'
                         }`}
                       >
                         <Folder className="w-4 h-4 text-amber-500" />
                         <span className="flex-1">{cat.name}</span>
-                        {targetSession?.categoryId === cat.id && <span className="text-xs">当前</span>}
+                        {targetSession?.categoryId === cat.id && (
+                          <span className="text-xs">当前</span>
+                        )}
                       </button>
                     ))}
                     <button
-                      onClick={() => { setShowMovePicker(false); openCreateCategory() }}
+                      onClick={() => {
+                        setShowMovePicker(false)
+                        openCreateCategory()
+                      }}
                       className="w-full flex items-center gap-3 px-3 py-3 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-xl"
                     >
                       <Plus className="w-4 h-4" />
@@ -569,15 +636,21 @@ export default function AgentPage() {
               const isUser = msg.role === 'user'
               return (
                 <div key={msg.id} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    isUser
-                      ? 'bg-gradient-to-br from-blue-500 to-blue-600'
-                      : 'bg-gradient-to-br from-purple-500 to-blue-600'
-                  }`}>
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isUser
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600'
+                        : 'bg-gradient-to-br from-purple-500 to-blue-600'
+                    }`}
+                  >
                     {isUser ? (
                       user?.avatarUrl ? (
                         <img
-                          src={user.avatarUrl.startsWith('/files/') ? `/api${user.avatarUrl}` : user.avatarUrl}
+                          src={
+                            user.avatarUrl.startsWith('/files/')
+                              ? `/api${user.avatarUrl}`
+                              : user.avatarUrl
+                          }
                           alt={user.username}
                           className="w-full h-full object-cover rounded-full"
                         />
@@ -588,27 +661,42 @@ export default function AgentPage() {
                       <Bot className="w-4 h-4 text-white" />
                     )}
                   </div>
-                  <div className={`max-w-[80%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed select-text ${
-                      isUser
-                        ? 'bg-blue-600 text-white rounded-tr-sm whitespace-pre-wrap'
-                        : 'prose prose-sm max-w-none bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_strong]:text-gray-900 [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm'
-                    }`}>
-                      {isUser ? (
-                        msg.content
-                      ) : (
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
-                      )}
-                      {!isUser && msg.id === messages[messages.length - 1]?.id && streaming && msg.content && (
-                        <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse" />
-                      )}
-                      {!isUser && msg.id === messages[messages.length - 1]?.id && streaming && !msg.content && (
-                        <span className="inline-flex gap-1">
-                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                        </span>
-                      )}
+                  <div
+                    className={`max-w-[80%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}
+                  >
+                    <div
+                      className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed select-text ${
+                        isUser
+                          ? 'bg-blue-600 text-white rounded-tr-sm whitespace-pre-wrap'
+                          : 'prose prose-sm max-w-none bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_strong]:text-gray-900 [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm'
+                      }`}
+                    >
+                      {isUser ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
+                      {!isUser &&
+                        msg.id === messages[messages.length - 1]?.id &&
+                        streaming &&
+                        msg.content && (
+                          <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse" />
+                        )}
+                      {!isUser &&
+                        msg.id === messages[messages.length - 1]?.id &&
+                        streaming &&
+                        !msg.content && (
+                          <span className="inline-flex gap-1">
+                            <span
+                              className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                              style={{ animationDelay: '0ms' }}
+                            />
+                            <span
+                              className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                              style={{ animationDelay: '150ms' }}
+                            />
+                            <span
+                              className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                              style={{ animationDelay: '300ms' }}
+                            />
+                          </span>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -625,7 +713,7 @@ export default function AgentPage() {
           <div className="flex-1 relative">
             <textarea
               value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
+              onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="输入你的问题..."
               disabled={sending}

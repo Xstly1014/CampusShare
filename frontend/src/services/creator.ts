@@ -59,8 +59,13 @@ export const creatorApi = {
 
   getStatus: () => api.get<CreatorStatus>('/creator/status'),
 
-  apply: (data: { realName: string; idCard: string; reason?: string; idCardFront?: string; idCardBack?: string }) =>
-    api.post('/creator/apply', data),
+  apply: (data: {
+    realName: string
+    idCard: string
+    reason?: string
+    idCardFront?: string
+    idCardBack?: string
+  }) => api.post('/creator/apply', data),
 
   applyAuthority: () => api.post('/creator/apply-authority'),
 
@@ -70,9 +75,13 @@ export const creatorApi = {
     if (params.page) query.set('page', String(params.page))
     if (params.size) query.set('size', String(params.size))
     const queryStr = query.toString()
-    return api.get<ApplicationListResponse>(`/creator/admin/applications${queryStr ? `?${queryStr}` : ''}`)
+    return api.get<ApplicationListResponse>(
+      `/creator/admin/applications${queryStr ? `?${queryStr}` : ''}`,
+    )
   },
 
-  verifyApplication: (id: number, data: { approved: boolean; rejectReason?: string; reviewNote?: string }) =>
-    api.post(`/creator/admin/applications/${id}/verify`, data),
+  verifyApplication: (
+    id: number,
+    data: { approved: boolean; rejectReason?: string; reviewNote?: string },
+  ) => api.post(`/creator/admin/applications/${id}/verify`, data),
 }

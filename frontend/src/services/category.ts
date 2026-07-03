@@ -28,7 +28,13 @@ export const categoryApi = {
 
   getSubCategoryPosts: (
     subCategoryId: string,
-    params: { postType?: string; sortType?: string; page?: number; size?: number; keyword?: string } = {}
+    params: {
+      postType?: string
+      sortType?: string
+      page?: number
+      size?: number
+      keyword?: string
+    } = {},
   ) => {
     const query = new URLSearchParams()
     if (params.postType) query.set('postType', params.postType)
@@ -42,7 +48,7 @@ export const categoryApi = {
 
   getCategoryPosts: (
     categoryId: string,
-    params: { postType?: string; sortType?: string; page?: number; size?: number } = {}
+    params: { postType?: string; sortType?: string; page?: number; size?: number } = {},
   ) => {
     const query = new URLSearchParams()
     if (params.postType) query.set('postType', params.postType)

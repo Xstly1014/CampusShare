@@ -4,8 +4,7 @@ export const messageApi = {
   send: (receiverId: string, content: string) =>
     api.post('/messages/send', { receiverId, content }),
 
-  getConversation: (otherUserId: string) =>
-    api.get(`/messages/conversation/${otherUserId}`),
+  getConversation: (otherUserId: string) => api.get(`/messages/conversation/${otherUserId}`),
 
   getList: () => api.get('/messages/list'),
 

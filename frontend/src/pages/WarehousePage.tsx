@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import NavBar from '../components/common/NavBar'
 import SwipeToDelete from '../components/common/SwipeToDelete'
-import { postApi, WarehouseStats } from '../services/api'
+import type { WarehouseStats } from '../services/api'
+import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 import {
   Package,
@@ -68,34 +69,50 @@ interface PageResponse<T> {
 }
 
 const COLOR_MAP: Record<string, { bg: string; bar: string }> = {
-  blue:    { bg: 'from-blue-400 to-blue-600',       bar: 'bg-blue-500' },
-  purple:  { bg: 'from-purple-400 to-purple-600',   bar: 'bg-purple-500' },
-  red:     { bg: 'from-red-400 to-red-600',         bar: 'bg-red-500' },
-  pink:    { bg: 'from-pink-400 to-pink-600',       bar: 'bg-pink-500' },
-  green:   { bg: 'from-green-400 to-green-600',     bar: 'bg-green-500' },
+  blue: { bg: 'from-blue-400 to-blue-600', bar: 'bg-blue-500' },
+  purple: { bg: 'from-purple-400 to-purple-600', bar: 'bg-purple-500' },
+  red: { bg: 'from-red-400 to-red-600', bar: 'bg-red-500' },
+  pink: { bg: 'from-pink-400 to-pink-600', bar: 'bg-pink-500' },
+  green: { bg: 'from-green-400 to-green-600', bar: 'bg-green-500' },
   emerald: { bg: 'from-emerald-400 to-emerald-600', bar: 'bg-emerald-500' },
-  amber:   { bg: 'from-amber-400 to-amber-600',     bar: 'bg-amber-500' },
-  cyan:    { bg: 'from-cyan-400 to-cyan-600',       bar: 'bg-cyan-500' },
-  orange:  { bg: 'from-orange-400 to-orange-600',   bar: 'bg-orange-500' },
-  sky:     { bg: 'from-sky-400 to-sky-600',         bar: 'bg-sky-500' },
-  indigo:  { bg: 'from-indigo-400 to-indigo-600',   bar: 'bg-indigo-500' },
-  teal:    { bg: 'from-teal-400 to-teal-600',       bar: 'bg-teal-500' },
+  amber: { bg: 'from-amber-400 to-amber-600', bar: 'bg-amber-500' },
+  cyan: { bg: 'from-cyan-400 to-cyan-600', bar: 'bg-cyan-500' },
+  orange: { bg: 'from-orange-400 to-orange-600', bar: 'bg-orange-500' },
+  sky: { bg: 'from-sky-400 to-sky-600', bar: 'bg-sky-500' },
+  indigo: { bg: 'from-indigo-400 to-indigo-600', bar: 'bg-indigo-500' },
+  teal: { bg: 'from-teal-400 to-teal-600', bar: 'bg-teal-500' },
 }
 
 const DEFAULT_COLOR = { bg: 'from-gray-400 to-gray-600', bar: 'bg-gray-500' }
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
-  Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen, FileText,
+  GraduationCap,
+  Music,
+  Clapperboard,
+  Sparkles,
+  Gamepad2,
+  TrendingUp,
+  Briefcase,
+  AppWindow,
+  UtensilsCrossed,
+  Plane,
+  Camera,
+  BookOpen,
+  FileText,
 }
 
 function getCreatorLevelColor(level?: string): string {
   switch (level) {
-    case 'AUTHORITY': return 'text-yellow-500'
-    case 'SENIOR': return 'text-orange-500'
-    case 'INTERMEDIATE': return 'text-purple-500'
-    case 'JUNIOR': return 'text-blue-500'
-    default: return 'text-blue-500'
+    case 'AUTHORITY':
+      return 'text-yellow-500'
+    case 'SENIOR':
+      return 'text-orange-500'
+    case 'INTERMEDIATE':
+      return 'text-purple-500'
+    case 'JUNIOR':
+      return 'text-blue-500'
+    default:
+      return 'text-blue-500'
   }
 }
 
@@ -194,77 +211,115 @@ export default function WarehousePage() {
 
   const isSearching = searchKeyword.length > 0
 
-  const loadPage = useCallback(async (pageNum: number, isLoadMore = false) => {
-    if (loadingRef.current) return
-    loadingRef.current = true
+  const loadPage = useCallback(
+    async (pageNum: number, isLoadMore = false) => {
+      if (loadingRef.current) return
+      loadingRef.current = true
 
-    if (isLoadMore) {
-      setLoadingMore(true)
-    } else {
-      setListLoading(true)
-    }
-
-    try {
-      if (isSearching) {
-        const SEARCH_SIZE = 50
-        let records: BackendPost[] = []
-        let totalCount = 0
-
-        if (searchDimension === 'all') {
-          const [upRes, dlRes] = await Promise.all([
-            postApi.getMyPosts(pageNum, SEARCH_SIZE, 'resource', searchKeyword),
-            postApi.getMyDownloads(pageNum, SEARCH_SIZE, searchKeyword),
-          ])
-          const upData: PageResponse<BackendPost> = upRes.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
-          const dlData: PageResponse<BackendPost> = dlRes.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
-          records = [...upData.records, ...dlData.records].sort((a, b) => {
-            const ta = new Date((a.downloadTime || a.createTime || '').replace(' ', 'T')).getTime()
-            const tb = new Date((b.downloadTime || b.createTime || '').replace(' ', 'T')).getTime()
-            return tb - ta
-          })
-          totalCount = upData.total + dlData.total
-        } else if (searchDimension === 'uploads') {
-          const res = await postApi.getMyPosts(pageNum, SEARCH_SIZE, 'resource', searchKeyword)
-          const data: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
-          records = data.records
-          totalCount = data.total
-        } else {
-          const res = await postApi.getMyDownloads(pageNum, SEARCH_SIZE, searchKeyword)
-          const data: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: SEARCH_SIZE, current: 1, pages: 0 }
-          records = data.records
-          totalCount = data.total
-        }
-
-        if (isLoadMore) {
-          setPosts(prev => [...prev, ...records])
-        } else {
-          setPosts(records)
-        }
-        setTotal(totalCount)
-        setPage(pageNum)
-        setHasMore(false)
+      if (isLoadMore) {
+        setLoadingMore(true)
       } else {
-        const res = activeTab === 'uploads'
-          ? await postApi.getMyPosts(pageNum, PAGE_SIZE, 'resource')
-          : await postApi.getMyDownloads(pageNum, PAGE_SIZE)
-        const pageData: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: PAGE_SIZE, current: 1, pages: 0 }
-        if (isLoadMore) {
-          setPosts(prev => [...prev, ...pageData.records])
-        } else {
-          setPosts(pageData.records)
-        }
-        setTotal(pageData.total)
-        setPage(pageNum)
-        setHasMore(pageNum * PAGE_SIZE < pageData.total)
+        setListLoading(true)
       }
-    } catch {
-      toast.error('加载失败')
-    } finally {
-      setListLoading(false)
-      setLoadingMore(false)
-      loadingRef.current = false
-    }
-  }, [activeTab, isSearching, searchKeyword, searchDimension])
+
+      try {
+        if (isSearching) {
+          const SEARCH_SIZE = 50
+          let records: BackendPost[] = []
+          let totalCount = 0
+
+          if (searchDimension === 'all') {
+            const [upRes, dlRes] = await Promise.all([
+              postApi.getMyPosts(pageNum, SEARCH_SIZE, 'resource', searchKeyword),
+              postApi.getMyDownloads(pageNum, SEARCH_SIZE, searchKeyword),
+            ])
+            const upData: PageResponse<BackendPost> = upRes.data || {
+              records: [],
+              total: 0,
+              size: SEARCH_SIZE,
+              current: 1,
+              pages: 0,
+            }
+            const dlData: PageResponse<BackendPost> = dlRes.data || {
+              records: [],
+              total: 0,
+              size: SEARCH_SIZE,
+              current: 1,
+              pages: 0,
+            }
+            records = [...upData.records, ...dlData.records].sort((a, b) => {
+              const ta = new Date(
+                (a.downloadTime || a.createTime || '').replace(' ', 'T'),
+              ).getTime()
+              const tb = new Date(
+                (b.downloadTime || b.createTime || '').replace(' ', 'T'),
+              ).getTime()
+              return tb - ta
+            })
+            totalCount = upData.total + dlData.total
+          } else if (searchDimension === 'uploads') {
+            const res = await postApi.getMyPosts(pageNum, SEARCH_SIZE, 'resource', searchKeyword)
+            const data: PageResponse<BackendPost> = res.data || {
+              records: [],
+              total: 0,
+              size: SEARCH_SIZE,
+              current: 1,
+              pages: 0,
+            }
+            records = data.records
+            totalCount = data.total
+          } else {
+            const res = await postApi.getMyDownloads(pageNum, SEARCH_SIZE, searchKeyword)
+            const data: PageResponse<BackendPost> = res.data || {
+              records: [],
+              total: 0,
+              size: SEARCH_SIZE,
+              current: 1,
+              pages: 0,
+            }
+            records = data.records
+            totalCount = data.total
+          }
+
+          if (isLoadMore) {
+            setPosts((prev) => [...prev, ...records])
+          } else {
+            setPosts(records)
+          }
+          setTotal(totalCount)
+          setPage(pageNum)
+          setHasMore(false)
+        } else {
+          const res =
+            activeTab === 'uploads'
+              ? await postApi.getMyPosts(pageNum, PAGE_SIZE, 'resource')
+              : await postApi.getMyDownloads(pageNum, PAGE_SIZE)
+          const pageData: PageResponse<BackendPost> = res.data || {
+            records: [],
+            total: 0,
+            size: PAGE_SIZE,
+            current: 1,
+            pages: 0,
+          }
+          if (isLoadMore) {
+            setPosts((prev) => [...prev, ...pageData.records])
+          } else {
+            setPosts(pageData.records)
+          }
+          setTotal(pageData.total)
+          setPage(pageNum)
+          setHasMore(pageNum * PAGE_SIZE < pageData.total)
+        }
+      } catch {
+        toast.error('加载失败')
+      } finally {
+        setListLoading(false)
+        setLoadingMore(false)
+        loadingRef.current = false
+      }
+    },
+    [activeTab, isSearching, searchKeyword, searchDimension],
+  )
 
   useEffect(() => {
     setPosts([])
@@ -282,11 +337,11 @@ export default function WarehousePage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingRef.current) {
+        if (entries[0]?.isIntersecting && hasMore && !loadingRef.current) {
           loadPage(page + 1, true)
         }
       },
-      { rootMargin: '300px' }
+      { rootMargin: '300px' },
     )
 
     observer.observe(sentinel)
@@ -294,26 +349,65 @@ export default function WarehousePage() {
   }, [hasMore, page, loadPage, listLoading, loadingMore, posts.length])
 
   const statsCards = [
-    { key: 'uploads', label: '我的上传', value: stats?.uploadCount || 0, icon: Upload, color: 'bg-blue-50 text-blue-600' },
-    { key: 'downloads', label: '我的下载', value: stats?.downloadCount || 0, icon: Download, color: 'bg-green-50 text-green-600' },
-    { key: 'resourceDownloads', label: '资源被下载', value: stats?.totalDownloadsOfMyPosts || 0, icon: FileText, color: 'bg-purple-50 text-purple-600' },
-    { key: 'totalViews', label: '总浏览量', value: stats?.totalViews || 0, icon: TrendingUp, color: 'bg-cyan-50 text-cyan-600' },
-    { key: 'likes', label: '总获赞', value: stats?.totalLikes || 0, icon: ThumbsUp, color: 'bg-red-50 text-red-600' },
-    { key: 'stars', label: '总被收藏', value: stats?.totalStars || 0, icon: Star, color: 'bg-amber-50 text-amber-600' },
+    {
+      key: 'uploads',
+      label: '我的上传',
+      value: stats?.uploadCount || 0,
+      icon: Upload,
+      color: 'bg-blue-50 text-blue-600',
+    },
+    {
+      key: 'downloads',
+      label: '我的下载',
+      value: stats?.downloadCount || 0,
+      icon: Download,
+      color: 'bg-green-50 text-green-600',
+    },
+    {
+      key: 'resourceDownloads',
+      label: '资源被下载',
+      value: stats?.totalDownloadsOfMyPosts || 0,
+      icon: FileText,
+      color: 'bg-purple-50 text-purple-600',
+    },
+    {
+      key: 'totalViews',
+      label: '总浏览量',
+      value: stats?.totalViews || 0,
+      icon: TrendingUp,
+      color: 'bg-cyan-50 text-cyan-600',
+    },
+    {
+      key: 'likes',
+      label: '总获赞',
+      value: stats?.totalLikes || 0,
+      icon: ThumbsUp,
+      color: 'bg-red-50 text-red-600',
+    },
+    {
+      key: 'stars',
+      label: '总被收藏',
+      value: stats?.totalStars || 0,
+      icon: Star,
+      color: 'bg-amber-50 text-amber-600',
+    },
   ]
 
   const categoryStats = stats?.categoryStats || []
-  const maxCategoryTotal = categoryStats.reduce((max, c) => Math.max(max, c.uploadCount + c.downloadCount), 0) || 1
+  const maxCategoryTotal =
+    categoryStats.reduce((max, c) => Math.max(max, c.uploadCount + c.downloadCount), 0) || 1
 
   const handleDeleteDownload = useCallback(async (recordId: number) => {
     if (deletingRef.current) return
     deletingRef.current = true
     try {
       await postApi.deleteDownloadRecord(recordId)
-      setPosts(prev => prev.filter(p => p.downloadRecordId !== recordId))
-      setTotal(prev => Math.max(0, prev - 1))
+      setPosts((prev) => prev.filter((p) => p.downloadRecordId !== recordId))
+      setTotal((prev) => Math.max(0, prev - 1))
       setOpenSwipeId(null)
-      setStats(prev => prev ? { ...prev, downloadCount: Math.max(0, prev.downloadCount - 1) } : prev)
+      setStats((prev) =>
+        prev ? { ...prev, downloadCount: Math.max(0, prev.downloadCount - 1) } : prev,
+      )
       toast.success('已删除下载记录')
     } catch {
       toast.error('删除失败')
@@ -353,11 +447,18 @@ export default function WarehousePage() {
               {statsCards.map((card) => {
                 const Icon = card.icon
                 return (
-                  <div key={card.key} className="bg-gray-50 rounded-xl p-3 flex flex-col items-center justify-center text-center">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-1.5 ${card.color}`}>
+                  <div
+                    key={card.key}
+                    className="bg-gray-50 rounded-xl p-3 flex flex-col items-center justify-center text-center"
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center mb-1.5 ${card.color}`}
+                    >
                       <Icon className="w-4 h-4" />
                     </div>
-                    <p className="text-base font-bold text-gray-900 leading-none">{formatNumber(card.value)}</p>
+                    <p className="text-base font-bold text-gray-900 leading-none">
+                      {formatNumber(card.value)}
+                    </p>
                     <p className="text-[11px] text-gray-500 mt-1">{card.label}</p>
                   </div>
                 )
@@ -383,13 +484,19 @@ export default function WarehousePage() {
                 const downloadPct = (cat.downloadCount / maxCategoryTotal) * 100
                 return (
                   <div key={cat.categoryId} className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${colors.bg} flex items-center justify-center flex-shrink-0`}>
+                    <div
+                      className={`w-8 h-8 rounded-lg bg-gradient-to-br ${colors.bg} flex items-center justify-center flex-shrink-0`}
+                    >
                       <IconComp className="w-4 h-4 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-gray-700 truncate">{cat.categoryName}</span>
-                        <span className="text-[11px] text-gray-400 flex-shrink-0 ml-2">{total} 份</span>
+                        <span className="text-xs font-medium text-gray-700 truncate">
+                          {cat.categoryName}
+                        </span>
+                        <span className="text-[11px] text-gray-400 flex-shrink-0 ml-2">
+                          {total} 份
+                        </span>
                       </div>
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -397,20 +504,28 @@ export default function WarehousePage() {
                           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div
                               className={`h-full ${colors.bar} rounded-full transition-all duration-500`}
-                              style={{ width: `${Math.max(uploadPct, cat.uploadCount > 0 ? 4 : 0)}%` }}
+                              style={{
+                                width: `${Math.max(uploadPct, cat.uploadCount > 0 ? 4 : 0)}%`,
+                              }}
                             />
                           </div>
-                          <span className="text-[10px] text-gray-600 w-6 text-right flex-shrink-0">{cat.uploadCount}</span>
+                          <span className="text-[10px] text-gray-600 w-6 text-right flex-shrink-0">
+                            {cat.uploadCount}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-gray-400 w-8 flex-shrink-0">下载</span>
                           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-gray-400 rounded-full transition-all duration-500"
-                              style={{ width: `${Math.max(downloadPct, cat.downloadCount > 0 ? 4 : 0)}%` }}
+                              style={{
+                                width: `${Math.max(downloadPct, cat.downloadCount > 0 ? 4 : 0)}%`,
+                              }}
                             />
                           </div>
-                          <span className="text-[10px] text-gray-600 w-6 text-right flex-shrink-0">{cat.downloadCount}</span>
+                          <span className="text-[10px] text-gray-600 w-6 text-right flex-shrink-0">
+                            {cat.downloadCount}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -433,14 +548,17 @@ export default function WarehousePage() {
               className="flex-1 text-sm outline-none bg-transparent placeholder:text-gray-300"
             />
             {searchInput && (
-              <button onClick={() => setSearchInput('')} className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+              <button
+                onClick={() => setSearchInput('')}
+                className="text-gray-300 hover:text-gray-500 flex-shrink-0"
+              >
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-50">
             <span className="text-[11px] text-gray-400 flex-shrink-0">范围</span>
-            {(['all', 'uploads', 'downloads'] as const).map(dim => (
+            {(['all', 'uploads', 'downloads'] as const).map((dim) => (
               <button
                 key={dim}
                 onClick={() => setSearchDimension(dim)}
@@ -478,7 +596,9 @@ export default function WarehousePage() {
                   <Upload className="w-4 h-4" />
                   我的上传
                   {stats && stats.uploadCount > 0 && (
-                    <span className={`text-[11px] ${activeTab === 'uploads' ? 'text-blue-500' : 'text-gray-400'}`}>
+                    <span
+                      className={`text-[11px] ${activeTab === 'uploads' ? 'text-blue-500' : 'text-gray-400'}`}
+                    >
                       ({stats.uploadCount})
                     </span>
                   )}
@@ -494,7 +614,9 @@ export default function WarehousePage() {
                   <Download className="w-4 h-4" />
                   我的下载
                   {stats && stats.downloadCount > 0 && (
-                    <span className={`text-[11px] ${activeTab === 'downloads' ? 'text-blue-500' : 'text-gray-400'}`}>
+                    <span
+                      className={`text-[11px] ${activeTab === 'downloads' ? 'text-blue-500' : 'text-gray-400'}`}
+                    >
                       ({stats.downloadCount})
                     </span>
                   )}
@@ -515,14 +637,16 @@ export default function WarehousePage() {
                   const isImage = post.fileType?.startsWith('image/')
                   const hasFile = !!post.fileUrl && !isImage
                   const avatarUrl = post.authorAvatar
-                    ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
+                    ? post.authorAvatar.startsWith('/files/')
+                      ? `/api${post.authorAvatar}`
+                      : post.authorAvatar
                     : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
                   const isDownloadContext = isSearching
                     ? searchDimension !== 'uploads'
                     : activeTab === 'downloads'
                   const showSourceBadge = isSearching && searchDimension === 'all'
                   const timeStr = isDownloadContext
-                    ? (post.downloadTime || post.createTime)
+                    ? post.downloadTime || post.createTime
                     : post.createTime
 
                   const cardContent = (
@@ -556,28 +680,48 @@ export default function WarehousePage() {
 
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            post.postType === 'resource'
-                              ? 'bg-blue-50 text-blue-600'
-                              : 'bg-orange-50 text-orange-600'
-                          }`}>
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              post.postType === 'resource'
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'bg-orange-50 text-orange-600'
+                            }`}
+                          >
                             {post.postType === 'resource' ? '资料' : '讨论'}
                           </span>
                           {showSourceBadge && (
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              post.downloadRecordId != null
-                                ? 'bg-green-50 text-green-600'
-                                : 'bg-purple-50 text-purple-600'
-                            }`}>
+                            <span
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                post.downloadRecordId != null
+                                  ? 'bg-green-50 text-green-600'
+                                  : 'bg-purple-50 text-purple-600'
+                              }`}
+                            >
                               {post.downloadRecordId != null ? '下载' : '上传'}
                             </span>
                           )}
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-900 leading-snug" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+                        <h3
+                          className="text-sm font-semibold text-gray-900 leading-snug"
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
+                        >
                           {post.title}
                         </h3>
                         {post.content && post.content.trim() && (
-                          <p className="text-xs text-gray-600 mt-1" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
+                          <p
+                            className="text-xs text-gray-600 mt-1"
+                            style={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                            }}
+                          >
                             {post.content.replace(/<[^>]*>/g, '')}
                           </p>
                         )}
@@ -593,9 +737,13 @@ export default function WarehousePage() {
                         {hasFile && (
                           <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
                             <File className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-                            <span className="text-xs text-gray-700 truncate flex-1">{post.fileName || '附件'}</span>
+                            <span className="text-xs text-gray-700 truncate flex-1">
+                              {post.fileName || '附件'}
+                            </span>
                             {formatFileSize(post.fileSize) && (
-                              <span className="text-[11px] text-gray-400 flex-shrink-0">{formatFileSize(post.fileSize)}</span>
+                              <span className="text-[11px] text-gray-400 flex-shrink-0">
+                                {formatFileSize(post.fileSize)}
+                              </span>
                             )}
                           </div>
                         )}
@@ -627,7 +775,9 @@ export default function WarehousePage() {
                       <SwipeToDelete
                         key={post.id}
                         isOpen={openSwipeId === post.downloadRecordId}
-                        onOpenChange={(open) => setOpenSwipeId(open ? post.downloadRecordId! : null)}
+                        onOpenChange={(open) =>
+                          setOpenSwipeId(open ? post.downloadRecordId! : null)
+                        }
                         onDelete={() => handleDeleteDownload(post.downloadRecordId!)}
                       >
                         {cardContent}
@@ -654,10 +804,18 @@ export default function WarehousePage() {
                   )}
                 </div>
                 <p className="text-gray-400 text-sm">
-                  {isSearching ? '未找到匹配的资源' : activeTab === 'uploads' ? '暂无上传记录' : '暂无下载记录'}
+                  {isSearching
+                    ? '未找到匹配的资源'
+                    : activeTab === 'uploads'
+                      ? '暂无上传记录'
+                      : '暂无下载记录'}
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
-                  {isSearching ? '试试其他关键词或切换搜索范围' : activeTab === 'uploads' ? '开始上传你的第一份资料吧' : '去发现有用的资料下载吧'}
+                  {isSearching
+                    ? '试试其他关键词或切换搜索范围'
+                    : activeTab === 'uploads'
+                      ? '开始上传你的第一份资料吧'
+                      : '去发现有用的资料下载吧'}
                 </p>
               </div>
             )}
@@ -678,9 +836,7 @@ export default function WarehousePage() {
             )}
 
             {!hasMore && posts.length > 0 && (
-              <div className="py-4 text-center text-[11px] text-gray-400">
-                共 {total} 条记录
-              </div>
+              <div className="py-4 text-center text-[11px] text-gray-400">共 {total} 条记录</div>
             )}
           </div>
         </div>

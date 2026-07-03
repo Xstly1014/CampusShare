@@ -1,4 +1,5 @@
-import { useRef, useState, ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import { Trash2, FolderInput } from 'lucide-react'
 
 interface SwipeToDeleteProps {
@@ -10,7 +11,14 @@ interface SwipeToDeleteProps {
   onOpenChange: (open: boolean) => void
 }
 
-export default function SwipeToDelete({ onDelete, onMove, moveLabel = '分类', children, isOpen, onOpenChange }: SwipeToDeleteProps) {
+export default function SwipeToDelete({
+  onDelete,
+  onMove,
+  moveLabel = '分类',
+  children,
+  isOpen,
+  onOpenChange,
+}: SwipeToDeleteProps) {
   const startXRef = useRef(0)
   const draggingRef = useRef(false)
   const movedRef = useRef(false)
@@ -58,7 +66,7 @@ export default function SwipeToDelete({ onDelete, onMove, moveLabel = '分类', 
     }
   }
 
-  const translateX = draggingRef.current ? dragX : (isOpen ? -ACTION_WIDTH : 0)
+  const translateX = draggingRef.current ? dragX : isOpen ? -ACTION_WIDTH : 0
 
   return (
     <div className="relative overflow-hidden rounded-xl">

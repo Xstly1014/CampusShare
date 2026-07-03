@@ -45,18 +45,11 @@
 
 ---
 
-### 2.2 缺少 TypeScript 类型安全保障
+### 2.2 缺少 TypeScript 类型安全保障 ✅ 严格模式已开启
 
-**问题描述**：
-- API 响应类型定义不完整，很多地方用 `any`（[http.ts](file:///E:/workspace_work/CampusShare/frontend/src/services/http.ts) 中 `ApiResponse<T = any>` 默认 any）
-- DTO/VO/Entity 类型没有和后端对齐，手动定义容易出错
-- 没有运行时类型校验（后端返回数据格式变了前端不知道）
-- 第三方库的类型补全可能缺失
-- tsconfig 配置比较宽松，没有开启严格模式（需要检查）
+**已完成**：tsconfig.json 开启 strict/noUnusedLocals/noUnusedParameters/noFallthroughCasesInSwitch/forceConsistentCasingInFileNames/noUncheckedIndexedAccess，修复约50处严格模式错误，`npx tsc --noEmit`零错误。
 
-**示例问题**：[types.ts](file:///E:/workspace_work/CampusShare/frontend/src/services/types.ts) 类型定义可能不够完整
-
-**严重程度**：🟡 P1
+**待完成**：Zod运行时类型校验（Phase3表单处理中引入）、services/types.ts进一步细化。
 
 ---
 
@@ -80,31 +73,17 @@
 
 ---
 
-### 2.4 没有错误边界（Error Boundary）
+### 2.4 没有错误边界（Error Boundary） ✅ 已完成
 
-**问题描述**：React 应用没有任何 Error Boundary 组件。
-
-**影响**：
-- 任何一个组件报错，整个应用白屏崩溃
-- 没有降级 UI，用户体验极差
-- 没有错误上报，无法感知线上问题
-
-**涉及文件**：[App.tsx](file:///E:/workspace_work/CampusShare/frontend/src/App.tsx)、[main.tsx](file:///E:/workspace_work/CampusShare/frontend/src/main.tsx)
-
-**严重程度**：🟡 P1
+**已修复**：创建 [ErrorBoundary.tsx](file:///E:/workspace_work/CampusShare/frontend/src/components/common/ErrorBoundary.tsx)，支持root/page/component三级错误边界。根级别包裹App，页面级别包裹每个路由，开发环境显示错误堆栈，生产环境友好降级UI并自动上报Sentry。
 
 ---
 
-### 2.5 没有前端监控和错误上报
+### 2.5 没有前端监控和错误上报 ✅ 基础设施已完成（DSN待配置）
 
-**问题描述**：
-- 没有 JS 错误捕获和上报
-- 没有性能监控（FP/FCP/LCP/TTI 等 Web Vitals）
-- 没有用户行为埋点（PV/UV、点击率、功能使用率）
-- 没有接口报错监控
-- 无法了解线上运行情况
+**已完成**：安装@Sentry/react，创建[monitoring.ts](file:///E:/workspace_work/CampusShare/frontend/src/lib/monitoring.ts)封装层，initMonitoring在main.tsx中按需初始化（仅生产环境+有DSN时启用），集成BrowserTracing+Session Replay，ErrorBoundary自动captureException。配置VITE_SENTRY_DSN环境变量即可启用。
 
-**严重程度**：🟡 P1
+**待完成**：获取Sentry DSN配置到生产环境、Web Vitals采集、用户行为埋点。
 
 ---
 
@@ -116,23 +95,15 @@
 
 ---
 
-### 2.7 ESLint 规则不完善，没有 Prettier，没有代码规范检查
+### 2.7 ESLint 规则不完善，没有 Prettier，没有代码规范检查 ✅ 已完成
 
-**问题描述**：
-- [eslint.config.js](file:///E:/workspace_work/CampusShare/frontend/eslint.config.js) 只有基础配置，没有 react-hooks 规则、import 排序、a11y 规则
-- 没有 Prettier 统一代码格式化
-- 没有 commit 前 lint 检查（husky + lint-staged）
-- 代码风格不统一
-
-**严重程度**：🟢 P2
+**已修复**：ESLint 9 flat config集成prettier+react-hooks+react-refresh+stylistic规则；配置Prettier（无分号、单引号、100字符行宽）；Husky pre-commit hook自动运行lint-staged（eslint --fix + prettier --write）；新增lint:fix/format/format:check命令。
 
 ---
 
-### 2.8 没有 CI/CD 配置
+### 2.8 没有 CI/CD 配置 ✅ 已完成
 
-**问题描述**：没有 GitHub Actions 或其他 CI 配置，每次手动构建部署。
-
-**严重程度**：🟡 P1
+**已修复**：创建[.github/workflows/frontend-ci.yml](file:///E:/workspace_work/CampusShare/.github/workflows/frontend-ci.yml)，push/PR到master时自动运行tsc类型检查→eslint→vitest→vite build，Node 20 + npm cache优化。
 
 ---
 

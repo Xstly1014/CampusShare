@@ -32,7 +32,7 @@ export default function AuthPage() {
     account: string,
     username: string,
     password: string,
-    verifyCode: string
+    verifyCode: string,
   ) => {
     setError('')
     try {
@@ -44,10 +44,10 @@ export default function AuthPage() {
   }
 
   const handleResetPassword = async (
-    resetType: 'phone' | 'email',
+    _resetType: 'phone' | 'email',
     account: string,
     verifyCode: string,
-    newPassword: string
+    newPassword: string,
   ) => {
     setError('')
     try {
@@ -59,7 +59,7 @@ export default function AuthPage() {
     }
   }
 
-  const handleSendCode = async (account: string, type: string = 'phone') => {
+  const handleSendCode = async (account: string, type = 'phone') => {
     try {
       await sendCode(account, type)
       return true
@@ -90,8 +90,14 @@ export default function AuthPage() {
           {mode === 'login' && (
             <LoginForm
               onLogin={handleLogin}
-              onSwitchToRegister={() => { setMode('register'); setError('') }}
-              onSwitchToForgotPassword={() => { setMode('forgot-password'); setError('') }}
+              onSwitchToRegister={() => {
+                setMode('register')
+                setError('')
+              }}
+              onSwitchToForgotPassword={() => {
+                setMode('forgot-password')
+                setError('')
+              }}
               loading={loading}
             />
           )}
@@ -99,7 +105,10 @@ export default function AuthPage() {
           {mode === 'register' && (
             <RegisterForm
               onRegister={handleRegister}
-              onSwitchToLogin={() => { setMode('login'); setError('') }}
+              onSwitchToLogin={() => {
+                setMode('login')
+                setError('')
+              }}
               onSendCode={handleSendCode}
               loading={loading}
             />
@@ -108,7 +117,10 @@ export default function AuthPage() {
           {mode === 'forgot-password' && (
             <ForgotPasswordForm
               onResetPassword={handleResetPassword}
-              onSwitchToLogin={() => { setMode('login'); setError('') }}
+              onSwitchToLogin={() => {
+                setMode('login')
+                setError('')
+              }}
               onSendCode={handleSendCode}
               loading={loading}
             />

@@ -5,7 +5,7 @@ export const POSTS_KEYS = {
   all: ['posts'] as const,
   lists: () => [...POSTS_KEYS.all, 'list'] as const,
   list: (filters: Record<string, unknown>) => [...POSTS_KEYS.lists(), filters] as const,
-  schoolList: (schoolId: string, filters: Record<string, unknown>) => 
+  schoolList: (schoolId: string, filters: Record<string, unknown>) =>
     [...POSTS_KEYS.lists(), 'school', schoolId, filters] as const,
   details: () => [...POSTS_KEYS.all, 'detail'] as const,
   detail: (id: string) => [...POSTS_KEYS.details(), id] as const,
@@ -55,7 +55,12 @@ export function usePostComments(postId: string) {
 }
 
 export function useMyPostStats() {
-  return useQuery<{ totalViews: number; totalLikes: number; totalStars: number; postCount: number }>({
+  return useQuery<{
+    totalViews: number
+    totalLikes: number
+    totalStars: number
+    postCount: number
+  }>({
     queryKey: POSTS_KEYS.myStats(),
     queryFn: async () => {
       const res = await postApi.getMyPostStats()

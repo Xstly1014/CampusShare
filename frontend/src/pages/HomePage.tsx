@@ -1,37 +1,65 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
-  Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
-  Search
+  GraduationCap,
+  Music,
+  Clapperboard,
+  Sparkles,
+  Gamepad2,
+  TrendingUp,
+  Briefcase,
+  AppWindow,
+  UtensilsCrossed,
+  Plane,
+  Camera,
+  BookOpen,
+  Search,
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
-import { userApi, Category } from '../services/api'
-import { useAuth } from '../context/AuthContext'
+import type { Category } from '../services/api'
+import { userApi } from '../services/api'
 import { useCategories } from '../hooks/queries'
 import schools from '../data/schools.json'
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  GraduationCap, Music, Clapperboard, Sparkles, Gamepad2, TrendingUp,
-  Briefcase, AppWindow, UtensilsCrossed, Plane, Camera, BookOpen,
+  GraduationCap,
+  Music,
+  Clapperboard,
+  Sparkles,
+  Gamepad2,
+  TrendingUp,
+  Briefcase,
+  AppWindow,
+  UtensilsCrossed,
+  Plane,
+  Camera,
+  BookOpen,
 }
 
 const COLOR_MAP: Record<string, { bg: string; text: string; ring: string }> = {
-  blue:    { bg: 'from-blue-400 to-blue-600',     text: 'text-blue-600',     ring: 'ring-blue-100' },
-  purple:  { bg: 'from-purple-400 to-purple-600', text: 'text-purple-600',   ring: 'ring-purple-100' },
-  red:     { bg: 'from-red-400 to-red-600',       text: 'text-red-600',      ring: 'ring-red-100' },
-  pink:    { bg: 'from-pink-400 to-pink-600',     text: 'text-pink-600',     ring: 'ring-pink-100' },
-  green:   { bg: 'from-green-400 to-green-600',   text: 'text-green-600',    ring: 'ring-green-100' },
-  emerald: { bg: 'from-emerald-400 to-emerald-600', text: 'text-emerald-600', ring: 'ring-emerald-100' },
-  amber:   { bg: 'from-amber-400 to-amber-600',   text: 'text-amber-600',    ring: 'ring-amber-100' },
-  cyan:    { bg: 'from-cyan-400 to-cyan-600',     text: 'text-cyan-600',     ring: 'ring-cyan-100' },
-  orange:  { bg: 'from-orange-400 to-orange-600', text: 'text-orange-600',   ring: 'ring-orange-100' },
-  sky:     { bg: 'from-sky-400 to-sky-600',       text: 'text-sky-600',      ring: 'ring-sky-100' },
-  indigo:  { bg: 'from-indigo-400 to-indigo-600', text: 'text-indigo-600',   ring: 'ring-indigo-100' },
-  teal:    { bg: 'from-teal-400 to-teal-600',     text: 'text-teal-600',     ring: 'ring-teal-100' },
+  blue: { bg: 'from-blue-400 to-blue-600', text: 'text-blue-600', ring: 'ring-blue-100' },
+  purple: { bg: 'from-purple-400 to-purple-600', text: 'text-purple-600', ring: 'ring-purple-100' },
+  red: { bg: 'from-red-400 to-red-600', text: 'text-red-600', ring: 'ring-red-100' },
+  pink: { bg: 'from-pink-400 to-pink-600', text: 'text-pink-600', ring: 'ring-pink-100' },
+  green: { bg: 'from-green-400 to-green-600', text: 'text-green-600', ring: 'ring-green-100' },
+  emerald: {
+    bg: 'from-emerald-400 to-emerald-600',
+    text: 'text-emerald-600',
+    ring: 'ring-emerald-100',
+  },
+  amber: { bg: 'from-amber-400 to-amber-600', text: 'text-amber-600', ring: 'ring-amber-100' },
+  cyan: { bg: 'from-cyan-400 to-cyan-600', text: 'text-cyan-600', ring: 'ring-cyan-100' },
+  orange: { bg: 'from-orange-400 to-orange-600', text: 'text-orange-600', ring: 'ring-orange-100' },
+  sky: { bg: 'from-sky-400 to-sky-600', text: 'text-sky-600', ring: 'ring-sky-100' },
+  indigo: { bg: 'from-indigo-400 to-indigo-600', text: 'text-indigo-600', ring: 'ring-indigo-100' },
+  teal: { bg: 'from-teal-400 to-teal-600', text: 'text-teal-600', ring: 'ring-teal-100' },
 }
 
-const DEFAULT_COLORS = { bg: 'from-gray-400 to-gray-600', text: 'text-gray-600', ring: 'ring-gray-100' }
+const DEFAULT_COLORS = {
+  bg: 'from-gray-400 to-gray-600',
+  text: 'text-gray-600',
+  ring: 'ring-gray-100',
+}
 
 const CATEGORY_UNIT_MAP: Record<string, string> = {
   'cat-campus': '所高校',
@@ -58,7 +86,6 @@ interface UserResult {
 export default function HomePage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [userResults, setUserResults] = useState<UserResult[]>([])
-  const { user } = useAuth()
   const navigate = useNavigate()
   const { data: categories = [] } = useCategories()
 
@@ -71,7 +98,9 @@ export default function HomePage() {
       try {
         const res = await userApi.searchUsers(searchKeyword.trim())
         setUserResults(res.data || [])
-      } catch { setUserResults([]) }
+      } catch {
+        setUserResults([])
+      }
     }, 300)
     return () => clearTimeout(timer)
   }, [searchKeyword])
@@ -107,13 +136,29 @@ export default function HomePage() {
             <h2 className="text-sm font-semibold text-gray-900 mb-3">用户</h2>
             <div className="space-y-2">
               {userResults.map((u) => (
-                <div key={u.id} onClick={() => navigate(`/user/${u.id}`)} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors">
+                <div
+                  key={u.id}
+                  onClick={() => navigate(`/user/${u.id}`)}
+                  className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 cursor-pointer hover:border-gray-200 transition-colors"
+                >
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {u.avatarUrl ? <img src={u.avatarUrl.startsWith('/files/') ? `/api${u.avatarUrl}` : u.avatarUrl} alt={u.username} className="w-full h-full object-cover" /> : <span className="text-white font-bold">{u.username?.substring(0, 1).toUpperCase()}</span>}
+                    {u.avatarUrl ? (
+                      <img
+                        src={u.avatarUrl.startsWith('/files/') ? `/api${u.avatarUrl}` : u.avatarUrl}
+                        alt={u.username}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-white font-bold">
+                        {u.username?.substring(0, 1).toUpperCase()}
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900">{u.username}</p>
-                    <p className="text-xs text-gray-400 line-clamp-1">{u.bio || '这个人很懒，什么都没留下...'}</p>
+                    <p className="text-xs text-gray-400 line-clamp-1">
+                      {u.bio || '这个人很懒，什么都没留下...'}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -132,7 +177,8 @@ export default function HomePage() {
               {categories.map((cat) => {
                 const IconComp = ICON_MAP[cat.icon] || GraduationCap
                 const colors = COLOR_MAP[cat.color] || DEFAULT_COLORS
-                const blockCount = cat.type === 'school' ? schools.length : (cat.subCategories?.length || 0)
+                const blockCount =
+                  cat.type === 'school' ? schools.length : cat.subCategories?.length || 0
                 const blockLabel = CATEGORY_UNIT_MAP[cat.id] || '个板块'
                 return (
                   <div
@@ -140,13 +186,18 @@ export default function HomePage() {
                     onClick={() => handleCategoryClick(cat)}
                     className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
                   >
-                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform`}>
+                    <div
+                      className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${colors.bg} flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform`}
+                    >
                       <IconComp className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="font-semibold text-gray-900 text-sm mb-1">{cat.name}</h3>
                     <p className="text-xs text-gray-400 line-clamp-1">{cat.description}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs text-gray-500">内含{blockCount}{blockLabel}</span>
+                      <span className="text-xs text-gray-500">
+                        内含{blockCount}
+                        {blockLabel}
+                      </span>
                     </div>
                   </div>
                 )

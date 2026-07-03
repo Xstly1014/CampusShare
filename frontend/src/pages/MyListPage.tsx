@@ -1,6 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ChevronLeft, Clock, Star, ThumbsUp, Eye, MessageSquare, FileText, BadgeCheck, Crown, Heart, File } from 'lucide-react'
+import {
+  ChevronLeft,
+  Clock,
+  Star,
+  ThumbsUp,
+  Eye,
+  MessageSquare,
+  FileText,
+  BadgeCheck,
+  Crown,
+  Heart,
+  File,
+} from 'lucide-react'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
 
@@ -39,11 +51,16 @@ interface PageResponse<T> {
 
 function getCreatorLevelColor(level?: string): string {
   switch (level) {
-    case 'AUTHORITY': return 'text-yellow-500'
-    case 'SENIOR': return 'text-orange-500'
-    case 'INTERMEDIATE': return 'text-purple-500'
-    case 'JUNIOR': return 'text-blue-500'
-    default: return 'text-blue-500'
+    case 'AUTHORITY':
+      return 'text-yellow-500'
+    case 'SENIOR':
+      return 'text-orange-500'
+    case 'INTERMEDIATE':
+      return 'text-purple-500'
+    case 'JUNIOR':
+      return 'text-blue-500'
+    default:
+      return 'text-blue-500'
   }
 }
 
@@ -70,17 +87,25 @@ interface CommentItem {
 
 const PAGE_SIZE = 20
 
-const listConfig: Record<ListType, {
-  title: string
-  icon: React.ReactNode
-  fetcher: (page: number, size: number) => Promise<any>
-  isComments?: boolean
-}> = {
+const listConfig: Record<
+  ListType,
+  {
+    title: string
+    icon: React.ReactNode
+    fetcher: (page: number, size: number) => Promise<any>
+    isComments?: boolean
+  }
+> = {
   history: { title: '浏览历史', icon: <Clock className="w-5 h-5" />, fetcher: postApi.getHistory },
   starred: { title: '我的收藏', icon: <Star className="w-5 h-5" />, fetcher: postApi.getStarred },
   liked: { title: '我的点赞', icon: <ThumbsUp className="w-5 h-5" />, fetcher: postApi.getLiked },
   mine: { title: '我的帖子', icon: <FileText className="w-5 h-5" />, fetcher: postApi.getMyPosts },
-  comments: { title: '我的回复', icon: <MessageSquare className="w-5 h-5" />, fetcher: async () => postApi.getMyComments(), isComments: true },
+  comments: {
+    title: '我的回复',
+    icon: <MessageSquare className="w-5 h-5" />,
+    fetcher: async () => postApi.getMyComments(),
+    isComments: true,
+  },
 }
 
 function formatNumber(n: number): string {
@@ -144,47 +169,58 @@ export default function MyListPage() {
   const loadingRef = useRef(false)
   const observerRef = useRef<HTMLDivElement>(null)
 
-  const loadPage = useCallback(async (pageNum: number, isLoadMore = false) => {
-    if (loadingRef.current) return
-    loadingRef.current = true
+  const loadPage = useCallback(
+    async (pageNum: number, isLoadMore = false) => {
+      if (loadingRef.current) return
+      loadingRef.current = true
 
-    if (isLoadMore) {
-      setLoadingMore(true)
-    } else {
-      setLoading(true)
-    }
-
-    try {
-      const res = await config.fetcher(pageNum, PAGE_SIZE)
-      if (isCommentsType) {
-        const list = res.data || []
-        setComments(list)
-        setTotal(list.length)
-        setHasMore(false)
+      if (isLoadMore) {
+        setLoadingMore(true)
       } else {
-        const pageData: PageResponse<BackendPost> = res.data || { records: [], total: 0, size: PAGE_SIZE, current: 1, pages: 0 }
-        const mapped = pageData.records.map((p: any) => ({
-          ...p,
-          isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE')
-        }))
-        if (isLoadMore) {
-          setPosts(prev => [...prev, ...mapped])
-        } else {
-          setPosts(mapped)
-        }
-        setTotal(pageData.total)
-        setPage(pageNum)
-        setHasMore(pageNum * PAGE_SIZE < pageData.total)
+        setLoading(true)
       }
-    } catch (err) {
-      toast.error('加载失败')
-    } finally {
-      setLoading(false)
-      setLoadingMore(false)
-      loadingRef.current = false
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listType])
+
+      try {
+        const res = await config.fetcher(pageNum, PAGE_SIZE)
+        if (isCommentsType) {
+          const list = res.data || []
+          setComments(list)
+          setTotal(list.length)
+          setHasMore(false)
+        } else {
+          const pageData: PageResponse<BackendPost> = res.data || {
+            records: [],
+            total: 0,
+            size: PAGE_SIZE,
+            current: 1,
+            pages: 0,
+          }
+          const mapped = pageData.records.map((p: any) => ({
+            ...p,
+            isCreator:
+              p.authorRole === 'CREATOR' ||
+              p.authorRole === 'ADMIN' ||
+              (p.authorLevel && p.authorLevel !== 'NONE'),
+          }))
+          if (isLoadMore) {
+            setPosts((prev) => [...prev, ...mapped])
+          } else {
+            setPosts(mapped)
+          }
+          setTotal(pageData.total)
+          setPage(pageNum)
+          setHasMore(pageNum * PAGE_SIZE < pageData.total)
+        }
+      } catch (err) {
+        toast.error('加载失败')
+      } finally {
+        setLoading(false)
+        setLoadingMore(false)
+        loadingRef.current = false
+      }
+    },
+    [listType],
+  )
 
   useEffect(() => {
     setPosts([])
@@ -202,11 +238,11 @@ export default function MyListPage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingRef.current) {
+        if (entries[0]?.isIntersecting && hasMore && !loadingRef.current) {
           loadPage(page + 1, true)
         }
       },
-      { rootMargin: '300px' }
+      { rootMargin: '300px' },
     )
 
     observer.observe(sentinel)
@@ -229,9 +265,7 @@ export default function MyListPage() {
           <div className="flex items-center gap-2">
             <span className="text-gray-700">{config.icon}</span>
             <span className="text-sm font-medium text-gray-900">{config.title}</span>
-            {displayCount > 0 && (
-              <span className="text-xs text-gray-400">({displayCount})</span>
-            )}
+            {displayCount > 0 && <span className="text-xs text-gray-400">({displayCount})</span>}
           </div>
         </div>
       </div>
@@ -247,21 +281,31 @@ export default function MyListPage() {
             {comments.map((comment) => (
               <div
                 key={comment.id}
-                onClick={() => navigate(`/school/${comment.schoolId || '1'}/post/${comment.postId}`)}
+                onClick={() =>
+                  navigate(`/school/${comment.schoolId || '1'}/post/${comment.postId}`)
+                }
                 className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
               >
                 <div className="flex items-start gap-3">
                   <img
-                    src={comment.avatarUrl.startsWith('/files/') ? `/api${comment.avatarUrl}` : comment.avatarUrl}
+                    src={
+                      comment.avatarUrl.startsWith('/files/')
+                        ? `/api${comment.avatarUrl}`
+                        : comment.avatarUrl
+                    }
                     alt={comment.username}
                     className="w-10 h-10 rounded-full flex-shrink-0"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-medium text-gray-900">{comment.username}</span>
-                      <span className="text-xs text-gray-400">{formatTime(comment.createTime)}</span>
+                      <span className="text-xs text-gray-400">
+                        {formatTime(comment.createTime)}
+                      </span>
                     </div>
-                    <p className="text-sm text-gray-700 leading-relaxed mb-1 line-clamp-3">{comment.content}</p>
+                    <p className="text-sm text-gray-700 leading-relaxed mb-1 line-clamp-3">
+                      {comment.content}
+                    </p>
                     <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
                       <MessageSquare className="w-3.5 h-3.5" />
                       <span>回复的帖子</span>
@@ -277,86 +321,112 @@ export default function MyListPage() {
               const isImage = post.fileType?.startsWith('image/')
               const hasFile = !!post.fileUrl && !isImage
               const avatarUrl = post.authorAvatar
-                ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
+                ? post.authorAvatar.startsWith('/files/')
+                  ? `/api${post.authorAvatar}`
+                  : post.authorAvatar
                 : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
               return (
-              <div
-                key={post.id}
-                onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)}
-                className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <img
-                    src={avatarUrl}
-                    alt={post.authorName || post.authorId}
-                    className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
-                  />
-                  <span className="text-sm text-gray-700 font-medium flex items-center gap-1">
-                    {post.authorName || post.authorId.slice(0, 8)}
-                    {post.authorLevel && post.authorLevel !== 'NONE' && (
-                      <CreatorLevelIcon level={post.authorLevel} />
-                    )}
-                  </span>
-                  <span className="text-xs text-gray-400 ml-1">{formatTime(post.createTime)}</span>
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      post.postType === 'resource'
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'bg-orange-50 text-orange-600'
-                    }`}>
-                      {post.postType === 'resource' ? '资料' : '讨论'}
+                <div
+                  key={post.id}
+                  onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)}
+                  className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <img
+                      src={avatarUrl}
+                      alt={post.authorName || post.authorId}
+                      className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
+                    />
+                    <span className="text-sm text-gray-700 font-medium flex items-center gap-1">
+                      {post.authorName || post.authorId.slice(0, 8)}
+                      {post.authorLevel && post.authorLevel !== 'NONE' && (
+                        <CreatorLevelIcon level={post.authorLevel} />
+                      )}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-1">
+                      {formatTime(post.createTime)}
                     </span>
                   </div>
-                  <h3 className="text-base font-semibold text-gray-900 leading-snug" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
-                    {post.title}
-                  </h3>
-                  {post.content && post.content.trim() && (
-                    <p className="text-sm text-gray-600 mt-1" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
-                      {post.content.replace(/<[^>]*>/g, '')}
-                    </p>
-                  )}
 
-                  {isImage && post.fileUrl && (
-                    <img
-                      src={getFileUrl(post.fileUrl)}
-                      alt={post.fileName || '附件'}
-                      className="w-16 h-16 object-cover rounded mt-2"
-                    />
-                  )}
-
-                  {hasFile && (
-                    <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
-                      <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-sm text-gray-700 truncate flex-1">{post.fileName || '附件'}</span>
-                      {formatFileSize(post.fileSize) && (
-                        <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(post.fileSize)}</span>
-                      )}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          post.postType === 'resource'
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'bg-orange-50 text-orange-600'
+                        }`}
+                      >
+                        {post.postType === 'resource' ? '资料' : '讨论'}
+                      </span>
                     </div>
-                  )}
-                </div>
+                    <h3
+                      className="text-base font-semibold text-gray-900 leading-snug"
+                      style={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {post.title}
+                    </h3>
+                    {post.content && post.content.trim() && (
+                      <p
+                        className="text-sm text-gray-600 mt-1"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {post.content.replace(/<[^>]*>/g, '')}
+                      </p>
+                    )}
 
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                  <span className="flex items-center gap-1">
-                    <Eye className="w-3.5 h-3.5" />
-                    {formatNumber(post.viewCount)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    {formatNumber(post.commentCount)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5" />
-                    {formatNumber(post.starCount)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Heart className="w-3.5 h-3.5" />
-                    {formatNumber(post.likeCount)}
-                  </span>
+                    {isImage && post.fileUrl && (
+                      <img
+                        src={getFileUrl(post.fileUrl)}
+                        alt={post.fileName || '附件'}
+                        className="w-16 h-16 object-cover rounded mt-2"
+                      />
+                    )}
+
+                    {hasFile && (
+                      <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
+                        <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 truncate flex-1">
+                          {post.fileName || '附件'}
+                        </span>
+                        {formatFileSize(post.fileSize) && (
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            {formatFileSize(post.fileSize)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Eye className="w-3.5 h-3.5" />
+                      {formatNumber(post.viewCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {formatNumber(post.commentCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5" />
+                      {formatNumber(post.starCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Heart className="w-3.5 h-3.5" />
+                      {formatNumber(post.likeCount)}
+                    </span>
+                  </div>
                 </div>
-              </div>
               )
             })}
           </div>
@@ -385,9 +455,7 @@ export default function MyListPage() {
         )}
 
         {!isCommentsType && !hasMore && itemCount > 0 && (
-          <div className="py-6 text-center text-xs text-gray-400">
-            共 {total} 条记录
-          </div>
+          <div className="py-6 text-center text-xs text-gray-400">共 {total} 条记录</div>
         )}
       </div>
     </div>

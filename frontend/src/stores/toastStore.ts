@@ -72,7 +72,7 @@ export const useToastStore = create<ToastState>((set, get) => ({
   },
 
   clearAll: () => {
-    const { timers, toasts } = get()
+    const { timers } = get()
     timers.forEach((timer) => clearTimeout(timer))
     set({ toasts: [], timers: new Map() })
   },

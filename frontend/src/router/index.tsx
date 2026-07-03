@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import ErrorBoundary from '../components/common/ErrorBoundary'
 import AuthPage from '../pages/AuthPage'
 import HomePage from '../pages/HomePage'
 import WarehousePage from '../pages/WarehousePage'
@@ -18,7 +19,6 @@ import CreatorVerificationPage from '../pages/CreatorVerificationPage'
 import AdminCreatorPage from '../pages/AdminCreatorPage'
 import AgentPage from '../pages/AgentPage'
 
-// 认证守卫组件
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
 
@@ -29,132 +29,97 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function withPageBoundary(page: React.ReactNode) {
+  return <ErrorBoundary level="page">{page}</ErrorBoundary>
+}
+
 export default function Router() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* 公开路由：登录注册页 */}
         <Route path="/" element={<AuthPage />} />
 
-        {/* 认证路由：需要登录才能访问 */}
         <Route
           path="/home"
-          element={
-            <PrivateRoute>
-              <HomePage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<HomePage />)}</PrivateRoute>}
         />
         <Route
           path="/agent"
-          element={
-            <PrivateRoute>
-              <AgentPage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<AgentPage />)}</PrivateRoute>}
         />
         <Route
           path="/school/:schoolId"
-          element={
-            <PrivateRoute>
-              <SchoolDetailPage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<SchoolDetailPage />)}</PrivateRoute>}
         />
         <Route
           path="/school/:schoolId/post/:postId"
-          element={
-            <PrivateRoute>
-              <PostDetailPage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<PostDetailPage />)}</PrivateRoute>}
         />
         <Route
           path="/warehouse"
-          element={
-            <PrivateRoute>
-              <WarehousePage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<WarehousePage />)}</PrivateRoute>}
         />
         <Route
           path="/profile"
-          element={
-            <PrivateRoute>
-              <ProfilePage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<ProfilePage />)}</PrivateRoute>}
         />
         <Route
           path="/profile/:type"
-          element={
-            <PrivateRoute>
-              <MyListPage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<MyListPage />)}</PrivateRoute>}
         />
         <Route
           path="/settings/:type"
-          element={
-            <PrivateRoute>
-              <SettingsPage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<SettingsPage />)}</PrivateRoute>}
         />
         <Route
           path="/user/:userId"
-          element={
-            <PrivateRoute>
-              <UserProfilePage />
-            </PrivateRoute>
-          }
+          element={<PrivateRoute>{withPageBoundary(<UserProfilePage />)}</PrivateRoute>}
         />
         <Route
           path="/profile/following"
-          element={<PrivateRoute><FollowListPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<FollowListPage />)}</PrivateRoute>}
         />
         <Route
           path="/profile/followers"
-          element={<PrivateRoute><FollowListPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<FollowListPage />)}</PrivateRoute>}
         />
         <Route
           path="/profile/mutual"
-          element={<PrivateRoute><FollowListPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<FollowListPage />)}</PrivateRoute>}
         />
         <Route
           path="/messages"
-          element={<PrivateRoute><MessagePage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<MessagePage />)}</PrivateRoute>}
         />
         <Route
           path="/messages/:userId"
-          element={<PrivateRoute><MessagePage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<MessagePage />)}</PrivateRoute>}
         />
         <Route
           path="/notifications"
-          element={<PrivateRoute><NotificationPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<NotificationPage />)}</PrivateRoute>}
         />
         <Route
           path="/notifications/:basketType"
-          element={<PrivateRoute><NotificationBasketPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<NotificationBasketPage />)}</PrivateRoute>}
         />
         <Route
           path="/creator-verification"
-          element={<PrivateRoute><CreatorVerificationPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<CreatorVerificationPage />)}</PrivateRoute>}
         />
         <Route
           path="/admin/creator"
-          element={<PrivateRoute><AdminCreatorPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<AdminCreatorPage />)}</PrivateRoute>}
         />
         <Route
           path="/category/:categoryId"
-          element={<PrivateRoute><CategoryDetailPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<CategoryDetailPage />)}</PrivateRoute>}
         />
         <Route
           path="/category/:categoryId/post/:postId"
-          element={<PrivateRoute><PostDetailPage /></PrivateRoute>}
+          element={<PrivateRoute>{withPageBoundary(<PostDetailPage />)}</PrivateRoute>}
         />
 
-        {/* 未匹配路由：重定向到首页 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

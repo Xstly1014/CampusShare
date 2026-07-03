@@ -86,7 +86,7 @@ export function useInvalidateUsers() {
   const queryClient = useQueryClient()
   return {
     invalidateCurrentUser: () => queryClient.invalidateQueries({ queryKey: USERS_KEYS.me() }),
-    invalidateProfile: (userId: string) => 
+    invalidateProfile: (userId: string) =>
       queryClient.invalidateQueries({ queryKey: USERS_KEYS.profile(userId) }),
     invalidateFollowData: () => {
       queryClient.invalidateQueries({ queryKey: USERS_KEYS.followStats() })

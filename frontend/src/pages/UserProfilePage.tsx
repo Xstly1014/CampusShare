@@ -1,9 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, FileText, Star, ThumbsUp, Clock, UserPlus, UserCheck, Copy, MessageSquare, BadgeCheck, Crown, Eye, Heart, File } from 'lucide-react'
-import { userApi, postApi } from '../services/api'
+import {
+  ChevronLeft,
+  FileText,
+  Star,
+  ThumbsUp,
+  Clock,
+  UserPlus,
+  UserCheck,
+  Copy,
+  MessageSquare,
+  BadgeCheck,
+  Crown,
+  Eye,
+  Heart,
+  File,
+} from 'lucide-react'
+import { userApi } from '../services/api'
 import { toast } from '../stores/toastStore'
-import { useAuth } from '../context/AuthContext'
 
 type TabType = 'posts' | 'starred' | 'liked' | 'history'
 
@@ -50,11 +64,16 @@ interface BackendPost {
 
 function getCreatorLevelColor(level?: string): string {
   switch (level) {
-    case 'AUTHORITY': return 'text-yellow-500'
-    case 'SENIOR': return 'text-orange-500'
-    case 'INTERMEDIATE': return 'text-purple-500'
-    case 'JUNIOR': return 'text-blue-500'
-    default: return 'text-blue-500'
+    case 'AUTHORITY':
+      return 'text-yellow-500'
+    case 'SENIOR':
+      return 'text-orange-500'
+    case 'INTERMEDIATE':
+      return 'text-purple-500'
+    case 'JUNIOR':
+      return 'text-blue-500'
+    default:
+      return 'text-blue-500'
   }
 }
 
@@ -114,7 +133,6 @@ const tabs: { key: TabType; label: string; icon: React.ReactNode }[] = [
 export default function UserProfilePage() {
   const { userId } = useParams<{ userId: string }>()
   const navigate = useNavigate()
-  const { user: currentUser } = useAuth()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -137,7 +155,9 @@ export default function UserProfilePage() {
     }
   }, [userId, navigate])
 
-  useEffect(() => { fetchProfile() }, [fetchProfile])
+  useEffect(() => {
+    fetchProfile()
+  }, [fetchProfile])
 
   const fetchList = useCallback(async () => {
     if (!userId) return
@@ -148,21 +168,39 @@ export default function UserProfilePage() {
       else if (activeTab === 'starred') res = await userApi.getUserStarred(userId)
       else if (activeTab === 'liked') res = await userApi.getUserLiked(userId)
       else res = await userApi.getUserHistory(userId)
-      setPosts(((res.data?.records || res.data) || []).map((p: any) => ({
-        ...p,
-        isCreator: p.authorRole === 'CREATOR' || p.authorRole === 'ADMIN' || (p.authorLevel && p.authorLevel !== 'NONE')
-      })))
-    } catch { setPosts([]) }
-    finally { setListLoading(false) }
+      setPosts(
+        (res.data?.records || res.data || []).map((p: any) => ({
+          ...p,
+          isCreator:
+            p.authorRole === 'CREATOR' ||
+            p.authorRole === 'ADMIN' ||
+            (p.authorLevel && p.authorLevel !== 'NONE'),
+        })),
+      )
+    } catch {
+      setPosts([])
+    } finally {
+      setListLoading(false)
+    }
   }, [userId, activeTab])
 
-  useEffect(() => { fetchList() }, [fetchList])
+  useEffect(() => {
+    fetchList()
+  }, [fetchList])
 
   const handleFollow = async () => {
     if (!userId) return
     try {
       const res = await userApi.toggleFollow(userId)
-      setProfile(prev => prev ? { ...prev, isFollowing: res.data, followerCount: res.data ? prev.followerCount + 1 : prev.followerCount - 1 } : prev)
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              isFollowing: res.data,
+              followerCount: res.data ? prev.followerCount + 1 : prev.followerCount - 1,
+            }
+          : prev,
+      )
     } catch (err) {
       toast.error((err as Error).message || '操作失败')
     }
@@ -190,10 +228,15 @@ export default function UserProfilePage() {
       {/* 顶部导航 */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-1.5 -ml-1.5 hover:bg-gray-100 rounded-full transition-colors"
+          >
             <ChevronLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <span className="text-sm font-medium text-gray-900">{profile.isSelf ? '我的主页' : '用户主页'}</span>
+          <span className="text-sm font-medium text-gray-900">
+            {profile.isSelf ? '我的主页' : '用户主页'}
+          </span>
         </div>
       </div>
 
@@ -206,9 +249,19 @@ export default function UserProfilePage() {
               className={`w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center overflow-hidden flex-shrink-0 ${profile.avatarUrl ? 'cursor-pointer' : ''}`}
             >
               {profile.avatarUrl ? (
-                <img src={profile.avatarUrl.startsWith('/files/') ? `/api${profile.avatarUrl}` : profile.avatarUrl} alt={profile.username} className="w-full h-full object-cover" />
+                <img
+                  src={
+                    profile.avatarUrl.startsWith('/files/')
+                      ? `/api${profile.avatarUrl}`
+                      : profile.avatarUrl
+                  }
+                  alt={profile.username}
+                  className="w-full h-full object-cover"
+                />
               ) : (
-                <span className="text-white text-xl font-bold">{profile.username?.substring(0, 1).toUpperCase() || 'U'}</span>
+                <span className="text-white text-xl font-bold">
+                  {profile.username?.substring(0, 1).toUpperCase() || 'U'}
+                </span>
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -220,15 +273,24 @@ export default function UserProfilePage() {
                   </span>
                 )}
                 {profile.isCreator && !profile.creatorLevel && (
-                  <span className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0" title="认证创作者">
+                  <span
+                    className="inline-flex items-center justify-center w-5 h-5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex-shrink-0"
+                    title="认证创作者"
+                  >
                     <span className="text-white text-[10px] font-bold leading-none">V</span>
                   </span>
                 )}
-                <button onClick={handleCopyId} className="p-1 hover:bg-gray-100 rounded-full transition-colors" title="复制ID">
+                <button
+                  onClick={handleCopyId}
+                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                  title="复制ID"
+                >
                   <Copy className="w-3.5 h-3.5 text-gray-400" />
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{profile.bio || '这个人很懒，什么都没留下...'}</p>
+              <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">
+                {profile.bio || '这个人很懒，什么都没留下...'}
+              </p>
               <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
                 <span>关注 {profile.followingCount}</span>
                 <span>粉丝 {profile.followerCount}</span>
@@ -248,13 +310,24 @@ export default function UserProfilePage() {
                     onClick={() => navigate(`/messages/${userId}`)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
                   >
-                    <MessageSquare className="w-4 h-4" />私信
+                    <MessageSquare className="w-4 h-4" />
+                    私信
                   </button>
                   <button
                     onClick={handleFollow}
                     className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors ${profile.isFollowing ? 'bg-gray-100 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                   >
-                    {profile.isFollowing ? <><UserCheck className="w-4 h-4" />已关注</> : <><UserPlus className="w-4 h-4" />关注</>}
+                    {profile.isFollowing ? (
+                      <>
+                        <UserCheck className="w-4 h-4" />
+                        已关注
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        关注
+                      </>
+                    )}
                   </button>
                 </>
               )}
@@ -263,10 +336,22 @@ export default function UserProfilePage() {
 
           {/* 统计数据 */}
           <div className="grid grid-cols-4 gap-2 mt-5">
-            <div className="text-center"><p className="text-base font-bold text-gray-900">{profile.totalViews}</p><p className="text-xs text-gray-400 mt-0.5">总浏览</p></div>
-            <div className="text-center"><p className="text-base font-bold text-gray-900">{profile.totalLikes}</p><p className="text-xs text-gray-400 mt-0.5">获赞</p></div>
-            <div className="text-center"><p className="text-base font-bold text-gray-900">{profile.totalStars}</p><p className="text-xs text-gray-400 mt-0.5">被收藏</p></div>
-            <div className="text-center"><p className="text-base font-bold text-gray-900">{profile.postCount}</p><p className="text-xs text-gray-400 mt-0.5">帖子</p></div>
+            <div className="text-center">
+              <p className="text-base font-bold text-gray-900">{profile.totalViews}</p>
+              <p className="text-xs text-gray-400 mt-0.5">总浏览</p>
+            </div>
+            <div className="text-center">
+              <p className="text-base font-bold text-gray-900">{profile.totalLikes}</p>
+              <p className="text-xs text-gray-400 mt-0.5">获赞</p>
+            </div>
+            <div className="text-center">
+              <p className="text-base font-bold text-gray-900">{profile.totalStars}</p>
+              <p className="text-xs text-gray-400 mt-0.5">被收藏</p>
+            </div>
+            <div className="text-center">
+              <p className="text-base font-bold text-gray-900">{profile.postCount}</p>
+              <p className="text-xs text-gray-400 mt-0.5">帖子</p>
+            </div>
           </div>
         </div>
       </div>
@@ -275,8 +360,13 @@ export default function UserProfilePage() {
       <div className="max-w-5xl mx-auto px-4 mt-3">
         <div className="bg-white rounded-2xl border border-gray-100 p-1 flex">
           {tabs.map((tab) => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm rounded-xl transition-colors ${activeTab === tab.key ? 'bg-gray-900 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>
-              {tab.icon}{tab.label}
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm rounded-xl transition-colors ${activeTab === tab.key ? 'bg-gray-900 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+            >
+              {tab.icon}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -285,99 +375,133 @@ export default function UserProfilePage() {
       {/* 帖子列表 */}
       <div className="max-w-5xl mx-auto px-4 mt-3">
         {listLoading ? (
-          <div className="text-center py-12"><div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
+          <div className="text-center py-12">
+            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          </div>
         ) : posts.length > 0 ? (
           <div className="space-y-3">
             {posts.map((post) => {
               const isImage = post.fileType?.startsWith('image/')
               const hasFile = !!post.fileUrl && !isImage
               const avatarUrl = post.authorAvatar
-                ? (post.authorAvatar.startsWith('/files/') ? `/api${post.authorAvatar}` : post.authorAvatar)
+                ? post.authorAvatar.startsWith('/files/')
+                  ? `/api${post.authorAvatar}`
+                  : post.authorAvatar
                 : `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.authorId}`
               return (
-              <div key={post.id} onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)} className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all p-4 cursor-pointer">
-                {/* 顶部作者栏 */}
-                <div className="flex items-center gap-2 mb-2">
-                  <img
-                    src={avatarUrl}
-                    alt={post.authorName}
-                    className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
-                  />
-                  <span className="text-sm text-gray-700 font-medium flex items-center gap-1">
-                    {post.authorName || post.authorId.slice(0, 8)}
-                    {post.authorLevel && post.authorLevel !== 'NONE' && (
-                      <CreatorLevelIcon level={post.authorLevel} />
-                    )}
-                  </span>
-                  <span className="text-xs text-gray-400 ml-1">{formatTime(post.createTime)}</span>
-                </div>
-
-                {/* 内容区 */}
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      post.postType === 'resource' 
-                        ? 'bg-blue-50 text-blue-600' 
-                        : 'bg-orange-50 text-orange-600'
-                    }`}>
-                      {post.postType === 'resource' ? '资料' : '讨论'}
+                <div
+                  key={post.id}
+                  onClick={() => navigate(`/school/${post.schoolId}/post/${post.id}`)}
+                  className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all p-4 cursor-pointer"
+                >
+                  {/* 顶部作者栏 */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <img
+                      src={avatarUrl}
+                      alt={post.authorName}
+                      className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
+                    />
+                    <span className="text-sm text-gray-700 font-medium flex items-center gap-1">
+                      {post.authorName || post.authorId.slice(0, 8)}
+                      {post.authorLevel && post.authorLevel !== 'NONE' && (
+                        <CreatorLevelIcon level={post.authorLevel} />
+                      )}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-1">
+                      {formatTime(post.createTime)}
                     </span>
                   </div>
-                  <h3 className="text-base font-semibold text-gray-900 leading-snug" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
-                    {post.title}
-                  </h3>
-                  {post.content && post.content.trim() && (
-                    <p className="text-sm text-gray-600 mt-1" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>
-                      {post.content.replace(/<[^>]*>/g, '')}
-                    </p>
-                  )}
 
-                  {/* 图片附件缩略图 */}
-                  {isImage && post.fileUrl && (
-                    <img
-                      src={getFileUrl(post.fileUrl)}
-                      alt={post.fileName || '附件'}
-                      className="w-16 h-16 object-cover rounded mt-2"
-                    />
-                  )}
-
-                  {/* 文件附件条 */}
-                  {hasFile && (
-                    <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
-                      <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-sm text-gray-700 truncate flex-1">{post.fileName || '附件'}</span>
-                      {formatFileSize(post.fileSize) && (
-                        <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(post.fileSize)}</span>
-                      )}
+                  {/* 内容区 */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          post.postType === 'resource'
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'bg-orange-50 text-orange-600'
+                        }`}
+                      >
+                        {post.postType === 'resource' ? '资料' : '讨论'}
+                      </span>
                     </div>
-                  )}
-                </div>
+                    <h3
+                      className="text-base font-semibold text-gray-900 leading-snug"
+                      style={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {post.title}
+                    </h3>
+                    {post.content && post.content.trim() && (
+                      <p
+                        className="text-sm text-gray-600 mt-1"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {post.content.replace(/<[^>]*>/g, '')}
+                      </p>
+                    )}
 
-                {/* 底部数据栏 */}
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                  <span className="flex items-center gap-1">
-                    <Eye className="w-3.5 h-3.5" />
-                    {formatNumber(post.viewCount)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    {post.commentCount}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5" />
-                    {formatNumber(post.starCount)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Heart className="w-3.5 h-3.5" />
-                    {formatNumber(post.likeCount)}
-                  </span>
+                    {/* 图片附件缩略图 */}
+                    {isImage && post.fileUrl && (
+                      <img
+                        src={getFileUrl(post.fileUrl)}
+                        alt={post.fileName || '附件'}
+                        className="w-16 h-16 object-cover rounded mt-2"
+                      />
+                    )}
+
+                    {/* 文件附件条 */}
+                    {hasFile && (
+                      <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 mt-2">
+                        <File className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 truncate flex-1">
+                          {post.fileName || '附件'}
+                        </span>
+                        {formatFileSize(post.fileSize) && (
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            {formatFileSize(post.fileSize)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 底部数据栏 */}
+                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Eye className="w-3.5 h-3.5" />
+                      {formatNumber(post.viewCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {post.commentCount}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5" />
+                      {formatNumber(post.starCount)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Heart className="w-3.5 h-3.5" />
+                      {formatNumber(post.likeCount)}
+                    </span>
+                  </div>
                 </div>
-              </div>
               )
             })}
           </div>
         ) : (
-          <div className="text-center py-12"><p className="text-gray-400 text-sm">暂无内容</p></div>
+          <div className="text-center py-12">
+            <p className="text-gray-400 text-sm">暂无内容</p>
+          </div>
         )}
       </div>
 
@@ -389,7 +513,11 @@ export default function UserProfilePage() {
         >
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <img
-              src={profile.avatarUrl.startsWith('/files/') ? `/api${profile.avatarUrl}` : profile.avatarUrl}
+              src={
+                profile.avatarUrl.startsWith('/files/')
+                  ? `/api${profile.avatarUrl}`
+                  : profile.avatarUrl
+              }
               alt={profile.username}
               className="w-72 h-72 sm:w-80 sm:h-80 rounded-full object-cover border-4 border-white/20"
             />

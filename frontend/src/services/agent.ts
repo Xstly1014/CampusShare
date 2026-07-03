@@ -56,7 +56,7 @@ function getAuthHeaders(): Record<string, string> {
 export async function chatStream(
   message: string,
   sessionId: string | null,
-  callbacks: ChatStreamCallbacks
+  callbacks: ChatStreamCallbacks,
 ): Promise<{ sessionId: string | null }> {
   const response = await fetch(`${API_BASE_URL}/agent/chat`, {
     method: 'POST',
@@ -115,7 +115,9 @@ export async function chatStream(
               if (parsed.sessionId) {
                 extractedSessionId = parsed.sessionId
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
         }
       }
@@ -133,32 +135,25 @@ export const agentApi = {
   createSession: (title?: string) =>
     api.post<AgentSession>('/agent/sessions', title ? { title } : {}),
 
-  getSessions: () =>
-    api.get<AgentSession[]>('/agent/sessions'),
+  getSessions: () => api.get<AgentSession[]>('/agent/sessions'),
 
-  getSession: (sessionId: string) =>
-    api.get<AgentSession>(`/agent/sessions/${sessionId}`),
+  getSession: (sessionId: string) => api.get<AgentSession>(`/agent/sessions/${sessionId}`),
 
   getSessionTurns: (sessionId: string) =>
     api.get<AgentTurn[]>(`/agent/sessions/${sessionId}/turns`),
 
-  archiveSession: (sessionId: string) =>
-    api.put<void>(`/agent/sessions/${sessionId}/archive`),
+  archiveSession: (sessionId: string) => api.put<void>(`/agent/sessions/${sessionId}/archive`),
 
-  deleteSession: (sessionId: string) =>
-    api.delete<void>(`/agent/sessions/${sessionId}`),
+  deleteSession: (sessionId: string) => api.delete<void>(`/agent/sessions/${sessionId}`),
 
-  getCategories: () =>
-    api.get<AgentCategory[]>('/agent/categories'),
+  getCategories: () => api.get<AgentCategory[]>('/agent/categories'),
 
-  createCategory: (name: string) =>
-    api.post<AgentCategory>('/agent/categories', { name }),
+  createCategory: (name: string) => api.post<AgentCategory>('/agent/categories', { name }),
 
   renameCategory: (categoryId: string, name: string) =>
     api.put<AgentCategory>(`/agent/categories/${categoryId}`, { name }),
 
-  deleteCategory: (categoryId: string) =>
-    api.delete<void>(`/agent/categories/${categoryId}`),
+  deleteCategory: (categoryId: string) => api.delete<void>(`/agent/categories/${categoryId}`),
 
   moveSessionCategory: (sessionId: string, categoryId: string | null) =>
     api.put<AgentSession>(`/agent/sessions/${sessionId}/category`, { categoryId }),

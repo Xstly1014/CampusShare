@@ -26,7 +26,7 @@ export const authApi = {
     verifyCode: string
   }) => api.post('/auth/register', data),
 
-  sendCode: (account: string, type: string = 'phone') =>
+  sendCode: (account: string, type = 'phone') =>
     api.post(`/auth/send-code?account=${encodeURIComponent(account)}&type=${type}`),
 
   resetPassword: (account: string, verifyCode: string, newPassword: string) =>

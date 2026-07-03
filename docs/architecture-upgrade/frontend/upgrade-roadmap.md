@@ -238,72 +238,82 @@
 
 ---
 
-### 2.2 错误边界（Error Boundary）
+### 2.2 错误边界（Error Boundary） ✅ 已完成
 
-**实施**：
-1. 创建 `components/common/ErrorBoundary.tsx`
-2. 不同级别的错误边界：
-   - 根级别：整个应用崩溃兜底
-   - 页面级别：单个页面出错不影响其他页面
-   - 组件级别：小组件（如评论列表）出错降级显示
-3. 错误发生时显示友好降级 UI（"出错了，点击重试"按钮）
-4. 开发环境显示错误详情，生产环境上报错误
-
----
-
-### 2.3 前端监控和埋点
-
-**选型决策**：
-- **错误监控 + 性能监控**：接入 Sentry（开源，可自建或用SaaS）
-- **Web Vitals**：web-vitals 库采集 FP/FCP/LCP/CLS/FID/TTFB
-- **用户行为埋点**：手动埋点关键操作（登录、发帖、评论、点击等），先打日志到控制台，后续接后端埋点接口
-
-**实施步骤**：
-1. 安装 `@sentry/react`
-2. main.tsx 初始化 Sentry（DSN 从环境变量读取）
-3. ErrorBoundary 集成 Sentry 上报
-4. 采集 Web Vitals 指标上报
-5. 关键操作埋点（用封装的 `track()` 函数）
+**已实施**：
+1. 创建 `components/common/ErrorBoundary.tsx`，支持三个级别：`root`/`page`/`component`
+2. 根级别：App.tsx 包裹整个应用，崩溃时显示"刷新页面"按钮
+3. 页面级别：router/index.tsx 中 `withPageBoundary()` 包裹每个页面路由，单页出错不影响其他页面
+4. 组件级别：可手动包裹任意子组件，支持自定义 fallback
+5. 开发环境显示详细错误堆栈（可展开），生产环境友好降级UI
+6. 集成 Sentry/captureException 错误上报
+7. 重试按钮可重置错误状态（root级别刷新页面，其他级别重新渲染）
 
 ---
 
-### 2.4 代码规范与格式化
+### 2.3 前端监控和埋点 ✅ 基础设施已完成（DSN待配置）
 
-**实施**：
-1. **安装 Prettier**：统一代码格式化
-2. **完善 ESLint**：
-   - 启用 `eslint-plugin-react-hooks`（检查 hooks 依赖数组）
-   - 启用 `eslint-plugin-react-refresh`（热更新规范）
-   - 考虑 `eslint-plugin-jsx-a11y`（可访问性检查）
-   - 启用 `@typescript-eslint` 严格规则
-3. **配置 Husky + lint-staged**：
-   - pre-commit hook：运行 lint-staged（eslint --fix + prettier --write）
-   - commit-msg hook：校验 commit message 格式（Conventional Commits）
-4. **tsconfig 开启严格模式**：`strict: true`、`noUncheckedIndexedAccess: true` 等
+**已实施**：
+1. 安装 `@sentry/react`，创建 `src/lib/monitoring.ts` 封装层
+2. `initMonitoring()` 在 main.tsx 中调用，仅在生产环境且配置了 `VITE_SENTRY_DSN` 时才初始化Sentry
+3. 已集成 BrowserTracing（性能追踪，采样率10%）和 Session Replay（错误时100%采样，正常时10%采样）
+4. ErrorBoundary 的 componentDidCatch 中调用 `captureException()` 上报错误到Sentry
+5. 导出 `captureException()` 和 `captureMessage()` 工具函数，开发/未配置DSN时降级为 console.error/console.log
+6. 添加 VITE_SENTRY_DSN 环境变量类型定义（vite-env.d.ts）
 
----
-
-### 2.5 TypeScript 类型强化
-
-**实施**：
-1. tsconfig.json 开启严格模式
-2. 移除所有 `any`，或用 `unknown` 替代并做类型收窄
-3. 定义完整的 API 类型（services/types.ts 完善）
-4. 引入 Zod 做运行时类型校验（后端返回数据校验，防止格式变化导致前端崩溃）
-
-**为什么用 Zod**：
-- 与 TypeScript 完美集成，类型自动推导
-- API 响应数据做运行时校验，不符合预期给出清晰错误
-- 也可用于表单校验
+**待完成**：
+- 获取 Sentry DSN 并配置到生产环境变量 `VITE_SENTRY_DSN`
+- Web Vitals 采集（可后续添加）
+- 用户行为埋点 `track()` 函数（可后续按需添加）
 
 ---
 
-### 2.6 CI/CD 配置
+### 2.4 代码规范与格式化 ✅ 已完成
 
-**实施**：
-创建 `.github/workflows/ci.yml`：
-1. PR 和 push 到 master 时触发
-2. 步骤：安装依赖 → lint → 类型检查 → 单元测试 → 构建
+**已实施**：
+1. **Prettier**：`.prettierrc` 配置（无分号、单引号、2空格缩进、100字符行宽、末尾逗号、LF换行）；`.prettierignore` 排除构建产物
+2. **ESLint**：更新 `eslint.config.js`（ESLint 9 flat config）
+   - 继承 recommended + stylistic + prettier 规则
+   - react-hooks 推荐规则
+   - react-refresh 组件导出规范
+   - `@typescript-eslint/no-explicit-any`：warn（逐步消除）
+   - `@typescript-eslint/no-unused-vars`：warn，忽略 `_` 前缀变量
+   - `@typescript-eslint/consistent-type-imports`：warn（推荐type-only import）
+3. **Husky**：`.husky/pre-commit` 在commit前自动运行 lint-staged
+4. **lint-staged**：对git暂存的 .ts/.tsx 文件自动运行 `eslint --fix` + `prettier --write`，其他文件 prettier --write
+5. **package.json scripts**：新增 `lint:fix`、`format`、`format:check` 命令
+
+**注**：commitlint（commit-msg hook）暂未启用，需在 monorepo 根目录配置后生效。
+
+---
+
+### 2.5 TypeScript 类型强化 ✅ 严格模式已开启
+
+**已实施**：
+1. tsconfig.json 开启 `strict: true`、`noUnusedLocals: true`、`noUnusedParameters: true`、`noFallthroughCasesInSwitch: true`、`forceConsistentCasingInFileNames: true`、`noUncheckedIndexedAccess: true`、`noUncheckedSideEffectImports: true`
+2. 修复所有严格模式下的类型错误（约50处）：
+   - 未使用的变量/导入：删除或加 `_` 前缀
+   - 可能为 undefined：添加可选链 `?.`、非空断言 `!`（确认安全的场景）、类型守卫
+   - 类型不匹配：`boolean | ""` → boolean（用 `!!()`转换）、`string | null` → `string | undefined`、数组索引添加可选链
+3. vite-env.d.ts 添加 ImportMetaEnv 类型定义
+4. 项目目前 `npx tsc --noEmit` 零错误
+
+**待完成**：
+- Zod 运行时类型校验（可后续Phase3表单处理中结合react-hook-form引入）
+- services/types.ts 类型完善（部分API响应类型可进一步细化）
+
+---
+
+### 2.6 CI/CD 配置 ✅ 已完成
+
+**已实施**：
+创建 `.github/workflows/frontend-ci.yml`：
+- 触发条件：push/PR 到 master 且修改了 frontend/ 或 workflow 文件
+- 运行环境：ubuntu-latest + Node.js 20
+- 缓存：npm cache（基于 package-lock.json）
+- 步骤：checkout → setup-node → npm ci → tsc类型检查 → eslint lint → vitest测试 → vite build
+- 任一环节失败则CI红色，阻止合入
+
 
 ---
 
@@ -479,18 +489,20 @@
 
 ## 升级顺序建议（Agent 执行时按此顺序）
 
-1. **第一步**：TanStack Query 引入 + 核心 hooks 封装 + 页面改造 → 这是最大的架构变化，先把数据层理顺
-2. **第二步**：Axios 替换 fetch 封装 → HTTP 层升级，上层 API 调用保持不变
-3. **第三步**：Vitest + React Testing Library 测试框架搭建 → 后续重构有保障
-4. **第四步**：ESLint/Prettier/Husky 代码规范 → 保证代码质量
-5. **第五步**：Error Boundary + Sentry 错误监控 → 稳定性
+1. **第一步**：~~TanStack Query 引入 + 核心 hooks 封装 + 页面改造~~ ✅ 已完成
+2. **第二步**：~~Axios 替换 fetch 封装~~ ✅ 已完成
+3. **第三步**：~~Vitest + React Testing Library 测试框架搭建~~ ✅ 已完成
+4. **第四步**：~~ESLint/Prettier/Husky 代码规范~~ ✅ 已完成
+5. **第五步**：~~Error Boundary + Sentry 错误监控~~ ✅ 已完成（Sentry DSN待配置）
 6. **第六步**：Radix UI 基础组件库封装 → 开发效率和一致性
 7. **第七步**：react-hook-form + Zod 表单处理 → 替换手写表单
 8. **第八步**：路由代码分割 + 性能优化
-9. **第九步**：TypeScript 严格模式 + 类型补全
+9. **第九步**：~~TypeScript 严格模式 + 类型补全~~ ✅ 已完成
 10. **第十步**：WebSocket 客户端（等后端就绪）
 11. **第十一步**：虚拟滚动 + 图片优化
 12. **第十二步**：PWA + 其他进阶特性
+
+> **Phase 1 + Phase 2 已全部完成**，下一个阶段是 Phase 3（UI组件库建设）。
 
 > **注意**：
 > 1. 每一步升级后必须保证所有现有功能正常运行（无回归bug）
