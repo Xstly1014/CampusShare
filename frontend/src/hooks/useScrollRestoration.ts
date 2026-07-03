@@ -6,12 +6,14 @@ const STORAGE_PREFIX = 'scroll:'
  * 保存并恢复页面滚动位置，解决 React Router 路由切换导致列表页组件重挂载、
  * 异步数据加载期间页面高度不足使浏览器原生 scrollRestoration 失效的问题。
  *
- * - 组件卸载时把当前 window.scrollY 写入 sessionStorage（按 key 隔离）
- * - ready 变为 true 后（通常是列表数据加载完成）从 sessionStorage 读取并恢复
- * - 用 useLayoutEffect 在 DOM commit 后、浏览器绘制前同步恢复，避免"先闪到顶部再跳"的抖动
- * - 每个 key 仅在首次 ready 时恢复一次，避免后续筛选/排序变化触发误恢复
- * - key 变化时（如 schoolId 切换）自动重置恢复标记
- * - 全局禁用浏览器原生 scrollRestoration，避免与自定义恢复逻辑相互干扰
+ * 保存策略：在滚动事件中持续写入 sessionStorage（rAF 节流）。
+ *   不依赖组件卸载时保存——因为 useEffect 的 cleanup 在浏览器绘制后异步执行，
+ *   此时本组件 DOM 已被移除、页面高度骤减，浏览器会把 window.scrollY clamp
+ *   到 0，导致保存到错误值。滚动时 DOM 尚未变更，scrollY 是用户真实位置。
+ *
+ * 恢复策略：ready 变为 true 后（列表数据加载完成、DOM 已渲染），用
+ *   useLayoutEffect 在浏览器绘制前同步恢复，避免"先闪到顶部再跳"的抖动。
+ *   每个 key 仅在首次 ready 时恢复一次，避免后续筛选/排序变化触发误恢复。
  */
 export function useScrollRestoration(key: string, ready: boolean) {
   const restoredRef = useRef(false)
@@ -31,14 +33,25 @@ export function useScrollRestoration(key: string, ready: boolean) {
     restoredRef.current = false
   }, [key])
 
-  // 卸载时保存当前位置
+  // 滚动时持续保存位置（rAF 节流，每帧最多写一次）
+  // 注意：挂载时不主动保存，避免覆盖待恢复的旧值
   useEffect(() => {
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        try {
+          sessionStorage.setItem(`${STORAGE_PREFIX}${key}`, String(window.scrollY))
+        } catch {
+          // sessionStorage 不可用或配额不足时静默忽略
+        }
+        ticking = false
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
     return () => {
-      try {
-        sessionStorage.setItem(`${STORAGE_PREFIX}${key}`, String(window.scrollY))
-      } catch {
-        // sessionStorage 不可用或配额不足时静默忽略
-      }
+      window.removeEventListener('scroll', onScroll)
     }
   }, [key])
 
