@@ -287,7 +287,9 @@ export default function MyListPage() {
               <div
                 key={comment.id}
                 onClick={() =>
-                  navigate(`/school/${comment.schoolId || '1'}/post/${comment.postId}`)
+                  navigate(
+                    `/school/${comment.schoolId || '1'}/post/${comment.postId}#comment-${comment.id}`,
+                  )
                 }
                 className="bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 p-4 cursor-pointer"
               >

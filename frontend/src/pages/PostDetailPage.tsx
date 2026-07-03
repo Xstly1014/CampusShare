@@ -214,7 +214,7 @@ export default function PostDetailPage() {
       if (el) {
         setHighlightedCommentId(targetId)
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        setTimeout(() => setHighlightedCommentId(null), 2000)
+        setTimeout(() => setHighlightedCommentId(null), 3000)
       }
     }, 300)
     return () => clearTimeout(timer)
@@ -543,7 +543,7 @@ export default function PostDetailPage() {
                 <div
                   key={comment.id}
                   id={`comment-${comment.id}`}
-                  className={`transition-colors duration-500 rounded-lg ${highlightedCommentId === comment.id ? 'bg-yellow-50 -mx-2 px-2' : ''}`}
+                  className={`transition-colors duration-500 rounded-lg ${highlightedCommentId === comment.id ? 'bg-amber-50 comment-highlight-pulse -mx-2 px-2' : ''}`}
                 >
                   {/* Top-level comment */}
                   <CommentRow
@@ -557,7 +557,7 @@ export default function PostDetailPage() {
                     <div
                       key={reply.id}
                       id={`comment-${reply.id}`}
-                      className={`flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0 transition-colors duration-500 rounded-lg ${highlightedCommentId === reply.id ? 'bg-yellow-50 -mx-2 px-2' : ''}`}
+                      className={`flex gap-3 py-3 pl-12 border-b border-gray-50 last:border-0 transition-colors duration-500 rounded-lg ${highlightedCommentId === reply.id ? 'bg-amber-50 comment-highlight-pulse -mx-2 px-2' : ''}`}
                     >
                       <CornerDownRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
                       <img
