@@ -19,10 +19,12 @@ import {
   GraduationCap,
 } from 'lucide-react'
 import NavBar from '../components/common/NavBar'
+import BackToTopButton from '../components/common/BackToTopButton'
 import schoolsData from '../data/schools.json'
 import type { PostType } from '../services/api'
 import { fileApi, postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
+import { useScrollRestoration } from '../hooks/useScrollRestoration'
 
 type SortType = 'latest' | 'hottest' | 'active'
 
@@ -310,6 +312,9 @@ export default function SchoolDetailPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const observerRef = useRef<HTMLDivElement>(null)
   const loadingRef = useRef(false)
+
+  // 从帖子详情页返回时恢复滚动位置；ready 信号为初始数据加载完成（!loading）
+  useScrollRestoration(`school:${schoolId}`, !loading)
 
   const loadStarStatus = async (postList: BackendPost[]) => {
     const token = sessionStorage.getItem('campusshare_token')
@@ -815,6 +820,9 @@ export default function SchoolDetailPage() {
 
       {/* 底部导航栏 */}
       <NavBar />
+
+      {/* 返回顶部按钮（位于发帖按钮上方） */}
+      <BackToTopButton />
 
       {/* 发布按钮 */}
       <button

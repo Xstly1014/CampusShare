@@ -94,8 +94,10 @@ import {
 import type { Category, SubCategory } from '../services/api'
 import { categoryApi, postApi, fileApi } from '../services/api'
 import SchoolCard from '../components/home/SchoolCard'
+import BackToTopButton from '../components/common/BackToTopButton'
 import schoolsData from '../data/schools.json'
 import { toast } from '../stores/toastStore'
+import { useScrollRestoration } from '../hooks/useScrollRestoration'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   GraduationCap,
@@ -348,7 +350,24 @@ export default function CategoryDetailPage() {
   const [catCounts, setCatCounts] = useState<Record<string, number>>({})
   const [schools, setSchools] = useState<School[]>(schoolsData as School[])
 
-  const [viewMode, setViewMode] = useState<ViewMode>('subs')
+  // 视图状态持久化 key：用于从详情页返回时恢复到上次的 viewMode / activeSub
+  const viewStorageKey = `category-view:${categoryId || ''}`
+  const subStorageKey = `${viewStorageKey}:sub`
+
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try {
+      return sessionStorage.getItem(viewStorageKey) === 'posts' ? 'posts' : 'subs'
+    } catch {
+      return 'subs'
+    }
+  })
+  const [activeSubId, setActiveSubId] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem(subStorageKey)
+    } catch {
+      return null
+    }
+  })
   const [activeSub, setActiveSub] = useState<SubCategory | null>(null)
   const [posts, setPosts] = useState<PostItem[]>([])
   const [sortType, setSortType] = useState<SortType>('latest')
@@ -395,6 +414,20 @@ export default function CategoryDetailPage() {
     fetchData()
   }, [categoryId])
 
+  // category 加载完成后，根据持久化的 activeSubId 恢复 activeSub
+  // （用于从帖子详情页返回时回到上次的子分类视图）
+  useEffect(() => {
+    if (viewMode !== 'posts' || !activeSubId) return
+    if (!category?.subCategories) return
+    if (activeSub?.id === activeSubId) return
+    const sub = category.subCategories.find((s) => s.id === activeSubId)
+    if (sub) setActiveSub(sub)
+  }, [category, viewMode, activeSubId, activeSub?.id])
+
+  // 从详情页返回时恢复滚动位置：posts 视图需等待帖子加载完成
+  const scrollReady = !!category && (viewMode === 'subs' || (!loading && posts.length > 0))
+  useScrollRestoration(`category:${categoryId}`, scrollReady)
+
   const loadPosts = useCallback(
     async (sub: SubCategory | null, reset = false, keyword?: string) => {
       if (!sub || !categoryId) return
@@ -436,19 +469,33 @@ export default function CategoryDetailPage() {
 
   const handleSubClick = (sub: SubCategory) => {
     setActiveSub(sub)
+    setActiveSubId(sub.id)
     setViewMode('posts')
     setPage(1)
     setPosts([])
     setPostKeyword('')
     setPostSearchInput('')
+    try {
+      sessionStorage.setItem(viewStorageKey, 'posts')
+      sessionStorage.setItem(subStorageKey, sub.id)
+    } catch {
+      // ignore
+    }
   }
 
   const handleBackToSubs = () => {
     setViewMode('subs')
     setActiveSub(null)
+    setActiveSubId(null)
     setPosts([])
     setPostKeyword('')
     setPostSearchInput('')
+    try {
+      sessionStorage.removeItem(viewStorageKey)
+      sessionStorage.removeItem(subStorageKey)
+    } catch {
+      // ignore
+    }
   }
 
   const handlePostSearch = (e: React.FormEvent) => {
@@ -900,12 +947,15 @@ export default function CategoryDetailPage() {
       </div>
 
       {viewMode === 'posts' && activeSub && (
-        <button
-          onClick={() => setShowCreate(true)}
-          className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 hover:scale-105 transition-all flex items-center justify-center z-30"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
+        <>
+          <BackToTopButton right={24} bottom={88} />
+          <button
+            onClick={() => setShowCreate(true)}
+            className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 hover:scale-105 transition-all flex items-center justify-center z-30"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        </>
       )}
 
       {showCreate && (
