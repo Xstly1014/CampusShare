@@ -14,10 +14,14 @@ import com.campushare.post.mapper.PostMapper;
 import com.campushare.post.service.CommentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -64,32 +68,16 @@ public class CommentServiceImpl implements CommentService {
                     : post.getContent();
         }
 
-        try {
-            if (replyToUserId != null && !replyToUserId.isEmpty() && !replyToUserId.equals(userId)) {
-                UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
-                req.setUserId(replyToUserId);
-                req.setSenderId(userId);
-                req.setType("REPLY");
-                req.setTargetId(postId);
-                req.setTargetTitle(postTitle);
-                req.setSchoolId(post.getSchoolId());
-                req.setCommentId(comment.getId());
-                req.setContent(comment.getContent());
-                userFeignClient.createNotification(req);
-            } else if (!post.getAuthorId().equals(userId)) {
-                UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
-                req.setUserId(post.getAuthorId());
-                req.setSenderId(userId);
-                req.setType("COMMENT");
-                req.setTargetId(postId);
-                req.setTargetTitle(postTitle);
-                req.setSchoolId(post.getSchoolId());
-                req.setCommentId(comment.getId());
-                req.setContent(comment.getContent());
-                userFeignClient.createNotification(req);
-            }
-        } catch (Exception e) {
-            log.warn("Feign调用创建评论通知失败: {}", e.getMessage());
+        String commentAuthorId = comment.getUserId();
+        String commentIdVal = comment.getId();
+        String commentContent = comment.getContent();
+
+        if (replyToUserId != null && !replyToUserId.isEmpty() && !replyToUserId.equals(commentAuthorId)) {
+            sendCommentNotificationAfterCommit(replyToUserId, commentAuthorId, "REPLY",
+                    postId, postTitle, post.getSchoolId(), commentIdVal, commentContent);
+        } else if (!post.getAuthorId().equals(commentAuthorId)) {
+            sendCommentNotificationAfterCommit(post.getAuthorId(), commentAuthorId, "COMMENT",
+                    postId, postTitle, post.getSchoolId(), commentIdVal, commentContent);
         }
 
         log.info("用户 {} 评论帖子 {}", userId, postId);
@@ -157,23 +145,27 @@ public class CommentServiceImpl implements CommentService {
     @Override
     @Transactional
     public boolean toggleCommentLike(String userId, String commentId) {
-        Comment comment = commentMapper.selectById(commentId);
-        if (comment == null || comment.getDeleted()) {
+        Comment comment = commentMapper.selectOne(
+                new LambdaQueryWrapper<Comment>()
+                        .eq(Comment::getId, commentId)
+                        .eq(Comment::getDeleted, false)
+                        .select(Comment::getId, Comment::getUserId, Comment::getPostId, Comment::getContent));
+        if (comment == null) {
             throw new BusinessException(40004, "评论不存在");
         }
 
-        CommentLike existing = commentLikeMapper.selectOne(
+        int deleted = commentLikeMapper.delete(
                 new LambdaQueryWrapper<CommentLike>()
                         .eq(CommentLike::getCommentId, commentId)
                         .eq(CommentLike::getUserId, userId));
-
-        if (existing != null) {
-            commentLikeMapper.deleteById(existing.getId());
+        if (deleted > 0) {
             commentMapper.update(null, new LambdaUpdateWrapper<Comment>()
                     .eq(Comment::getId, commentId)
                     .setSql("like_count = GREATEST(0, like_count - 1)"));
             return false;
-        } else {
+        }
+
+        try {
             CommentLike like = CommentLike.builder()
                     .commentId(commentId)
                     .userId(userId)
@@ -182,25 +174,27 @@ public class CommentServiceImpl implements CommentService {
             commentMapper.update(null, new LambdaUpdateWrapper<Comment>()
                     .eq(Comment::getId, commentId)
                     .setSql("like_count = like_count + 1"));
-            try {
-                if (!comment.getUserId().equals(userId)) {
-                    String commentContent = comment.getContent();
-                    String targetTitle = commentContent.length() > 20 ? commentContent.substring(0, 20) + "..." : commentContent;
-                    Post postForLike = postMapper.selectById(comment.getPostId());
-                    UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
-                    req.setUserId(comment.getUserId());
-                    req.setSenderId(userId);
-                    req.setType("COMMENT_LIKE");
-                    req.setTargetId(comment.getPostId());
-                    req.setTargetTitle(targetTitle);
-                    req.setSchoolId(postForLike != null ? postForLike.getSchoolId() : null);
-                    req.setCommentId(commentId);
-                    req.setContent(comment.getContent());
-                    userFeignClient.createNotification(req);
+
+            if (!comment.getUserId().equals(userId)) {
+                String commentContent = comment.getContent();
+                String targetTitle = commentContent.length() > 20 ? commentContent.substring(0, 20) + "..." : commentContent;
+                String schoolId = null;
+                try {
+                    Post post = postMapper.selectOne(
+                            new LambdaQueryWrapper<Post>()
+                                    .eq(Post::getId, comment.getPostId())
+                                    .select(Post::getSchoolId));
+                    if (post != null) {
+                        schoolId = post.getSchoolId();
+                    }
+                } catch (Exception e) {
+                    log.warn("查询评论所属帖子schoolId失败: commentId={}, error={}", commentId, e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("Feign调用创建评论点赞通知失败: {}", e.getMessage());
+                sendCommentNotificationAfterCommit(comment.getUserId(), userId, "COMMENT_LIKE",
+                        comment.getPostId(), targetTitle, schoolId, commentId, commentContent);
             }
+            return true;
+        } catch (DuplicateKeyException e) {
             return true;
         }
     }
@@ -293,5 +287,31 @@ public class CommentServiceImpl implements CommentService {
                 .likeCount(comment.getLikeCount())
                 .createTime(comment.getCreateTime())
                 .build();
+    }
+
+    private void sendCommentNotificationAfterCommit(String toUserId, String senderId, String type,
+                                                     String targetId, String targetTitle, String schoolId,
+                                                     String commentId, String content) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        UserFeignClient.NotificationRequest req = new UserFeignClient.NotificationRequest();
+                        req.setUserId(toUserId);
+                        req.setSenderId(senderId);
+                        req.setType(type);
+                        req.setTargetId(targetId);
+                        req.setTargetTitle(targetTitle);
+                        req.setSchoolId(schoolId);
+                        req.setCommentId(commentId);
+                        req.setContent(content);
+                        userFeignClient.createNotification(req);
+                    } catch (Exception e) {
+                        log.warn("异步发送{}评论通知失败: commentId={}, error={}", type, commentId, e.getMessage());
+                    }
+                });
+            }
+        });
     }
 }
