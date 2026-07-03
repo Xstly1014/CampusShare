@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import ErrorBoundary from '../components/common/ErrorBoundary'
-import NavigationProgress from '../components/common/NavigationProgress'
 import AuthPage from '../pages/AuthPage'
 import HomePage from '../pages/HomePage'
 import WarehousePage from '../pages/WarehousePage'
@@ -37,7 +36,6 @@ function withPageBoundary(page: React.ReactNode) {
 export default function Router() {
   return (
     <BrowserRouter>
-      <NavigationProgress />
       <Routes>
         <Route path="/" element={<AuthPage />} />
 
