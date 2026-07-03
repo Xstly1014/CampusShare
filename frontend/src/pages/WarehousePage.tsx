@@ -424,7 +424,7 @@ export default function WarehousePage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       {/* 页面标题 */}
-      <div className="bg-white border-b border-gray-100">
+      <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center gap-2">
             <Package className="w-5 h-5 text-blue-600" />
