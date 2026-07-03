@@ -19,13 +19,12 @@ export function useScrollRestoration(key: string, ready: boolean) {
   const restoredRef = useRef(false)
 
   // 全局禁用浏览器原生滚动恢复，完全由本 hook 接管
+  // 不在 cleanup 中恢复原值：组件卸载后若恢复为 'auto'，返回导航时浏览器
+  // 会在数据加载前尝试原生恢复，此时页面高度不足 scrollY 被 clamp 到 0，
+  // 触发的 scroll 事件会覆盖 sessionStorage 中已保存的真实位置
   useEffect(() => {
     if (!('scrollRestoration' in window.history)) return
-    const original = window.history.scrollRestoration
     window.history.scrollRestoration = 'manual'
-    return () => {
-      window.history.scrollRestoration = original
-    }
   }, [])
 
   // key 变化时重置恢复标记，确保不同页面的滚动位置互相独立
@@ -34,8 +33,10 @@ export function useScrollRestoration(key: string, ready: boolean) {
   }, [key])
 
   // 滚动时持续保存位置（rAF 节流，每帧最多写一次）
-  // 注意：挂载时不主动保存，避免覆盖待恢复的旧值
+  // 仅在 ready=true（数据加载完成）时才添加监听器：加载期间页面高度不足，
+  // 浏览器 clamp 产生的 scrollY=0 不应覆盖已保存的真实位置
   useEffect(() => {
+    if (!ready) return
     let ticking = false
     const onScroll = () => {
       if (ticking) return
@@ -53,7 +54,7 @@ export function useScrollRestoration(key: string, ready: boolean) {
     return () => {
       window.removeEventListener('scroll', onScroll)
     }
-  }, [key])
+  }, [key, ready])
 
   // 首次 ready 时同步恢复（在浏览器绘制前，避免视觉抖动）
   useLayoutEffect(() => {
