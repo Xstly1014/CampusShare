@@ -74,10 +74,16 @@ export default function AgentPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<boolean>(false)
   const streamContentRef = useRef<string>('')
+  // 初次进入页面或切换会话时使用瞬时滚动，避免"从顶部滑到底部"的动画；
+  // 后续新消息追加/流式输出仍使用平滑滚动以跟随新内容
+  const shouldInstantScrollRef = useRef(true)
 
   useEffect(() => {
     if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      messagesEndRef.current?.scrollIntoView({
+        behavior: shouldInstantScrollRef.current ? 'auto' : 'smooth',
+      })
+      shouldInstantScrollRef.current = false
     }
   }, [messages, streaming])
 
@@ -154,6 +160,8 @@ export default function AgentPage() {
         }
       }
 
+      // 切换会话时使用瞬时滚动定位到底部，避免从顶部滑下的动画
+      shouldInstantScrollRef.current = true
       if (loadedMessages.length > 0) {
         setMessages(loadedMessages)
       } else {
@@ -164,6 +172,7 @@ export default function AgentPage() {
     } catch {
       localStorage.removeItem(SESSION_STORAGE_KEY)
       setCurrentSessionId(null)
+      shouldInstantScrollRef.current = true
       setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
       toast.error('加载会话失败')
     } finally {
@@ -180,6 +189,8 @@ export default function AgentPage() {
 
   const startNewChat = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY)
+    // 新对话使用瞬时滚动，避免从原会话位置滑回顶部的动画
+    shouldInstantScrollRef.current = true
     setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
     setCurrentSessionId(null)
     setSidebarOpen(false)
