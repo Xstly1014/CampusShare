@@ -56,6 +56,7 @@ function DefaultFallback({
       <h2 className="text-xl font-semibold text-gray-800 mb-2">{titles[level]}</h2>
       <p className="text-gray-500 mb-4 max-w-md">{descriptions[level]}</p>
       <button
+        type="button"
         onClick={onReset}
         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
       >
