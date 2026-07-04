@@ -94,9 +94,6 @@ PROJECT_INSIGHTS.md
 # 环境变量（含真实密钥的.env不提交，.env.example模板需提交）
 .env
 
-# Agent 工作流文档（本地记录，不提交）
-AGENT-WORKFLOW.md
-
 # 内部设计/规划文档（不提交到GitHub）
 # 保留 docs/agent-assistant/knowledge-docs/（知识库源文件，构建需要）
 docs/agent-assistant/00-overview/
