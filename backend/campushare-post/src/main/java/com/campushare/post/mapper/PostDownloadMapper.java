@@ -3,10 +3,12 @@ package com.campushare.post.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.campushare.post.entity.PostDownload;
 import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -15,6 +17,13 @@ public interface PostDownloadMapper extends BaseMapper<PostDownload> {
 
     @Delete("DELETE FROM post_downloads")
     void deleteAllPhysical();
+
+    @Insert("INSERT INTO post_downloads (post_id, user_id, download_time) " +
+            "VALUES (#{postId}, #{userId}, #{downloadTime}) " +
+            "ON DUPLICATE KEY UPDATE download_time = VALUES(download_time)")
+    void upsertDownload(@Param("postId") String postId,
+                        @Param("userId") String userId,
+                        @Param("downloadTime") LocalDateTime downloadTime);
 
     @Select("<script>" +
             "SELECT pd.id, pd.post_id, pd.download_time FROM post_downloads pd " +

@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS post_downloads (
     post_id VARCHAR(36) NOT NULL COMMENT '帖子ID',
     user_id VARCHAR(36) NOT NULL COMMENT '下载用户ID',
     download_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '下载时间',
+    UNIQUE KEY uk_user_post (user_id, post_id),
     INDEX idx_user_time (user_id, download_time),
     INDEX idx_post (post_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='下载历史表';

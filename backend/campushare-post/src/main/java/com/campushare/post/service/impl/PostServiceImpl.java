@@ -533,12 +533,7 @@ public class PostServiceImpl implements PostService {
         if (post == null || post.getDeleted() || !"resource".equals(post.getPostType())) {
             return;
         }
-        PostDownload download = PostDownload.builder()
-                .postId(postId)
-                .userId(userId)
-                .downloadTime(LocalDateTime.now())
-                .build();
-        postDownloadMapper.insert(download);
+        postDownloadMapper.upsertDownload(postId, userId, LocalDateTime.now());
     }
 
     @Override

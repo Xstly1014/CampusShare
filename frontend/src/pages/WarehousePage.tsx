@@ -6,7 +6,7 @@ import SwipeToDelete from '../components/common/SwipeToDelete'
 import type { WarehouseStats } from '../services/api'
 import { postApi } from '../services/api'
 import { toast } from '../stores/toastStore'
-import { useScrollRestoration } from '../hooks/useScrollRestoration'
+import { useScrollRestoration, clearScrollPosition } from '../hooks/useScrollRestoration'
 import {
   Package,
   Upload,
@@ -194,6 +194,17 @@ export default function WarehousePage() {
 
   // 从详情页返回时恢复滚动位置；按 tab 隔离，ready 信号为列表加载完成
   useScrollRestoration(`warehouse:${activeTab}`, !listLoading)
+
+  const handleTabSwitch = useCallback(
+    (tab: TabKey) => {
+      if (tab === activeTab) return
+      // 切换 tab 时清除目标 tab 的滚动位置，避免恢复旧位置导致顶部空白
+      // 滚动恢复仅在从详情页返回（组件重新挂载）时生效
+      clearScrollPosition(`warehouse:${tab}`)
+      setActiveTab(tab)
+    },
+    [activeTab],
+  )
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -591,7 +602,7 @@ export default function WarehousePage() {
             ) : (
               <>
                 <button
-                  onClick={() => setActiveTab('uploads')}
+                  onClick={() => handleTabSwitch('uploads')}
                   className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
                     activeTab === 'uploads'
                       ? 'text-blue-600 border-b-2 border-blue-600'
@@ -609,7 +620,7 @@ export default function WarehousePage() {
                   )}
                 </button>
                 <button
-                  onClick={() => setActiveTab('downloads')}
+                  onClick={() => handleTabSwitch('downloads')}
                   className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
                     activeTab === 'downloads'
                       ? 'text-blue-600 border-b-2 border-blue-600'
@@ -778,7 +789,7 @@ export default function WarehousePage() {
                   if (isDownloadContext && post.downloadRecordId != null) {
                     return (
                       <SwipeToDelete
-                        key={post.id}
+                        key={`dl-${post.downloadRecordId}`}
                         isOpen={openSwipeId === post.downloadRecordId}
                         onOpenChange={(open) =>
                           setOpenSwipeId(open ? post.downloadRecordId! : null)
@@ -791,7 +802,7 @@ export default function WarehousePage() {
                   }
 
                   return (
-                    <div key={post.id} className="rounded-xl">
+                    <div key={`post-${post.id}`} className="rounded-xl">
                       {cardContent}
                     </div>
                   )
