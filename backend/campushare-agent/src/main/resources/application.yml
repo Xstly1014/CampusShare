@@ -142,6 +142,16 @@ app:
   internal:
     token: ${INTERNAL_API_TOKEN:campushare-internal-token}
 
+  # System Prompt 版本管理配置（ADR-SP-07）
+  # current: 启动时写入 Redis 的初始版本号
+  # gray-ratio: 灰度比例（0-100），100=全量
+  # fallback-on-db-error: DB/Redis 故障时是否降级到 PromptConstants 硬编码常量
+  prompt:
+    version:
+      current: v1.0.0
+      gray-ratio: 100
+      fallback-on-db-error: true
+
 logging:
   level:
     root: INFO

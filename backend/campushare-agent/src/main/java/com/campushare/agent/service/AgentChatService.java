@@ -5,12 +5,16 @@ import com.campushare.agent.dto.ChatRequest;
 import com.campushare.agent.dto.RetrievalResult;
 import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
+import com.campushare.agent.entity.PromptVersion;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
-import com.campushare.agent.llm.PromptConstants;
 import com.campushare.agent.mapper.AgentSessionMapper;
 import com.campushare.agent.mapper.AgentTurnMapper;
+import com.campushare.agent.prompt.ConstitutionalAIValidator;
+import com.campushare.agent.prompt.IntentDetector;
+import com.campushare.agent.prompt.PromptAssembler;
+import com.campushare.agent.prompt.PromptVersionManager;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.common.result.ResultCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -19,6 +23,8 @@ import com.knuddels.jtokkit.Encodings;
 import com.knuddels.jtokkit.api.Encoding;
 import com.knuddels.jtokkit.api.EncodingRegistry;
 import com.knuddels.jtokkit.api.ModelType;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,16 +52,34 @@ public class AgentChatService {
     private final AgentSessionMapper sessionMapper;
     private final AgentTurnMapper turnMapper;
     private final RetrievalService retrievalService;
+    private final PromptAssembler promptAssembler;
+    private final ConstitutionalAIValidator constitutionalAIValidator;
+    private final IntentDetector intentDetector;
+    private final PromptVersionManager promptVersionManager;
+    private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final EncodingRegistry ENCODING_REGISTRY = Encodings.newDefaultEncodingRegistry();
     private static final Encoding ENCODING = ENCODING_REGISTRY.getEncodingForModel(ModelType.GPT_3_5_TURBO);
+
+    private volatile Counter violationCounter;
+    private volatile Counter injectionDetectedCounter;
 
     @Value("${app.agent.history-limit:10}")
     private int historyLimit;
 
     @Value("${app.llm.deepseek.model:deepseek-v4-flash}")
     private String modelName;
+
+    @jakarta.annotation.PostConstruct
+    void initCounters() {
+        violationCounter = Counter.builder("agent.prompt.violation")
+                .description("Number of Constitutional AI violations detected in LLM output")
+                .register(meterRegistry);
+        injectionDetectedCounter = Counter.builder("agent.prompt.injection.detected")
+                .description("Number of injection patterns detected in user prompt (soft block)")
+                .register(meterRegistry);
+    }
 
     public Flux<ChatEvent> chat(String userId, ChatRequest request) {
         return Mono.fromCallable(() -> prepareContext(userId, request))
@@ -106,13 +130,29 @@ public class AgentChatService {
     private ChatContext prepareContext(String userId, ChatRequest request) {
         AgentSession session = getOrCreateSession(userId, request);
 
-        List<RetrievalResult> retrievalResults = retrievalService.retrieve(request.getMessage()).block();
-        String retrievalContext = formatRetrievalContext(retrievalResults);
+        String userMessage = request.getMessage();
+
+        // ① 意图检测（规则法，意图模块完成后替换）
+        IntentDetector.Intent intent = intentDetector.detect(userMessage);
+
+        // ② 预生成注入检测（硬拦截 Prompt 泄露；软拦截其他注入仅 log + meter）
+        if (constitutionalAIValidator.shouldHardBlock(userMessage)) {
+            throw new BusinessException(ResultCode.USER_ACCOUNT_FORBIDDEN, "该请求包含不允许的内容");
+        }
+        if (constitutionalAIValidator.detectInjection(userMessage)) {
+            injectionDetectedCounter.increment();
+        }
+
+        // ③ 检索 + 装配 System Prompt（含版本管理 + 灰度）
+        List<RetrievalResult> retrievalResults = retrievalService.retrieve(userMessage).block();
         String retrievalContextJson = formatRetrievalContextJson(retrievalResults);
 
-        List<DeepSeekRequest.Message> messages = buildMessages(session, request.getMessage(), retrievalContext);
+        PromptVersion promptVersion = promptVersionManager.getCurrentVersion(userId);
+        String systemPrompt = promptAssembler.assemble(intent, retrievalResults, promptVersion);
+
+        List<DeepSeekRequest.Message> messages = buildMessages(session, userMessage, systemPrompt);
         int promptTokens = countPromptTokens(messages);
-        AgentTurn turn = createTurn(session, request.getMessage());
+        AgentTurn turn = createTurn(session, userMessage);
         return new ChatContext(session, messages, turn, System.currentTimeMillis(), promptTokens, retrievalContextJson);
     }
 
@@ -158,19 +198,20 @@ public class AgentChatService {
         return session;
     }
 
-    private List<DeepSeekRequest.Message> buildMessages(AgentSession session, String currentMessage, String retrievalContext) {
+    private List<DeepSeekRequest.Message> buildMessages(AgentSession session, String currentMessage,
+            String systemPrompt) {
         List<DeepSeekRequest.Message> messages = new ArrayList<>();
 
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
-                .content(PromptConstants.formatSystemPrompt(retrievalContext))
+                .content(systemPrompt)
                 .build());
 
         LambdaQueryWrapper<AgentTurn> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AgentTurn::getSessionId, session.getId())
-               .eq(AgentTurn::getStatus, "COMPLETED")
-               .orderByDesc(AgentTurn::getTurnNumber)
-               .last("LIMIT " + historyLimit);
+                .eq(AgentTurn::getStatus, "COMPLETED")
+                .orderByDesc(AgentTurn::getTurnNumber)
+                .last("LIMIT " + historyLimit);
         List<AgentTurn> history = turnMapper.selectList(wrapper);
         Collections.reverse(history);
 
@@ -208,7 +249,7 @@ public class AgentChatService {
     }
 
     private void completeTurn(AgentTurn turn, AgentSession session, String content, long elapsedMs,
-                              DeepSeekResponse.Usage usage, int promptTokens, String retrievalContextJson) {
+            DeepSeekResponse.Usage usage, int promptTokens, String retrievalContextJson) {
         try {
             int completionTokens;
             int totalTokens;
@@ -223,6 +264,15 @@ public class AgentChatService {
                 totalTokens = promptTokens + completionTokens;
             }
 
+            // 输出后 Constitutional AI 验证（ADR-SP-03）
+            // 流式场景用户已看到内容，不替换；仅 log + meter + 写入 tools_used 字段记录违规
+            String violation = constitutionalAIValidator.validate(content);
+            if (violation != null) {
+                violationCounter.increment();
+                log.warn("Constitutional AI violation detected: turnId={}, violation={}", turn.getId(), violation);
+                turn.setToolsUsed("{\"violation\":\"" + violation.replace("\"", "'") + "\"}");
+            }
+
             turn.setAssistantMessage(content);
             turn.setStatus("COMPLETED");
             turn.setResponseTimeMs((int) elapsedMs);
@@ -235,8 +285,10 @@ public class AgentChatService {
             session.setLastMessageAt(LocalDateTime.now());
             sessionMapper.updateById(session);
 
-            log.info("Turn completed: sessionId={}, turn={}, promptTokens={}, completionTokens={}, totalTokens={}, elapsedMs={}",
-                    session.getId(), turn.getTurnNumber(), promptTokens, completionTokens, totalTokens, elapsedMs);
+            log.info(
+                    "Turn completed: sessionId={}, turn={}, promptTokens={}, completionTokens={}, totalTokens={}, elapsedMs={}, violation={}",
+                    session.getId(), turn.getTurnNumber(), promptTokens, completionTokens, totalTokens, elapsedMs,
+                    violation);
         } catch (Exception e) {
             log.error("Failed to complete turn {}", turn.getId(), e);
         }
@@ -252,26 +304,11 @@ public class AgentChatService {
         }
     }
 
-    public record ChatEvent(String type, String data) {}
+    public record ChatEvent(String type, String data) {
+    }
 
     private record ChatContext(AgentSession session, List<DeepSeekRequest.Message> messages,
-                               AgentTurn turn, long startTime, int promptTokens, String retrievalContext) {}
-
-    private String formatRetrievalContext(List<RetrievalResult> results) {
-        if (results == null || results.isEmpty()) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < results.size(); i++) {
-            RetrievalResult r = results.get(i);
-            sb.append("---\n");
-            sb.append("[").append(i + 1).append("] 来源：")
-              .append(r.source() == RetrievalResult.Source.KNOWLEDGE ? "知识库" : "帖子")
-              .append(" | 标题：").append(r.title()).append("\n");
-            sb.append("内容：").append(r.content() != null ? r.content() : "无内容").append("\n");
-        }
-        sb.append("---");
-        return sb.toString();
+            AgentTurn turn, long startTime, int promptTokens, String retrievalContext) {
     }
 
     private String formatRetrievalContextJson(List<RetrievalResult> results) {

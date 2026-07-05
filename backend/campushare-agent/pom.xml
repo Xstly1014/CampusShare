@@ -20,6 +20,9 @@
     <properties>
         <pgvector.version>0.1.6</pgvector.version>
         <jtokkit.version>1.0.0</jtokkit.version>
+        <!-- Surefire @Tag 过滤：默认空（跑全部测试），可用 -Dgroups=golden 或 -DexcludedGroups=golden 覆盖 -->
+        <groups></groups>
+        <excludedGroups></excludedGroups>
     </properties>
 
     <dependencies>
@@ -133,6 +136,28 @@
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
         </dependency>
+
+        <!-- 测试依赖：JUnit 5 + Mockito + AssertJ（spring-boot-starter-test 统一引入） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Reactor 测试：StepVerifier 验证 Flux/Mono -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- MockWebServer：mock DeepSeek SSE 流式响应 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>4.12.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -147,6 +172,15 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- 支持 -Dgroups=golden 或 -Dgroups=!golden 过滤 -->
+                    <groups>${groups}</groups>
+                    <excludedGroups>${excludedGroups}</excludedGroups>
                 </configuration>
             </plugin>
         </plugins>
