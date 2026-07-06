@@ -45,12 +45,27 @@ public class DeepSeekClient {
     private long retryBackoffMs;
 
     public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages) {
+        return chatCompletion(messages, defaultTemperature, defaultMaxTokens);
+    }
+
+    /**
+     * 非流式 LLM 调用（支持自定义 temperature/maxTokens）。
+     *
+     * 用于意图分类等需要低温度（temperature=0）和短输出（max_tokens=200）的场景。
+     *
+     * @param messages     消息列表
+     * @param temperature  温度参数（null 用默认值）
+     * @param maxTokens    最大输出 token（null 用默认值）
+     * @return DeepSeekResponse
+     */
+    public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages,
+                                                  Double temperature, Integer maxTokens) {
         DeepSeekRequest request = DeepSeekRequest.builder()
                 .model(defaultModel)
                 .messages(messages)
                 .stream(false)
-                .temperature(defaultTemperature)
-                .maxTokens(defaultMaxTokens)
+                .temperature(temperature)
+                .maxTokens(maxTokens)
                 .build();
 
         return deepSeekWebClient.post()

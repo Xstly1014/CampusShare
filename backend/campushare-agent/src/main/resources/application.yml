@@ -138,6 +138,20 @@ app:
       wait-duration-in-open-state: 30s
       permitted-number-of-calls-in-half-open-state: 3
 
+  # 意图识别配置
+  intent:
+    classifier:
+      timeout: 3s
+      confidence-threshold: 0.6
+      circuit-breaker:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+    cache:
+      ttl: 1h
+
   # 内部 API 调用 token（服务间鉴权，绕过网关）
   internal:
     token: ${INTERNAL_API_TOKEN:campushare-internal-token}

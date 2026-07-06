@@ -86,4 +86,22 @@ public class ResilienceConfig {
                 .build();
         return CircuitBreaker.of("post-sync", config);
     }
+
+    @Bean
+    public CircuitBreaker intentClassifierCircuitBreaker(
+            @Value("${app.intent.classifier.circuit-breaker.sliding-window-size:10}") int intentSlidingWindowSize,
+            @Value("${app.intent.classifier.circuit-breaker.minimum-number-of-calls:5}") int intentMinimumNumberOfCalls,
+            @Value("${app.intent.classifier.circuit-breaker.failure-rate-threshold:50.0}") float intentFailureRateThreshold,
+            @Value("${app.intent.classifier.circuit-breaker.wait-duration-in-open-state:30s}") Duration intentWaitDuration,
+            @Value("${app.intent.classifier.circuit-breaker.permitted-number-of-calls-in-half-open-state:3}") int intentHalfOpenCalls) {
+        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+                .slidingWindowSize(intentSlidingWindowSize)
+                .minimumNumberOfCalls(intentMinimumNumberOfCalls)
+                .failureRateThreshold(intentFailureRateThreshold)
+                .waitDurationInOpenState(intentWaitDuration)
+                .permittedNumberOfCallsInHalfOpenState(intentHalfOpenCalls)
+                .build();
+        return CircuitBreaker.of("intent-classifier", config);
+    }
 }

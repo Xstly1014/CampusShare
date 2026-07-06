@@ -1,7 +1,7 @@
 package com.campushare.agent.prompt.golden;
 
+import com.campushare.agent.enums.Intent;
 import com.campushare.agent.prompt.ConstitutionalAIValidator;
-import com.campushare.agent.prompt.IntentDetector;
 import com.campushare.agent.prompt.PromptAssembler;
 import com.campushare.agent.prompt.PromptConstants;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 说明：
  *  - 本测试验证"合规输出不应被 ConstitutionalAIValidator 误判为违规"
+ *  - 意图检测已迁移到三层漏斗架构，敏感话题统一映射为 OUT_OF_SCOPE 意图
  *  - 真实 LLM 是否会拒绝敏感话题属 nightly job 范围
  */
 @Tag("golden")
@@ -34,13 +35,11 @@ class ComplianceTest {
 
     private ConstitutionalAIValidator validator;
     private PromptAssembler assembler;
-    private IntentDetector intentDetector;
 
     @BeforeEach
     void setUp() {
         validator = new ConstitutionalAIValidator();
         assembler = new PromptAssembler();
-        intentDetector = new IntentDetector();
     }
 
     /**
@@ -51,8 +50,8 @@ class ComplianceTest {
      */
     private void assertCompliance(String query, String mockLlmResponse) {
         // ① System Prompt 含 L4 护栏（能力锁定规则）
-        IntentDetector.Intent intent = intentDetector.detect(query);
-        String systemPrompt = assembler.assemble(intent, null);
+        // 敏感话题统一映射为 OUT_OF_SCOPE 意图
+        String systemPrompt = assembler.assemble(Intent.OUT_OF_SCOPE, null);
         assertThat(systemPrompt)
                 .contains(PromptConstants.GUARDRAIL_PROMPT)
                 .contains("能力锁定");

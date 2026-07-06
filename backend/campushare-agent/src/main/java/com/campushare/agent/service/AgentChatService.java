@@ -1,18 +1,21 @@
 package com.campushare.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campushare.agent.config.IntentMetricsConfig;
 import com.campushare.agent.dto.ChatRequest;
+import com.campushare.agent.dto.IntentResult;
 import com.campushare.agent.dto.RetrievalResult;
+import com.campushare.agent.dto.RouteDecision;
 import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
 import com.campushare.agent.entity.PromptVersion;
+import com.campushare.agent.enums.Intent;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
 import com.campushare.agent.mapper.AgentSessionMapper;
 import com.campushare.agent.mapper.AgentTurnMapper;
 import com.campushare.agent.prompt.ConstitutionalAIValidator;
-import com.campushare.agent.prompt.IntentDetector;
 import com.campushare.agent.prompt.PromptAssembler;
 import com.campushare.agent.prompt.PromptVersionManager;
 import com.campushare.common.exception.BusinessException;
@@ -41,6 +44,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -54,7 +58,10 @@ public class AgentChatService {
     private final RetrievalService retrievalService;
     private final PromptAssembler promptAssembler;
     private final ConstitutionalAIValidator constitutionalAIValidator;
-    private final IntentDetector intentDetector;
+    private final RuleShortCircuitFilter ruleShortCircuitFilter;
+    private final IntentClassifier intentClassifier;
+    private final IntentRouter intentRouter;
+    private final IntentMetricsConfig intentMetrics;
     private final PromptVersionManager promptVersionManager;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -85,19 +92,25 @@ public class AgentChatService {
         return Mono.fromCallable(() -> prepareContext(userId, request))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(ctx -> {
-                    StringBuilder assistantContent = new StringBuilder();
-                    AtomicReference<DeepSeekResponse.Usage> usageRef = new AtomicReference<>();
+                    String sessionJson = buildSessionJson(ctx);
+                    Flux<ChatEvent> sessionEvent = Flux.just(new ChatEvent("session", sessionJson));
 
-                    String sessionJson;
-                    try {
-                        Map<String, String> sessionPayload = new HashMap<>();
-                        sessionPayload.put("sessionId", ctx.session().getId());
-                        sessionJson = objectMapper.writeValueAsString(sessionPayload);
-                    } catch (JsonProcessingException e) {
-                        sessionJson = "{\"sessionId\":\"" + ctx.session().getId() + "\"}";
+                    // 快路径：模板回复（OUT_OF_SCOPE/NAVIGATE），不调 LLM
+                    if (ctx.routeDecision() != null && ctx.routeDecision().isShortCircuit()) {
+                        String templateReply = ctx.routeDecision().getTemplateReply();
+                        Flux<ChatEvent> deltaFlux = Flux.just(new ChatEvent("delta", templateReply))
+                                .doFinally(signal -> {
+                                    long elapsed = System.currentTimeMillis() - ctx.startTime();
+                                    Mono.fromRunnable(() ->
+                                            completeShortCircuitTurn(ctx, templateReply, elapsed))
+                                            .subscribeOn(Schedulers.boundedElastic()).subscribe();
+                                });
+                        return Flux.concat(sessionEvent, deltaFlux);
                     }
 
-                    Flux<ChatEvent> sessionEvent = Flux.just(new ChatEvent("session", sessionJson));
+                    // 慢路径：RAG + LLM 流式
+                    StringBuilder assistantContent = new StringBuilder();
+                    AtomicReference<DeepSeekResponse.Usage> usageRef = new AtomicReference<>();
 
                     Flux<ChatEvent> deltaStream = deepSeekClient.chatCompletionStream(ctx.messages())
                             .doOnNext(chunk -> {
@@ -116,7 +129,8 @@ public class AgentChatService {
                                 Mono.fromRunnable(() -> {
                                     if (signalType == SignalType.ON_COMPLETE) {
                                         completeTurn(ctx.turn(), ctx.session(), content, elapsed,
-                                                usageRef.get(), ctx.promptTokens(), ctx.retrievalContext());
+                                                usageRef.get(), ctx.promptTokens(), ctx.retrievalContext(),
+                                                ctx.intentResult());
                                     } else if (signalType == SignalType.ON_ERROR) {
                                         errorTurn(ctx.turn(), "Stream terminated with error");
                                     }
@@ -127,13 +141,23 @@ public class AgentChatService {
                 });
     }
 
+    private String buildSessionJson(ChatContext ctx) {
+        try {
+            Map<String, String> sessionPayload = new HashMap<>();
+            sessionPayload.put("sessionId", ctx.session().getId());
+            return objectMapper.writeValueAsString(sessionPayload);
+        } catch (JsonProcessingException e) {
+            return "{\"sessionId\":\"" + ctx.session().getId() + "\"}";
+        }
+    }
+
     private ChatContext prepareContext(String userId, ChatRequest request) {
         AgentSession session = getOrCreateSession(userId, request);
 
         String userMessage = request.getMessage();
 
-        // ① 意图检测（规则法，意图模块完成后替换）
-        IntentDetector.Intent intent = intentDetector.detect(userMessage);
+        // ① 意图识别（三层漏斗：规则 → LLM → Embedding → SEARCH 兜底）
+        IntentResult intentResult = recognizeIntent(userMessage, session.getId());
 
         // ② 预生成注入检测（硬拦截 Prompt 泄露；软拦截其他注入仅 log + meter）
         if (constitutionalAIValidator.shouldHardBlock(userMessage)) {
@@ -143,17 +167,65 @@ public class AgentChatService {
             injectionDetectedCounter.increment();
         }
 
-        // ③ 检索 + 装配 System Prompt（含版本管理 + 灰度）
-        List<RetrievalResult> retrievalResults = retrievalService.retrieve(userMessage).block();
+        // ③ 意图路由：尝试快路径
+        Optional<RouteDecision> shortCircuit = intentRouter.tryShortCircuit(intentResult);
+        if (shortCircuit.isPresent()) {
+            intentMetrics.recordRoute(true, intentResult.getIntent().name());
+            AgentTurn turn = createTurn(session, userMessage);
+            return new ChatContext(session, null, turn, System.currentTimeMillis(),
+                    0, null, intentResult, shortCircuit.get());
+        }
+
+        // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索）
+        intentMetrics.recordRoute(false, intentResult.getIntent().name());
+        String retrieveQuery = intentResult.getRewrittenQuery() != null
+                ? intentResult.getRewrittenQuery() : userMessage;
+        List<RetrievalResult> retrievalResults = retrievalService.retrieve(retrieveQuery).block();
         String retrievalContextJson = formatRetrievalContextJson(retrievalResults);
 
         PromptVersion promptVersion = promptVersionManager.getCurrentVersion(userId);
-        String systemPrompt = promptAssembler.assemble(intent, retrievalResults, promptVersion);
+        String systemPrompt = promptAssembler.assemble(intentResult.getIntent(), retrievalResults, promptVersion);
 
         List<DeepSeekRequest.Message> messages = buildMessages(session, userMessage, systemPrompt);
         int promptTokens = countPromptTokens(messages);
         AgentTurn turn = createTurn(session, userMessage);
-        return new ChatContext(session, messages, turn, System.currentTimeMillis(), promptTokens, retrievalContextJson);
+        return new ChatContext(session, messages, turn, System.currentTimeMillis(),
+                promptTokens, retrievalContextJson, intentResult, null);
+    }
+
+    /**
+     * 意图识别主入口（三层漏斗）。
+     *
+     * Layer 1: 规则短路（RuleShortCircuitFilter）
+     * Layer 2: LLM 分类（IntentClassifier）
+     * Layer 3: Embedding 兜底（EmbeddingIntentFallback，由 IntentClassifier 内部调用）
+     * Default: SEARCH 兜底（全部失败时）
+     */
+    private IntentResult recognizeIntent(String query, String sessionId) {
+        // Layer 1: 规则短路
+        Optional<IntentResult> ruleResult = ruleShortCircuitFilter.filter(query);
+        if (ruleResult.isPresent()) {
+            IntentResult r = ruleResult.get();
+            intentMetrics.recordClassification(r.getIntent(), r.getSubIntent(), r.getClassifyLayer(), "SUCCESS");
+            return r;
+        }
+        // Layer 2/3: LLM 分类 + Embedding 兜底 + Default SEARCH
+        IntentResult result = intentClassifier.classify(query, sessionId)
+                .defaultIfEmpty(buildDefaultSearchIntent(query))
+                .block();
+        intentMetrics.recordClassification(result.getIntent(), result.getSubIntent(),
+                result.getClassifyLayer(), "SUCCESS");
+        return result;
+    }
+
+    private IntentResult buildDefaultSearchIntent(String query) {
+        return IntentResult.builder()
+                .intent(Intent.SEARCH)
+                .subIntent(Intent.SubIntent.RESOURCE)
+                .confidence(0.0)
+                .rewrittenQuery(query != null ? query : "")
+                .classifyLayer("DEFAULT")
+                .build();
     }
 
     private int countPromptTokens(List<DeepSeekRequest.Message> messages) {
@@ -249,7 +321,8 @@ public class AgentChatService {
     }
 
     private void completeTurn(AgentTurn turn, AgentSession session, String content, long elapsedMs,
-            DeepSeekResponse.Usage usage, int promptTokens, String retrievalContextJson) {
+            DeepSeekResponse.Usage usage, int promptTokens, String retrievalContextJson,
+            IntentResult intentResult) {
         try {
             int completionTokens;
             int totalTokens;
@@ -270,8 +343,10 @@ public class AgentChatService {
             if (violation != null) {
                 violationCounter.increment();
                 log.warn("Constitutional AI violation detected: turnId={}, violation={}", turn.getId(), violation);
-                turn.setToolsUsed("{\"violation\":\"" + violation.replace("\"", "'") + "\"}");
             }
+
+            // 合并 violation + intent 到 tools_used（复用字段，不新增 DB 列）
+            turn.setToolsUsed(buildToolsUsedJson(violation, intentResult));
 
             turn.setAssistantMessage(content);
             turn.setStatus("COMPLETED");
@@ -294,6 +369,59 @@ public class AgentChatService {
         }
     }
 
+    /**
+     * 快路径 turn 完成（模板回复，不调 LLM）。
+     */
+    private void completeShortCircuitTurn(ChatContext ctx, String templateReply, long elapsedMs) {
+        try {
+            String intentJson = objectMapper.writeValueAsString(ctx.intentResult());
+            AgentTurn turn = ctx.turn();
+            AgentSession session = ctx.session();
+
+            turn.setAssistantMessage(templateReply);
+            turn.setStatus("COMPLETED");
+            turn.setResponseTimeMs((int) elapsedMs);
+            turn.setTokensUsed(0);
+            turn.setToolsUsed(intentJson);
+            turnMapper.updateById(turn);
+
+            session.setMessageCount(turn.getTurnNumber());
+            session.setLastMessageAt(LocalDateTime.now());
+            sessionMapper.updateById(session);
+
+            log.info("Short-circuit turn completed: sessionId={}, turn={}, elapsedMs={}, intent={}",
+                    session.getId(), turn.getTurnNumber(), elapsedMs,
+                    ctx.intentResult() != null ? ctx.intentResult().getIntent() : "null");
+        } catch (Exception e) {
+            log.error("Failed to complete short-circuit turn {}", ctx.turn().getId(), e);
+        }
+    }
+
+    /**
+     * 构建 tools_used JSON（合并 violation + intent）。
+     */
+    private String buildToolsUsedJson(String violation, IntentResult intentResult) {
+        try {
+            Map<String, Object> tools = new HashMap<>();
+            if (violation != null) {
+                tools.put("violation", violation);
+            }
+            if (intentResult != null) {
+                tools.put("intent", intentResult);
+            }
+            if (tools.isEmpty()) {
+                return null;
+            }
+            return objectMapper.writeValueAsString(tools);
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to serialize tools_used", e);
+            if (violation != null) {
+                return "{\"violation\":\"" + violation.replace("\"", "'") + "\"}";
+            }
+            return null;
+        }
+    }
+
     private void errorTurn(AgentTurn turn, String errorMessage) {
         try {
             turn.setStatus("ERROR");
@@ -308,7 +436,8 @@ public class AgentChatService {
     }
 
     private record ChatContext(AgentSession session, List<DeepSeekRequest.Message> messages,
-            AgentTurn turn, long startTime, int promptTokens, String retrievalContext) {
+            AgentTurn turn, long startTime, int promptTokens, String retrievalContext,
+            IntentResult intentResult, RouteDecision routeDecision) {
     }
 
     private String formatRetrievalContextJson(List<RetrievalResult> results) {

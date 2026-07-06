@@ -2,6 +2,7 @@ package com.campushare.agent.prompt;
 
 import com.campushare.agent.dto.RetrievalResult;
 import com.campushare.agent.entity.PromptVersion;
+import com.campushare.agent.enums.Intent;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -18,6 +19,11 @@ import java.util.List;
  * 版本管理：
  *  - 若传入 PromptVersion，从版本记录取各层 Prompt（L1 字节级固定，L2/L3/L4 可灰度切换）
  *  - 若未传入（DB 故障降级），从 PromptConstants 取硬编码常量
+ *
+ * 意图识别模块改造：
+ *  - Intent 类型从 IntentDetector.Intent 改为 enums.Intent（5 大意图）
+ *  - switch 覆盖 HOW_TO/SEARCH/NAVIGATE/CLARIFY/OUT_OF_SCOPE
+ *  - NAVIGATE/CLARIFY/OUT_OF_SCOPE 的 L2 Prompt 用 PromptConstants 常量（MVP 不从 DB 取）
  */
 @Component
 public class PromptAssembler {
@@ -25,11 +31,11 @@ public class PromptAssembler {
     /**
      * 装配完整 System Prompt（使用硬编码常量，DB 故障降级路径）。
      *
-     * @param intent   意图（HOW_TO / SEARCH / CHAT）
+     * @param intent   意图（HOW_TO / SEARCH / NAVIGATE / CLARIFY / OUT_OF_SCOPE）
      * @param results  RAG 检索结果（可为 null 或空）
      * @return 完整 System Prompt
      */
-    public String assemble(IntentDetector.Intent intent, List<RetrievalResult> results) {
+    public String assemble(Intent intent, List<RetrievalResult> results) {
         return assemble(intent, results, null);
     }
 
@@ -41,7 +47,7 @@ public class PromptAssembler {
      * @param version  Prompt 版本记录（null 时降级到 PromptConstants）
      * @return 完整 System Prompt
      */
-    public String assemble(IntentDetector.Intent intent, List<RetrievalResult> results, PromptVersion version) {
+    public String assemble(Intent intent, List<RetrievalResult> results, PromptVersion version) {
         StringBuilder sb = new StringBuilder();
 
         // ① L1 平台级（固定，命中 Prefix Cache）
@@ -75,19 +81,26 @@ public class PromptAssembler {
 
     /**
      * 按意图取 L2 任务级 Prompt。
+     *
+     * MVP 阶段：HOW_TO/SEARCH 从 PromptVersion 取（支持灰度），NAVIGATE/CLARIFY/OUT_OF_SCOPE 用常量。
+     * Advanced 阶段：可扩展 PromptVersion 实体支持全意图灰度。
      */
-    private String getTaskPrompt(IntentDetector.Intent intent, PromptVersion version) {
+    private String getTaskPrompt(Intent intent, PromptVersion version) {
         if (version != null) {
             return switch (intent) {
                 case HOW_TO -> version.getHowToPrompt() != null ? version.getHowToPrompt() : PromptConstants.HOW_TO_PROMPT;
                 case SEARCH -> version.getSearchPrompt() != null ? version.getSearchPrompt() : PromptConstants.SEARCH_PROMPT;
-                case CHAT -> version.getChatPrompt() != null ? version.getChatPrompt() : PromptConstants.CHAT_PROMPT;
+                case NAVIGATE -> PromptConstants.NAVIGATE_PROMPT;
+                case CLARIFY -> PromptConstants.CLARIFY_PROMPT;
+                case OUT_OF_SCOPE -> PromptConstants.OUT_OF_SCOPE_PROMPT;
             };
         }
         return switch (intent) {
             case HOW_TO -> PromptConstants.HOW_TO_PROMPT;
             case SEARCH -> PromptConstants.SEARCH_PROMPT;
-            case CHAT -> PromptConstants.CHAT_PROMPT;
+            case NAVIGATE -> PromptConstants.NAVIGATE_PROMPT;
+            case CLARIFY -> PromptConstants.CLARIFY_PROMPT;
+            case OUT_OF_SCOPE -> PromptConstants.OUT_OF_SCOPE_PROMPT;
         };
     }
 
