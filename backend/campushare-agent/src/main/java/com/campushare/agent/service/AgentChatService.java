@@ -30,6 +30,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -45,6 +46,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -152,6 +154,9 @@ public class AgentChatService {
     }
 
     private ChatContext prepareContext(String userId, ChatRequest request) {
+        // MDC 链路追踪：traceId 贯穿意图识别→检索→prompt 装配日志（ADR-030）
+        MDC.put("traceId", UUID.randomUUID().toString().substring(0, 8));
+        try {
         AgentSession session = getOrCreateSession(userId, request);
 
         String userMessage = request.getMessage();
@@ -176,11 +181,19 @@ public class AgentChatService {
                     0, null, intentResult, shortCircuit.get());
         }
 
-        // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索）
+        // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索，意图驱动检索策略 ADR-024）
         intentMetrics.recordRoute(false, intentResult.getIntent().name());
         String retrieveQuery = intentResult.getRewrittenQuery() != null
                 ? intentResult.getRewrittenQuery() : userMessage;
-        List<RetrievalResult> retrievalResults = retrievalService.retrieve(retrieveQuery).block();
+
+        // CLARIFY 意图时加载上一轮检索结果，用于上下文合并（ADR-026）
+        List<RetrievalResult> previousResults = null;
+        if (intentResult.getIntent() == Intent.CLARIFY) {
+            previousResults = loadPreviousRetrieval(session.getId());
+        }
+
+        List<RetrievalResult> retrievalResults = retrievalService.retrieve(
+                retrieveQuery, intentResult, previousResults).block();
         String retrievalContextJson = formatRetrievalContextJson(retrievalResults);
 
         PromptVersion promptVersion = promptVersionManager.getCurrentVersion(userId);
@@ -191,6 +204,9 @@ public class AgentChatService {
         AgentTurn turn = createTurn(session, userMessage);
         return new ChatContext(session, messages, turn, System.currentTimeMillis(),
                 promptTokens, retrievalContextJson, intentResult, null);
+        } finally {
+            MDC.remove("traceId");
+        }
     }
 
     /**
@@ -440,21 +456,48 @@ public class AgentChatService {
             IntentResult intentResult, RouteDecision routeDecision) {
     }
 
+    /**
+     * 加载上一轮 COMPLETED turn 的检索结果（CLARIFY 意图用，ADR-026）。
+     *
+     * 从 AgentTurn.retrievalContext 字段反序列化 List<RetrievalResult>。
+     * 失败时降级为空列表，不影响主流程。
+     */
+    private List<RetrievalResult> loadPreviousRetrieval(String sessionId) {
+        try {
+            AgentTurn lastTurn = turnMapper.selectOne(
+                    new LambdaQueryWrapper<AgentTurn>()
+                            .eq(AgentTurn::getSessionId, sessionId)
+                            .eq(AgentTurn::getStatus, "COMPLETED")
+                            .orderByDesc(AgentTurn::getTurnNumber)
+                            .last("LIMIT 1")
+            );
+            if (lastTurn == null || lastTurn.getRetrievalContext() == null) {
+                return Collections.emptyList();
+            }
+            List<RetrievalResult> previous = objectMapper.readValue(
+                    lastTurn.getRetrievalContext(),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, RetrievalResult.class)
+            );
+            log.debug("Loaded previous retrieval: {} results for sessionId={}", previous.size(), sessionId);
+            return previous;
+        } catch (Exception e) {
+            log.warn("Failed to load previous retrieval context for sessionId={}", sessionId, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 序列化检索结果为 JSON（存入 AgentTurn.retrievalContext）。
+     *
+     * 序列化完整 RetrievalResult（含 content + metadata），供 CLARIFY 时
+     * loadPreviousRetrieval 反序列化后用于上下文合并。
+     */
     private String formatRetrievalContextJson(List<RetrievalResult> results) {
         if (results == null || results.isEmpty()) {
             return null;
         }
         try {
-            List<Map<String, Object>> jsonList = new ArrayList<>();
-            for (RetrievalResult r : results) {
-                Map<String, Object> item = new HashMap<>();
-                item.put("id", r.id());
-                item.put("title", r.title());
-                item.put("source", r.source().name());
-                item.put("score", r.score());
-                jsonList.add(item);
-            }
-            return objectMapper.writeValueAsString(jsonList);
+            return objectMapper.writeValueAsString(results);
         } catch (JsonProcessingException e) {
             log.warn("Failed to serialize retrieval context", e);
             return null;

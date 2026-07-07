@@ -1,11 +1,13 @@
 package com.campushare.agent.store;
 
+import com.campushare.agent.dto.IntentResult.SlotResult;
 import com.campushare.agent.dto.RetrievalResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -87,6 +89,64 @@ public class PostVectorStore {
     }
 
     /**
+     * 向量相似度检索（带 slots 过滤，ADR-025）。
+     * slots 中的 school/category/postType 作为 SQL WHERE 等值条件；为 null 或全空时走原方法。
+     *
+     * @param queryVec 查询向量
+     * @param topK 返回数量
+     * @param slots 槽位过滤条件（可为 null）
+     */
+    public List<RetrievalResult> search(float[] queryVec, int topK, SlotResult slots) {
+        if (slots == null || (isBlank(slots.getSchool())
+                && isBlank(slots.getCategory())
+                && isBlank(slots.getPostType()))) {
+            return search(queryVec, topK);
+        }
+
+        String vectorStr = toVectorString(queryVec);
+        StringBuilder sql = new StringBuilder("""
+                SELECT post_id, post_title, post_content_excerpt, category, school,
+                       1 - (embedding <=> ?::vector) AS similarity
+                FROM post_vectors
+                WHERE 1=1
+                """);
+        List<Object> params = new ArrayList<>();
+        params.add(vectorStr);
+
+        if (!isBlank(slots.getSchool())) {
+            sql.append(" AND school = ?");
+            params.add(slots.getSchool());
+        }
+        if (!isBlank(slots.getCategory())) {
+            sql.append(" AND category = ?");
+            params.add(slots.getCategory());
+        }
+        if (!isBlank(slots.getPostType())) {
+            sql.append(" AND post_type = ?");
+            params.add(slots.getPostType());
+        }
+        sql.append(" ORDER BY embedding <=> ?::vector LIMIT ?");
+        params.add(vectorStr);
+        params.add(topK);
+
+        return jdbcTemplate.query(sql.toString(),
+                (rs, rowNum) -> {
+                    Map<String, Object> meta = new HashMap<>();
+                    meta.put("category", rs.getString("category"));
+                    meta.put("school", rs.getString("school"));
+                    return RetrievalResult.post(
+                            rs.getString("post_id"),
+                            rs.getString("post_title"),
+                            rs.getString("post_content_excerpt"),
+                            rs.getDouble("similarity"),
+                            meta
+                    );
+                },
+                params.toArray()
+        );
+    }
+
+    /**
      * 关键词检索。
      */
     public List<RetrievalResult> keywordSearch(String query, int topK) {
@@ -116,6 +176,65 @@ public class PostVectorStore {
     }
 
     /**
+     * 关键词检索（带 slots 过滤，ADR-025）。
+     * slots 为 null 或全空时走原方法。
+     *
+     * @param query 查询文本
+     * @param topK 返回数量
+     * @param slots 槽位过滤条件（可为 null）
+     */
+    public List<RetrievalResult> keywordSearch(String query, int topK, SlotResult slots) {
+        if (slots == null || (isBlank(slots.getSchool())
+                && isBlank(slots.getCategory())
+                && isBlank(slots.getPostType()))) {
+            return keywordSearch(query, topK);
+        }
+
+        StringBuilder sql = new StringBuilder("""
+                SELECT post_id, post_title, post_content_excerpt, category, school,
+                       GREATEST(similarity(post_title, ?), similarity(post_content_excerpt, ?)) AS sim
+                FROM post_vectors
+                WHERE (post_title % ? OR post_content_excerpt % ?)
+                """);
+        List<Object> params = new ArrayList<>();
+        params.add(query);
+        params.add(query);
+        params.add(query);
+        params.add(query);
+
+        if (!isBlank(slots.getSchool())) {
+            sql.append(" AND school = ?");
+            params.add(slots.getSchool());
+        }
+        if (!isBlank(slots.getCategory())) {
+            sql.append(" AND category = ?");
+            params.add(slots.getCategory());
+        }
+        if (!isBlank(slots.getPostType())) {
+            sql.append(" AND post_type = ?");
+            params.add(slots.getPostType());
+        }
+        sql.append(" ORDER BY sim DESC LIMIT ?");
+        params.add(topK);
+
+        return jdbcTemplate.query(sql.toString(),
+                (rs, rowNum) -> {
+                    Map<String, Object> meta = new HashMap<>();
+                    meta.put("category", rs.getString("category"));
+                    meta.put("school", rs.getString("school"));
+                    return RetrievalResult.post(
+                            rs.getString("post_id"),
+                            rs.getString("post_title"),
+                            rs.getString("post_content_excerpt"),
+                            rs.getDouble("sim"),
+                            meta
+                    );
+                },
+                params.toArray()
+        );
+    }
+
+    /**
      * 删除帖子向量。
      */
     public void delete(String postId) {
@@ -140,5 +259,9 @@ public class PostVectorStore {
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 }

@@ -64,12 +64,15 @@ public class PromptAssembler {
                 : PromptConstants.FEW_SHOT_PROMPT);
 
         // ④ 检索结果（用 <context> 标签包裹，防隐式注入）
+        // 空检索时输出降级提示，帮助 LLM 在知识库冷启动时给出合理回答（问题 14）
+        sb.append("\n# 参考资料\n");
+        sb.append("<context>\n");
         if (results != null && !results.isEmpty()) {
-            sb.append("\n# 参考资料\n");
-            sb.append("<context>\n");
             sb.append(formatRetrievalContext(results));
-            sb.append("</context>\n");
+        } else {
+            sb.append("（当前无可用检索结果。可能原因：知识库未初始化，或用户问题超出已有知识范围。请基于自身能力回答，或引导用户换个关键词。）\n");
         }
+        sb.append("</context>\n");
 
         // ⑤ L4 安全护栏（末尾，防注入）
         sb.append(version != null && version.getGuardrailPrompt() != null
@@ -105,9 +108,10 @@ public class PromptAssembler {
     }
 
     /**
-     * 格式化检索结果为 [1] 标题 / 内容 形式。
+     * 格式化检索结果为 [n] 标题 / 章节 / 可信度 / 内容 形式。
      *
-     * 迁移自 AgentChatService.formatRetrievalContext，保持兼容。
+     * 展示完整 metadata（headingPath/qualityScore/chunkHits/category/school），
+     * 帮助 LLM 引用上下文位置、判断资料可信度、识别帖子来源。
      */
     private String formatRetrievalContext(List<RetrievalResult> results) {
         StringBuilder sb = new StringBuilder();
@@ -116,10 +120,42 @@ public class PromptAssembler {
             sb.append("---\n");
             sb.append("[").append(i + 1).append("] 来源：")
               .append(r.source() == RetrievalResult.Source.KNOWLEDGE ? "知识库" : "帖子")
-              .append(" | 标题：").append(r.title()).append("\n");
-            sb.append("内容：").append(r.content() != null ? r.content() : "无内容").append("\n");
+              .append(" | 标题：").append(r.title());
+
+            // headingPath：知识库分块的章节位置（如 "使用指南 > 发帖 > 步骤"）
+            if (r.metadata() != null && r.metadata().get("headingPath") instanceof String hp && !hp.isEmpty()) {
+                sb.append("\n    章节：").append(hp);
+            }
+
+            // qualityScore：资料可信度（高/中/低）
+            if (r.metadata() != null && r.metadata().get("qualityScore") instanceof Number qs) {
+                sb.append(" | 可信度：").append(formatQuality(qs.doubleValue()));
+            }
+
+            // chunkHits：多分块命中数（>1 时展示）
+            if (r.metadata() != null && r.metadata().get("chunkHits") instanceof Integer hits && hits > 1) {
+                sb.append(" | 命中分块数：").append(hits);
+            }
+
+            // category/school：帖子来源信息
+            if (r.source() == RetrievalResult.Source.POST && r.metadata() != null) {
+                if (r.metadata().get("category") instanceof String cat && !cat.isEmpty()) {
+                    sb.append(" | 分类：").append(cat);
+                }
+                if (r.metadata().get("school") instanceof String sch && !sch.isEmpty()) {
+                    sb.append(" | 学校：").append(sch);
+                }
+            }
+
+            sb.append("\n内容：").append(r.content() != null ? r.content() : "无内容").append("\n");
         }
         sb.append("---");
         return sb.toString();
+    }
+
+    private String formatQuality(double score) {
+        if (score >= 0.8) return "高";
+        if (score >= 0.5) return "中";
+        return "低";
     }
 }

@@ -124,6 +124,21 @@ app:
     top-k: 10
     rerank-top-k: 5
     rrf-k: 60
+    # 意图驱动检索配置（ADR-024）
+    # enabled: 是否启用意图驱动检索（false 时所有意图走默认均等配置）
+    # low-confidence-boost: 低置信度（<0.6）时各路 topK 扩大值
+    # default-token-budget: 检索结果 token 预算上限（P1 阶段生效）
+    intent-driven:
+      enabled: true
+      low-confidence-boost: 3
+      default-token-budget: 2500
+    # 检索结果 Redis 缓存（ADR-029）
+    # enabled: 是否启用缓存（false 时每次都走完整检索）
+    # ttl: 缓存存活时间（5 分钟，平衡一致性和性能）
+    # 注意：CLARIFY 意图不缓存（依赖上一轮上下文，结果因会话而异）
+    cache:
+      enabled: true
+      ttl: 5m
 
   # 知识库管理配置
   # docs-path: 文档目录（随仓库提交的 Markdown 文档）
@@ -187,7 +202,7 @@ logging:
     root: INFO
     '[com.campushare]': DEBUG
   pattern:
-    console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
+    console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n'
 
 management:
   endpoints:

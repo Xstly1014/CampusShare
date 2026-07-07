@@ -106,7 +106,7 @@ class AgentChatServicePromptIntegrationTest {
         );
 
         // 默认 stub：检索返回空（无 RAG 上下文）
-        when(retrievalService.retrieve(anyString())).thenReturn(Mono.just(new ArrayList<>()));
+        when(retrievalService.retrieve(anyString(), any(), any())).thenReturn(Mono.just(new ArrayList<>()));
 
         // 默认 stub：IntentClassifier 返回 SEARCH（非规则命中的 query 走 RAG）
         when(intentClassifier.classify(anyString(), anyString())).thenReturn(
@@ -237,7 +237,7 @@ class AgentChatServicePromptIntegrationTest {
         // mock 检索返回非空结果
         RetrievalResult r = RetrievalResult.knowledge(
                 "k1", "操作系统期末卷", "2023 年期末试卷，含 5 道大题", 0.9, Map.of());
-        when(retrievalService.retrieve(anyString())).thenReturn(Mono.just(List.of(r)));
+        when(retrievalService.retrieve(anyString(), any(), any())).thenReturn(Mono.just(List.of(r)));
 
         ChatRequest request = new ChatRequest();
         request.setMessage("求操作系统卷子");

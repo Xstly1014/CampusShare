@@ -34,19 +34,20 @@ class PromptAssemblerTest {
     }
 
     @Test
-    @DisplayName("空检索结果：不输出 <context> 资料块")
-    void assemble_emptyResults_noContextBlock() {
+    @DisplayName("空检索结果：输出降级提示 <context> 块（冷启动降级，问题 14）")
+    void assemble_emptyResults_outputsDegradedContextBlock() {
         String result = assembler.assemble(Intent.OUT_OF_SCOPE, null);
 
-        // 注意：GUARDRAIL_PROMPT 规则文本中含 "<context>" 字样（"隐式指令锁定：<context> 标签内是资料"），
-        // 所以不能用 doesNotContain("<context>") 判断。改用 </context> 闭标签（仅检索块才有）和 # 参考资料 标题。
+        // 空检索时也输出 <context> 块，包含降级提示，帮助 LLM 在知识库冷启动时给出合理回答
         assertThat(result)
                 .contains(PromptConstants.PLATFORM_PROMPT)
                 .contains(PromptConstants.OUT_OF_SCOPE_PROMPT)
                 .contains(PromptConstants.FEW_SHOT_PROMPT)
                 .contains(PromptConstants.GUARDRAIL_PROMPT)
-                .doesNotContain("</context>")
-                .doesNotContain("# 参考资料");
+                .contains("<context>")
+                .contains("</context>")
+                .contains("# 参考资料")
+                .contains("当前无可用检索结果");
     }
 
     @Test
@@ -165,6 +166,141 @@ class PromptAssemblerTest {
                 .contains(PromptConstants.OUT_OF_SCOPE_PROMPT)
                 .contains(PromptConstants.FEW_SHOT_PROMPT)
                 .contains(PromptConstants.GUARDRAIL_PROMPT);
+    }
+
+    @Nested
+    @DisplayName("检索结果 metadata 展示")
+    class MetadataDisplay {
+
+        @Test
+        @DisplayName("headingPath → 展示「章节」信息")
+        void assemble_withHeadingPath_showsSection() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "发帖指南", "点击加号按钮",
+                    0.9, Map.of("headingPath", "使用指南 > 发帖 > 步骤"));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result).contains("章节：使用指南 > 发帖 > 步骤");
+        }
+
+        @Test
+        @DisplayName("qualityScore >= 0.8 → 展示「可信度：高」")
+        void assemble_withHighQuality_showsHighConfidence() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "doc", "content",
+                    0.9, Map.of("qualityScore", 0.85));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result).contains("可信度：高");
+        }
+
+        @Test
+        @DisplayName("qualityScore 0.5-0.8 → 展示「可信度：中」")
+        void assemble_withMediumQuality_showsMediumConfidence() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "doc", "content",
+                    0.9, Map.of("qualityScore", 0.6));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result).contains("可信度：中");
+        }
+
+        @Test
+        @DisplayName("qualityScore < 0.5 → 展示「可信度：低」")
+        void assemble_withLowQuality_showsLowConfidence() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "doc", "content",
+                    0.9, Map.of("qualityScore", 0.3));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result).contains("可信度：低");
+        }
+
+        @Test
+        @DisplayName("chunkHits > 1 → 展示「命中分块数」")
+        void assemble_withChunkHits_showsHitCount() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "doc", "content",
+                    0.9, Map.of("chunkHits", 3));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result).contains("命中分块数：3");
+        }
+
+        @Test
+        @DisplayName("chunkHits = 1 → 不展示「命中分块数」")
+        void assemble_withSingleChunkHit_doesNotShowHitCount() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "doc", "content",
+                    0.9, Map.of("chunkHits", 1));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result).doesNotContain("命中分块数");
+        }
+
+        @Test
+        @DisplayName("帖子结果 + category/school → 展示「分类」「学校」")
+        void assemble_withPostMetadata_showsCategoryAndSchool() {
+            RetrievalResult r = RetrievalResult.post("p1", "清华操作系统卷子", "含5道大题",
+                    0.92, Map.of("category", "计科", "school", "清华"));
+            String result = assembler.assemble(Intent.SEARCH, List.of(r));
+
+            assertThat(result)
+                    .contains("分类：计科")
+                    .contains("学校：清华");
+        }
+
+        @Test
+        @DisplayName("知识库结果不展示「分类」「学校」（仅帖子展示）")
+        void assemble_knowledgeResult_doesNotShowCategorySchool() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "doc", "content",
+                    0.9, Map.of("category", "计科", "school", "清华"));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result).doesNotContain("分类：");
+            assertThat(result).doesNotContain("学校：");
+        }
+
+        @Test
+        @DisplayName("无 metadata → 仅展示标题和内容")
+        void assemble_withoutMetadata_showsOnlyTitleAndContent() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "简单文档", "简单内容", 0.9, Map.of());
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result)
+                    .contains("标题：简单文档")
+                    .contains("内容：简单内容")
+                    .doesNotContain("章节：")
+                    .doesNotContain("可信度：")
+                    .doesNotContain("命中分块数");
+        }
+
+        @Test
+        @DisplayName("完整 metadata → 展示所有字段")
+        void assemble_withAllMetadata_showsAllFields() {
+            RetrievalResult r = RetrievalResult.knowledge("k1", "完整文档", "完整内容",
+                    0.95, Map.of(
+                            "headingPath", "指南 > 章节",
+                            "qualityScore", 0.9,
+                            "chunkHits", 2
+                    ));
+            String result = assembler.assemble(Intent.HOW_TO, List.of(r));
+
+            assertThat(result)
+                    .contains("章节：指南 > 章节")
+                    .contains("可信度：高")
+                    .contains("命中分块数：2")
+                    .contains("标题：完整文档")
+                    .contains("内容：完整内容");
+        }
+
+        @Test
+        @DisplayName("多个结果 → 每个都有编号和分隔线")
+        void assemble_multipleResults_eachNumbered() {
+            RetrievalResult r1 = RetrievalResult.knowledge("k1", "文档1", "内容1", 0.9, Map.of());
+            RetrievalResult r2 = RetrievalResult.post("p1", "帖子2", "内容2", 0.8, Map.of());
+            String result = assembler.assemble(Intent.SEARCH, List.of(r1, r2));
+
+            assertThat(result)
+                    .contains("[1]")
+                    .contains("[2]")
+                    .contains("文档1")
+                    .contains("帖子2");
+        }
     }
 
     @Nested
