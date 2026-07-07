@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS user_memory_history (
 -- ========================================
 -- 10. 知识库文档表
 -- ========================================
+-- v2: version 改 SemVer(VARCHAR)，新增分块计数/质量评分/召回统计字段
 CREATE TABLE IF NOT EXISTS knowledge_articles (
   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '自增主键',
   title VARCHAR(128) NOT NULL COMMENT '文档标题',
@@ -195,12 +196,18 @@ CREATE TABLE IF NOT EXISTS knowledge_articles (
   content MEDIUMTEXT NOT NULL COMMENT '文档正文（Markdown）',
   content_md5 CHAR(32) NOT NULL COMMENT '内容 MD5（检测变更，避免重复 embedding）',
   status ENUM('DRAFT','PUBLISHED','DEPRECATED') DEFAULT 'PUBLISHED' COMMENT '发布状态',
-  version INT DEFAULT 1 COMMENT '版本号',
+  version VARCHAR(16) DEFAULT 'v1.0.0' COMMENT '版本号（SemVer，如 v1.0.0）',
+  chunk_count INT DEFAULT 0 COMMENT '分块数量（摄入时写入）',
+  quality_score DECIMAL(4,3) DEFAULT 0.500 COMMENT '质量评分（0-1，四维加权）',
+  recall_count INT DEFAULT 0 COMMENT '被召回次数（检索时异步累加）',
+  feedback_score DECIMAL(3,2) DEFAULT 0.50 COMMENT '用户反馈分（0-1，点赞/点踩调整）',
+  last_recalled_at DATETIME NULL COMMENT '最后被召回时间',
   tags VARCHAR(256) DEFAULT NULL COMMENT '标签列表（逗号分隔）',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX idx_topic_status (topic, status) COMMENT '按主题查已发布文档',
-  INDEX idx_updated (updated_at) COMMENT '按更新时间查询'
+  INDEX idx_updated (updated_at) COMMENT '按更新时间查询',
+  INDEX idx_quality (quality_score DESC) COMMENT '按质量评分排序'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库文档表';
 
 -- ========================================
@@ -309,3 +316,84 @@ END$$
 DELIMITER ;
 CALL migrate_agent_sessions_category();
 DROP PROCEDURE IF EXISTS migrate_agent_sessions_category;
+
+-- ========================================
+-- 15. 知识库文档版本历史表（SemVer + 完整快照 + 一键回滚）
+-- ========================================
+-- 用途：每次文档更新前写入完整快照，支持版本查询和回滚
+-- 归属：agent-service 专属，由 KnowledgeVersionService 读写
+CREATE TABLE IF NOT EXISTS knowledge_article_versions (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '自增主键',
+  article_id BIGINT NOT NULL COMMENT '关联的 knowledge_articles.id',
+  version VARCHAR(16) NOT NULL COMMENT '版本号（SemVer，如 v1.0.0）',
+  title VARCHAR(128) NOT NULL COMMENT '快照标题',
+  topic VARCHAR(32) NOT NULL COMMENT '快照主题',
+  content MEDIUMTEXT NOT NULL COMMENT '快照正文（完整 Markdown）',
+  content_md5 CHAR(32) NOT NULL COMMENT '快照内容 MD5',
+  chunk_count INT DEFAULT 0 COMMENT '快照分块数',
+  tags VARCHAR(256) DEFAULT NULL COMMENT '快照标签',
+  snapshot_reason VARCHAR(32) DEFAULT 'UPDATE' COMMENT '快照原因（UPDATE/ROLLBACK/DEPRECATED）',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '快照时间',
+  UNIQUE KEY uk_article_version (article_id, version) COMMENT '同文档同版本唯一',
+  INDEX idx_article_created (article_id, created_at DESC) COMMENT '按文档查历史版本'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库文档版本历史表';
+
+-- ========================================
+-- 16. 知识库文档表 v2 迁移（version INT→VARCHAR + 新增质量评分字段）
+-- ========================================
+-- 兼容已存在库：将旧 knowledge_articles 表升级到 v2 结构
+-- 注意：MODIFY COLUMN 和 ADD COLUMN 用 INFORMATION_SCHEMA 检查实现幂等
+DROP PROCEDURE IF EXISTS migrate_knowledge_articles_v2;
+DELIMITER $$
+CREATE PROCEDURE migrate_knowledge_articles_v2()
+BEGIN
+    DECLARE old_version_type VARCHAR(64);
+
+    -- 检查 version 列类型，若为 INT 则改为 VARCHAR(16)
+    SELECT COLUMN_TYPE INTO old_version_type
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'knowledge_articles' AND COLUMN_NAME = 'version';
+    IF old_version_type = 'int' THEN
+        ALTER TABLE knowledge_articles MODIFY COLUMN version VARCHAR(16) DEFAULT 'v1.0.0' COMMENT '版本号（SemVer，如 v1.0.0）';
+        UPDATE knowledge_articles SET version = CONCAT('v1.0.', IFNULL(version, 1)) WHERE version NOT LIKE 'v%';
+    END IF;
+
+    -- 新增 chunk_count 列
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'knowledge_articles' AND COLUMN_NAME = 'chunk_count') THEN
+        ALTER TABLE knowledge_articles ADD COLUMN chunk_count INT DEFAULT 0 COMMENT '分块数量（摄入时写入）' AFTER version;
+    END IF;
+
+    -- 新增 quality_score 列
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'knowledge_articles' AND COLUMN_NAME = 'quality_score') THEN
+        ALTER TABLE knowledge_articles ADD COLUMN quality_score DECIMAL(4,3) DEFAULT 0.500 COMMENT '质量评分（0-1，四维加权）' AFTER chunk_count;
+    END IF;
+
+    -- 新增 recall_count 列
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'knowledge_articles' AND COLUMN_NAME = 'recall_count') THEN
+        ALTER TABLE knowledge_articles ADD COLUMN recall_count INT DEFAULT 0 COMMENT '被召回次数（检索时异步累加）' AFTER quality_score;
+    END IF;
+
+    -- 新增 feedback_score 列
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'knowledge_articles' AND COLUMN_NAME = 'feedback_score') THEN
+        ALTER TABLE knowledge_articles ADD COLUMN feedback_score DECIMAL(3,2) DEFAULT 0.50 COMMENT '用户反馈分（0-1，点赞/点踩调整）' AFTER recall_count;
+    END IF;
+
+    -- 新增 last_recalled_at 列
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'knowledge_articles' AND COLUMN_NAME = 'last_recalled_at') THEN
+        ALTER TABLE knowledge_articles ADD COLUMN last_recalled_at DATETIME NULL COMMENT '最后被召回时间' AFTER feedback_score;
+    END IF;
+
+    -- 新增 quality_score 索引
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'knowledge_articles' AND INDEX_NAME = 'idx_quality') THEN
+        ALTER TABLE knowledge_articles ADD INDEX idx_quality (quality_score DESC);
+    END IF;
+END$$
+DELIMITER ;
+CALL migrate_knowledge_articles_v2();
+DROP PROCEDURE IF EXISTS migrate_knowledge_articles_v2;

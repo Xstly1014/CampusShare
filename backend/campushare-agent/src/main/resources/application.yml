@@ -125,9 +125,25 @@ app:
     rerank-top-k: 5
     rrf-k: 60
 
-  # 知识库文档路径（随仓库提交的 Markdown 文档）
+  # 知识库管理配置
+  # docs-path: 文档目录（随仓库提交的 Markdown 文档）
+  # chunk: 分块参数（遵循 project_memory 硬约束：H2→H3→段落→句子，目标 256/最大 512/重叠 50）
+  # quality: 四维质量评分权重（召回 0.4 + 反馈 0.3 + 新鲜度 0.2 + 完整度 0.1，总和=1.0）
+  # duplicate: 双阈值重复检测（≥0.95 DUPLICATE / ≥0.85 SIMILAR / else UNIQUE）
   knowledge:
     docs-path: docs/agent-assistant/knowledge-docs
+    chunk:
+      target-tokens: 256
+      max-tokens: 512
+      overlap-tokens: 50
+    quality:
+      weight-recall: 0.4
+      weight-feedback: 0.3
+      weight-freshness: 0.2
+      weight-completeness: 0.1
+    duplicate:
+      threshold-exact: 0.95
+      threshold-similar: 0.85
 
   # 帖子向量同步熔断配置
   post-sync:

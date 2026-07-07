@@ -13,23 +13,26 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 知识库文档实体，对应 MySQL knowledge_articles 表（v2 结构）。
+ * 知识库文档版本历史实体，对应 MySQL knowledge_article_versions 表。
  *
- * v2 变更：
- * - version 从 Integer 改为 String（SemVer，如 v1.0.0）
- * - 新增 chunk_count / quality_score / recall_count / feedback_score / last_recalled_at
+ * 每次 KnowledgeArticle 更新前由 KnowledgeVersionService.snapshot() 写入完整快照，
+ * 用于版本追溯和一键回滚。
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("knowledge_articles")
-public class KnowledgeArticle implements Serializable {
+@TableName("knowledge_article_versions")
+public class KnowledgeArticleVersion implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @TableId(type = IdType.AUTO)
     private Long id;
+
+    private Long articleId;
+
+    private String version;
 
     private String title;
 
@@ -39,25 +42,12 @@ public class KnowledgeArticle implements Serializable {
 
     private String contentMd5;
 
-    private String status;
-
-    private String version;
-
     private Integer chunkCount;
-
-    private Double qualityScore;
-
-    private Integer recallCount;
-
-    private Double feedbackScore;
-
-    private LocalDateTime lastRecalledAt;
 
     private String tags;
 
+    private String snapshotReason;
+
     @TableField(fill = com.baomidou.mybatisplus.annotation.FieldFill.INSERT)
     private LocalDateTime createdAt;
-
-    @TableField(fill = com.baomidou.mybatisplus.annotation.FieldFill.INSERT_UPDATE)
-    private LocalDateTime updatedAt;
 }

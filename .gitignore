@@ -148,6 +148,9 @@ $RECYCLE.BIN/
 *.swo
 *~
 
+# Word temporary lock files
+~$*
+
 # Package Files
 *.zip
 *.tar.gz

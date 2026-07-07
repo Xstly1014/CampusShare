@@ -1,10 +1,16 @@
 package com.campushare.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campushare.agent.config.KnowledgeMetricsConfig;
+import com.campushare.agent.dto.Chunk;
+import com.campushare.agent.dto.DuplicateDetectionResult;
+import com.campushare.agent.dto.QualityInput;
 import com.campushare.agent.entity.KnowledgeArticle;
 import com.campushare.agent.llm.EmbeddingClient;
 import com.campushare.agent.mapper.KnowledgeArticleMapper;
 import com.campushare.agent.store.KnowledgeVectorStore;
+import com.campushare.agent.util.SemVer;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,13 +30,24 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * 知识库文档摄入服务。
+ * 知识库文档摄入服务（v2 分块版）。
  *
  * 流程：
  * 1. 扫描 docs-path 目录下所有 .md 文件
  * 2. 解析 frontmatter（title/topic/tags）+ 正文
  * 3. 计算 MD5，与 MySQL 中已有记录对比，跳过未变更的
- * 4. 新增/更新的文档：存 MySQL knowledge_articles → embedding → 存 knowledge_vectors
+ * 4. MarkdownChunker 分块
+ * 5. embedBatch 批量 embedding
+ * 6. 重复检测（chunk_index=0 的 embedding）
+ * 7. [更新时] KnowledgeVersionService.snapshot
+ * 8. SemVer.nextPatch 递增版本
+ * 9. QualityScorer 计算初始质量评分
+ * 10. 写 MySQL knowledge_articles → 写 PG knowledge_vectors（分块）
+ *
+ * 降级策略：
+ * - Embedding 失败：跳过该文档，记录 failed
+ * - 重复检测异常：默认按 UNIQUE 处理
+ * - PG 写入失败：MySQL 已写入，下一调度周期通过 MD5 diff 跳过（需手动触发 reindex）
  */
 @Slf4j
 @Service
@@ -40,6 +57,11 @@ public class KnowledgeIngestionService {
     private final KnowledgeArticleMapper articleMapper;
     private final EmbeddingClient embeddingClient;
     private final KnowledgeVectorStore knowledgeVectorStore;
+    private final KnowledgeChunker chunker;
+    private final KnowledgeQualityScorer qualityScorer;
+    private final KnowledgeDuplicateDetector duplicateDetector;
+    private final KnowledgeVersionService versionService;
+    private final KnowledgeMetricsConfig metricsConfig;
 
     @Value("${app.knowledge.docs-path:docs/agent-assistant/knowledge-docs}")
     private String docsPath;
@@ -48,15 +70,14 @@ public class KnowledgeIngestionService {
             "^---\\s*\\n(.*?)\\n---\\s*\\n(.*)$", Pattern.DOTALL
     );
 
-    private static final int EXCERPT_LENGTH = 500;
-
     /**
      * 摄入全部知识库文档。
      * @return 摄入结果统计
      */
     public Map<String, Object> ingestAll() {
         Map<String, Object> result = new HashMap<>();
-        int total = 0, inserted = 0, updated = 0, skipped = 0, failed = 0;
+        int total = 0, inserted = 0, updated = 0, skipped = 0, failed = 0, duplicated = 0;
+        Timer.Sample ingestTimer = metricsConfig.startIngestTimer();
 
         Path rootPath = Paths.get(docsPath);
         if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {
@@ -84,6 +105,7 @@ public class KnowledgeIngestionService {
                 ParsedDoc doc = parseFile(file);
                 if (doc == null) {
                     failed++;
+                    metricsConfig.recordIngest("FAIL");
                     continue;
                 }
 
@@ -97,62 +119,164 @@ public class KnowledgeIngestionService {
 
                 if (existing != null && md5.equals(existing.getContentMd5())) {
                     skipped++;
+                    metricsConfig.recordIngest("SKIPPED");
                     continue;
                 }
 
-                String excerpt = doc.content.length() > EXCERPT_LENGTH
-                        ? doc.content.substring(0, EXCERPT_LENGTH)
-                        : doc.content;
-
-                float[] embedding = embeddingClient.embed(doc.title + "\n" + excerpt).block();
-                if (embedding == null || embedding.length == 0) {
-                    log.warn("Embedding failed for doc: {}, skipping vector store", doc.title);
+                List<Chunk> chunks = chunker.chunk(doc.content);
+                if (chunks.isEmpty()) {
+                    log.warn("No chunks generated for doc: {}, skipping", doc.title);
                     failed++;
+                    metricsConfig.recordIngest("FAIL");
                     continue;
+                }
+                metricsConfig.recordChunksPerDoc(chunks.size());
+
+                List<String> chunkTexts = chunks.stream().map(Chunk::embeddingText).toList();
+                List<float[]> embeddings = embeddingClient.embedBatch(chunkTexts).block();
+                if (embeddings == null || embeddings.isEmpty() || embeddings.size() != chunks.size()) {
+                    log.warn("Embedding batch failed for doc: {} (got {} embeddings for {} chunks)",
+                            doc.title, embeddings == null ? 0 : embeddings.size(), chunks.size());
+                    failed++;
+                    metricsConfig.recordIngest("FAIL");
+                    continue;
+                }
+                metricsConfig.recordEmbeddingBatchSize(embeddings.size());
+
+                // 重复检测（用第一个分块的 embedding）
+                DuplicateDetectionResult duplicateResult = duplicateDetector.detect(doc.content, embeddings.get(0));
+                if (duplicateResult.isDuplicate()) {
+                    log.info("Skip duplicated doc: {} (matched articleId={}, similarity={})",
+                            doc.title, duplicateResult.matchedArticleId(), duplicateResult.similarity());
+                    duplicated++;
+                    metricsConfig.recordIngest("DUPLICATED");
+                    continue;
+                }
+                if (duplicateResult.isSimilar()) {
+                    log.warn("Similar content detected for doc: {} (matched articleId={}, similarity={}), ingesting anyway",
+                            doc.title, duplicateResult.matchedArticleId(), duplicateResult.similarity());
                 }
 
                 if (existing != null) {
+                    versionService.snapshot(existing, "UPDATE");
+                    SemVer nextVer = SemVer.parseOrInitial(existing.getVersion()).nextPatch();
+                    double qualityScore = qualityScorer.score(new QualityInput(
+                            existing.getRecallCount() != null ? existing.getRecallCount() : 0,
+                            existing.getFeedbackScore() != null ? existing.getFeedbackScore() : 0.5,
+                            existing.getUpdatedAt(),
+                            chunks.size()
+                    ));
+
                     existing.setTopic(doc.topic);
                     existing.setContent(doc.content);
                     existing.setContentMd5(md5);
                     existing.setStatus("PUBLISHED");
                     existing.setTags(doc.tags);
-                    existing.setVersion(existing.getVersion() + 1);
+                    existing.setVersion(nextVer.toString());
+                    existing.setChunkCount(chunks.size());
+                    existing.setQualityScore(qualityScore);
                     articleMapper.updateById(existing);
-                    knowledgeVectorStore.upsert(existing.getId(), doc.title, doc.topic, excerpt, md5, embedding);
+
+                    knowledgeVectorStore.upsertChunks(
+                            existing.getId(), chunks, embeddings,
+                            doc.title, doc.topic, md5, nextVer.toString(), qualityScore
+                    );
                     updated++;
-                    log.info("Updated knowledge article: {}", doc.title);
+                    metricsConfig.recordIngest("SUCCESS");
+                    log.info("Updated knowledge article: {} (version={}, chunks={})",
+                            doc.title, nextVer, chunks.size());
                 } else {
+                    double qualityScore = qualityScorer.score(new QualityInput(
+                            0, 0.5, null, chunks.size()
+                    ));
+
                     KnowledgeArticle article = KnowledgeArticle.builder()
                             .title(doc.title)
                             .topic(doc.topic)
                             .content(doc.content)
                             .contentMd5(md5)
                             .status("PUBLISHED")
-                            .version(1)
+                            .version(SemVer.initial().toString())
+                            .chunkCount(chunks.size())
+                            .qualityScore(qualityScore)
+                            .recallCount(0)
+                            .feedbackScore(0.5)
                             .tags(doc.tags)
                             .build();
                     articleMapper.insert(article);
-                    knowledgeVectorStore.upsert(article.getId(), doc.title, doc.topic, excerpt, md5, embedding);
+
+                    knowledgeVectorStore.upsertChunks(
+                            article.getId(), chunks, embeddings,
+                            doc.title, doc.topic, md5, SemVer.initial().toString(), qualityScore
+                    );
                     inserted++;
-                    log.info("Inserted knowledge article: {}", doc.title);
+                    metricsConfig.recordIngest("SUCCESS");
+                    log.info("Inserted knowledge article: {} (version={}, chunks={})",
+                            doc.title, SemVer.initial(), chunks.size());
                 }
             } catch (Exception e) {
                 log.error("Failed to ingest doc: {}", file, e);
                 failed++;
+                metricsConfig.recordIngest("FAIL");
             }
         }
 
-        log.info("Knowledge ingestion complete: total={}, inserted={}, updated={}, skipped={}, failed={}",
-                total, inserted, updated, skipped, failed);
+        metricsConfig.recordIngestDuration(ingestTimer, "TOTAL");
+        log.info("Knowledge ingestion complete: total={}, inserted={}, updated={}, skipped={}, duplicated={}, failed={}",
+                total, inserted, updated, skipped, duplicated, failed);
 
         result.put("total", total);
         result.put("inserted", inserted);
         result.put("updated", updated);
         result.put("skipped", skipped);
+        result.put("duplicated", duplicated);
         result.put("failed", failed);
-        result.put("vectorCount", knowledgeVectorStore.count());
+        result.put("chunkCount", knowledgeVectorStore.count());
+        result.put("articleCount", knowledgeVectorStore.countArticles());
         return result;
+    }
+
+    /**
+     * 重新摄入单个文章（用于回滚后同步 PG 向量）。
+     * 从 MySQL 读取文章内容，重新分块 + embedding + 写入 PG。
+     */
+    public void reingestArticle(Long articleId) {
+        KnowledgeArticle article = articleMapper.selectById(articleId);
+        if (article == null) {
+            throw new IllegalArgumentException("Article not found: " + articleId);
+        }
+
+        List<Chunk> chunks = chunker.chunk(article.getContent());
+        if (chunks.isEmpty()) {
+            log.warn("No chunks generated for article: {}, skipping reingest", articleId);
+            return;
+        }
+
+        List<String> chunkTexts = chunks.stream().map(Chunk::embeddingText).toList();
+        List<float[]> embeddings = embeddingClient.embedBatch(chunkTexts).block();
+        if (embeddings == null || embeddings.size() != chunks.size()) {
+            log.warn("Embedding batch failed for article: {}", articleId);
+            return;
+        }
+
+        double qualityScore = qualityScorer.score(new QualityInput(
+                article.getRecallCount() != null ? article.getRecallCount() : 0,
+                article.getFeedbackScore() != null ? article.getFeedbackScore() : 0.5,
+                article.getUpdatedAt(),
+                chunks.size()
+        ));
+
+        article.setChunkCount(chunks.size());
+        article.setQualityScore(qualityScore);
+        articleMapper.updateById(article);
+
+        knowledgeVectorStore.upsertChunks(
+                articleId, chunks, embeddings,
+                article.getTitle(), article.getTopic(), article.getContentMd5(),
+                article.getVersion(), qualityScore
+        );
+        log.info("Reingested article: id={}, version={}, chunks={}",
+                articleId, article.getVersion(), chunks.size());
     }
 
     private ParsedDoc parseFile(Path file) throws IOException {
