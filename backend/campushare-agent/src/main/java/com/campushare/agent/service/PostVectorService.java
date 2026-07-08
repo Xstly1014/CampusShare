@@ -1,56 +1,52 @@
 package com.campushare.agent.service;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.campushare.agent.dto.PostVectorDTO;
-import com.campushare.agent.feign.PostFeignClient;
 import com.campushare.agent.llm.EmbeddingClient;
 import com.campushare.agent.store.PostVectorStore;
-import com.campushare.common.result.Result;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * 帖子向量同步服务。
- *
- * 流程：
- * 1. syncPost: 接收 post-service 通知 → Feign 拉取单帖 → embedding → upsert
- * 2. syncAll: 分页拉取全量帖子 → 批量 embedding → 批量 upsert
- *
- * 降级策略：
- * - post-service 不可用：CircuitBreaker 快速失败，log.warn，不影响 agent 对话
- * - embedding 失败：EmbeddingClient 内部已降级返回 Mono.empty()，跳过该帖
- */
 @Slf4j
 @Service
 public class PostVectorService {
 
-    private final PostFeignClient postFeignClient;
+    private final WebClient postWebClient;
     private final EmbeddingClient embeddingClient;
     private final PostVectorStore postVectorStore;
     private final CircuitBreaker postSyncCircuitBreaker;
+    private final ObjectMapper objectMapper;
 
-    public PostVectorService(PostFeignClient postFeignClient,
+    @Value("${app.post-sync.timeout:30000}")
+    private int syncTimeoutMs;
+
+    public PostVectorService(@Qualifier("postWebClient") WebClient postWebClient,
                              EmbeddingClient embeddingClient,
                              PostVectorStore postVectorStore,
-                             @Qualifier("postSyncCircuitBreaker") CircuitBreaker postSyncCircuitBreaker) {
-        this.postFeignClient = postFeignClient;
+                             @Qualifier("postSyncCircuitBreaker") CircuitBreaker postSyncCircuitBreaker,
+                             ObjectMapper objectMapper) {
+        this.postWebClient = postWebClient;
         this.embeddingClient = embeddingClient;
         this.postVectorStore = postVectorStore;
         this.postSyncCircuitBreaker = postSyncCircuitBreaker;
+        this.objectMapper = objectMapper;
     }
 
-    /**
-     * 单帖同步（接收 post-service 通知后调用）。
-     */
     public Mono<Void> syncPost(String postId, String action) {
         if ("DELETE".equals(action)) {
             return Mono.fromRunnable(() -> postVectorStore.delete(postId))
@@ -62,10 +58,7 @@ public class PostVectorService {
                     .then();
         }
 
-        return Mono.fromCallable(() -> {
-                    Result<PostVectorDTO> result = postFeignClient.getVectorData(postId);
-                    return result != null ? result.getData() : null;
-                })
+        return Mono.fromCallable(() -> fetchPostVector(postId))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(dto -> {
                     if (dto == null) {
@@ -86,9 +79,6 @@ public class PostVectorService {
                 });
     }
 
-    /**
-     * 全量同步（调度器 + 手动触发）。
-     */
     public Mono<Map<String, Object>> syncAll() {
         return Mono.fromCallable(this::doSyncAll)
                 .subscribeOn(Schedulers.boundedElastic())
@@ -106,19 +96,18 @@ public class PostVectorService {
         int total = 0, success = 0, failed = 0;
 
         while (true) {
-            Result<IPage<PostVectorDTO>> result;
+            List<PostVectorDTO> posts;
             try {
-                result = postFeignClient.getAllForVector(page, size);
+                posts = fetchPostsPage(page, size);
             } catch (Exception e) {
                 log.warn("Failed to fetch posts page {} for vector sync: {}", page, e.getMessage());
                 break;
             }
 
-            if (result == null || result.getData() == null || result.getData().getRecords().isEmpty()) {
+            if (posts == null || posts.isEmpty()) {
                 break;
             }
 
-            List<PostVectorDTO> posts = result.getData().getRecords();
             total += posts.size();
 
             List<String> texts = posts.stream()
@@ -163,6 +152,50 @@ public class PostVectorService {
         stats.put("postVectorCount", postVectorStore.count());
         log.info("Post vector full sync complete: total={}, success={}, failed={}", total, success, failed);
         return stats;
+    }
+
+    private PostVectorDTO fetchPostVector(String postId) {
+        try {
+            String json = postWebClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/internal/posts/{postId}/vector-data").build(postId))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(syncTimeoutMs))
+                    .block();
+            if (json == null) return null;
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode data = root.get("data");
+            if (data == null || data.isNull()) return null;
+            return objectMapper.treeToValue(data, PostVectorDTO.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch post vector data: " + e.getMessage(), e);
+        }
+    }
+
+    private List<PostVectorDTO> fetchPostsPage(int page, int size) {
+        try {
+            String json = postWebClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/internal/posts/all-for-vector")
+                            .queryParam("page", page)
+                            .queryParam("size", size)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofMillis(syncTimeoutMs))
+                    .block();
+            if (json == null) return new ArrayList<>();
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode data = root.get("data");
+            if (data == null || data.isNull()) return new ArrayList<>();
+            JsonNode records = data.get("records");
+            if (records == null || !records.isArray()) return new ArrayList<>();
+            return objectMapper.readValue(
+                    objectMapper.treeAsTokens(records),
+                    new TypeReference<List<PostVectorDTO>>() {}
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch posts page " + page + ": " + e.getMessage(), e);
+        }
     }
 
     private void upsertPostVector(PostVectorDTO dto, float[] vec) {

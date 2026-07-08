@@ -3,7 +3,6 @@ package com.campushare.agent;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -11,7 +10,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Agent 智能问答服务启动类。
  *
  * 扫描包说明：
- *  - com.campushare.agent            自身包（控制器/服务/Mapper/Feign/配置等）
+ *  - com.campushare.agent            自身包（控制器/服务/Mapper/配置等）
  *  - com.campushare.common.utils     JwtUtils（@Component，需要被扫描）
  *  - com.campushare.common.result    Result/ResultCode（纯 POJO，扫描无害）
  *  - com.campushare.common.constant  常量类（扫描无害）
@@ -27,7 +26,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         "com.campushare.common.constant"
 })
 @MapperScan("com.campushare.agent.mapper")
-@EnableFeignClients(basePackages = "com.campushare.agent.feign")
 @EnableRetry
 @EnableScheduling
 public class AgentApplication {

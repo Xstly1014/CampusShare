@@ -51,16 +51,6 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- OpenFeign：调用 user-service / post-service 的内部 API -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-openfeign</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.openfeign</groupId>
-            <artifactId>feign-hc5</artifactId>
-        </dependency>
-
         <!-- Resilience4j 熔断：LLM/外部服务故障时降级 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
