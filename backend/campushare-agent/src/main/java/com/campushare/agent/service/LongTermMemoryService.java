@@ -10,6 +10,8 @@ import com.campushare.agent.mapper.UserMemoryMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -73,6 +75,21 @@ public class LongTermMemoryService {
             输出 JSON 数组（不要输出其他内容）：
             [{"type":"PREFERENCE","key":"preferred_format","value":"PDF","evidence_quote":"我比较喜欢 PDF"}]
             """;
+
+    @Value("${app.long-term-memory.decay.enabled:true}")
+    private boolean decayEnabled;
+
+    /** INFERRED BEHAVIOR 类型周衰减率（0.1 = 每周乘以 0.9） */
+    private static final BigDecimal BEHAVIOR_DECAY_RATE = BigDecimal.valueOf(0.1);
+
+    /** TASK 类型周衰减率（0.3 = 每周乘以 0.7） */
+    private static final BigDecimal TASK_DECAY_RATE = BigDecimal.valueOf(0.3);
+
+    /** 衰减后 confidence 低于此阈值则删除 */
+    private static final BigDecimal DECAY_DELETE_THRESHOLD = BigDecimal.valueOf(0.3);
+
+    /** TASK 类型多少周未更新则删除 */
+    private static final int TASK_STALE_WEEKS = 4;
 
     /**
      * 装载用户画像（L1 层，ADR-059 5.1 装载策略）。
@@ -424,5 +441,97 @@ public class LongTermMemoryService {
      * LLM 抽取的记忆项。
      */
     private record ExtractedMemory(String type, String key, String value, String evidenceQuote) {
+    }
+
+    // ========== 记忆衰减（ADR-060） ==========
+
+    /**
+     * 每周日 02:00 执行记忆衰减任务（ADR-060）。
+     *
+     * 衰减规则：
+     *   - EXPLICIT PREFERENCE/FACT：不衰减（用户明确声明不会过期）
+     *   - INFERRED BEHAVIOR：每周衰减 0.1（confidence *= 0.9），<0.3 软删除
+     *   - TASK：每周衰减 0.3（confidence *= 0.7），4 周未更新软删除
+     */
+    @Scheduled(cron = "0 0 2 ? * SUN")
+    public void decayMemories() {
+        if (!decayEnabled) {
+            log.info("Memory decay task disabled, skipping");
+            return;
+        }
+        log.info("Starting weekly memory decay task...");
+        long startTime = System.currentTimeMillis();
+
+        int decayed = 0;
+        int deleted = 0;
+
+        try {
+            // 1. 衰减 INFERRED BEHAVIOR
+            List<UserMemory> behaviorMemories = userMemoryMapper.selectList(
+                    new LambdaQueryWrapper<UserMemory>()
+                            .eq(UserMemory::getSource, "INFERRED")
+                            .eq(UserMemory::getMemoryType, "BEHAVIOR")
+                            .gt(UserMemory::getConfidence, DECAY_DELETE_THRESHOLD)
+            );
+            for (UserMemory m : behaviorMemories) {
+                BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ZERO;
+                BigDecimal newConf = oldConf.multiply(BigDecimal.ONE.subtract(BEHAVIOR_DECAY_RATE));
+                if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
+                    softDeleteMemory(m, "Decay below threshold (BEHAVIOR)");
+                    deleted++;
+                } else {
+                    m.setConfidence(newConf);
+                    userMemoryMapper.updateById(m);
+                    decayed++;
+                }
+            }
+
+            // 2. 衰减 + 清理 TASK（所有来源的 TASK 都衰减）
+            LocalDateTime fourWeeksAgo = LocalDateTime.now().minusWeeks(TASK_STALE_WEEKS);
+            List<UserMemory> taskMemories = userMemoryMapper.selectList(
+                    new LambdaQueryWrapper<UserMemory>()
+                            .eq(UserMemory::getMemoryType, "TASK")
+                            .gt(UserMemory::getConfidence, DECAY_DELETE_THRESHOLD)
+            );
+            for (UserMemory m : taskMemories) {
+                // 4 周未更新直接删除
+                if (m.getUpdatedAt() != null && m.getUpdatedAt().isBefore(fourWeeksAgo)) {
+                    softDeleteMemory(m, "Stale task (4 weeks no update)");
+                    deleted++;
+                    continue;
+                }
+                // 否则按 0.3/周衰减
+                BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ZERO;
+                BigDecimal newConf = oldConf.multiply(BigDecimal.ONE.subtract(TASK_DECAY_RATE));
+                if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
+                    softDeleteMemory(m, "Decay below threshold (TASK)");
+                    deleted++;
+                } else {
+                    m.setConfidence(newConf);
+                    userMemoryMapper.updateById(m);
+                    decayed++;
+                }
+            }
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            log.info("Weekly memory decay complete: decayed={}, deleted={}, elapsed={}ms",
+                    decayed, deleted, elapsed);
+        } catch (Exception e) {
+            log.error("Weekly memory decay task failed", e);
+        }
+    }
+
+    /**
+     * 软删除记忆（设置 deletedAt，不物理删除，30 天回收站）。
+     */
+    private void softDeleteMemory(UserMemory memory, String reason) {
+        try {
+            memory.setDeletedAt(LocalDateTime.now());
+            userMemoryMapper.updateById(memory);
+            log.debug("Soft deleted memory: id={}, userId={}, key={}, reason={}",
+                    memory.getId(), memory.getUserId(), memory.getMemoryKey(), reason);
+        } catch (Exception e) {
+            log.warn("Failed to soft delete memory: id={}, error={}", memory.getId(), e.getMessage());
+        }
     }
 }

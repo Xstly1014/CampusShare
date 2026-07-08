@@ -6,6 +6,7 @@ import com.campushare.agent.dto.SessionResponse;
 import com.campushare.agent.dto.TurnResponse;
 import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
+import com.campushare.agent.enums.SessionStatus;
 import com.campushare.agent.mapper.AgentSessionMapper;
 import com.campushare.agent.mapper.AgentTurnMapper;
 import com.campushare.common.exception.BusinessException;
@@ -26,19 +27,27 @@ public class AgentSessionServiceImpl implements AgentSessionService {
 
     private final AgentSessionMapper sessionMapper;
     private final AgentTurnMapper turnMapper;
+    private final SessionArchivalService sessionArchivalService;
+    private final ConversationMemoryService conversationMemoryService;
+    private final SessionStateMachine sessionStateMachine;
 
     @Override
     public SessionResponse createSession(String userId, SessionCreateRequest request) {
         AgentSession session = AgentSession.builder()
                 .userId(userId)
                 .title(request != null && request.getTitle() != null ? request.getTitle() : "新对话")
-                .status("ACTIVE")
+                .status(SessionStatus.INIT.name())
                 .messageCount(0)
                 .totalTokens(0)
                 .totalCost(BigDecimal.ZERO)
                 .lastMessageAt(LocalDateTime.now())
                 .build();
         sessionMapper.insert(session);
+
+        // 初始化 Redis 短期记忆 + 状态机 INIT
+        conversationMemoryService.initSession(session.getId(), userId, null, null);
+        sessionStateMachine.setStatus(session.getId(), SessionStatus.INIT, "Session created");
+
         return toResponse(session);
     }
 
@@ -61,13 +70,15 @@ public class AgentSessionServiceImpl implements AgentSessionService {
     @Override
     public void archiveSession(String userId, String sessionId) {
         AgentSession session = getSessionAndVerifyOwner(userId, sessionId);
-        session.setStatus("ARCHIVED");
-        sessionMapper.updateById(session);
+        // 调用归档服务完成完整归档流程（状态转移+记忆抽取+Redis清理）
+        sessionArchivalService.archiveSession(sessionId, "User initiated");
     }
 
     @Override
     public void deleteSession(String userId, String sessionId) {
         AgentSession session = getSessionAndVerifyOwner(userId, sessionId);
+        // 先归档（抽取记忆），再标记删除
+        sessionArchivalService.archiveSession(sessionId, "User deleted");
         session.setStatus("DELETED");
         sessionMapper.updateById(session);
     }
