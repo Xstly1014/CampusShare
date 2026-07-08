@@ -41,6 +41,27 @@ public class AgentSession implements Serializable {
     @TableField(updateStrategy = FieldStrategy.IGNORED)
     private String categoryId;
 
+    /** 使用的 System Prompt 版本（SemVer，如 v1.0.0） */
+    private String promptVersion;
+
+    /** 使用的 LLM 模型名（如 deepseek-chat） */
+    private String llmModel;
+
+    /** 会话意图汇总（JSON，如 {"HOW_TO":3,"SEARCH":2}） */
+    private String intentSummary;
+
+    /** 累计输入 token 数（上下文工程） */
+    private Integer totalInputTokens;
+
+    /** 累计输出 token 数 */
+    private Integer totalOutputTokens;
+
+    /** 会话质量评分（0-1，由反馈和长度加权） */
+    private BigDecimal qualityScore;
+
+    /** 会话失败原因（status=ERROR 时） */
+    private String errorReason;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

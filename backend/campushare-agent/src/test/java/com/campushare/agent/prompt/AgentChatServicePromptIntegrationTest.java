@@ -11,13 +11,21 @@ import com.campushare.agent.enums.Intent;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
+import com.campushare.agent.mapper.AgentContextSnapshotMapper;
 import com.campushare.agent.mapper.AgentSessionMapper;
 import com.campushare.agent.mapper.AgentTurnMapper;
 import com.campushare.agent.service.AgentChatService;
+import com.campushare.agent.service.ContextAssembler;
+import com.campushare.agent.service.ContextCompressionService;
+import com.campushare.agent.service.ContextSnapshotService;
+import com.campushare.agent.service.ConversationMemoryService;
 import com.campushare.agent.service.IntentClassifier;
 import com.campushare.agent.service.IntentRouter;
+import com.campushare.agent.service.LongTermMemoryService;
 import com.campushare.agent.service.RetrievalService;
 import com.campushare.agent.service.RuleShortCircuitFilter;
+import com.campushare.agent.service.SessionStateMachine;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.campushare.common.exception.BusinessException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -148,6 +156,12 @@ class AgentChatServicePromptIntegrationTest {
                 new IntentRouter(),
                 new IntentMetricsConfig(meterRegistry),
                 promptVersionManager,
+                new ContextAssembler(),
+                new ContextSnapshotService(mock(AgentContextSnapshotMapper.class), new ObjectMapper()),
+                mock(ConversationMemoryService.class),
+                mock(ContextCompressionService.class),
+                mock(LongTermMemoryService.class),
+                mock(SessionStateMachine.class),
                 meterRegistry
         );
         // 手动调用 @PostConstruct initCounters()（package-private，用反射跨包调用）

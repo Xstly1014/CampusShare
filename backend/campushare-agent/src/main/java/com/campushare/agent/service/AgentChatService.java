@@ -4,12 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.agent.config.IntentMetricsConfig;
 import com.campushare.agent.dto.ChatRequest;
 import com.campushare.agent.dto.IntentResult;
+import com.campushare.agent.dto.MemoryMessage;
 import com.campushare.agent.dto.RetrievalResult;
 import com.campushare.agent.dto.RouteDecision;
 import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
 import com.campushare.agent.entity.PromptVersion;
 import com.campushare.agent.enums.Intent;
+import com.campushare.agent.enums.SessionStatus;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
@@ -65,6 +67,12 @@ public class AgentChatService {
     private final IntentRouter intentRouter;
     private final IntentMetricsConfig intentMetrics;
     private final PromptVersionManager promptVersionManager;
+    private final ContextAssembler contextAssembler;
+    private final ContextSnapshotService contextSnapshotService;
+    private final ConversationMemoryService conversationMemoryService;
+    private final ContextCompressionService contextCompressionService;
+    private final LongTermMemoryService longTermMemoryService;
+    private final SessionStateMachine sessionStateMachine;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -131,8 +139,8 @@ public class AgentChatService {
                                 Mono.fromRunnable(() -> {
                                     if (signalType == SignalType.ON_COMPLETE) {
                                         completeTurn(ctx.turn(), ctx.session(), content, elapsed,
-                                                usageRef.get(), ctx.promptTokens(), ctx.retrievalContext(),
-                                                ctx.intentResult());
+                                                usageRef.get(), ctx.inputTokens(), ctx.retrievalContext(),
+                                                ctx.intentResult(), ctx.promptVersion());
                                     } else if (signalType == SignalType.ON_ERROR) {
                                         errorTurn(ctx.turn(), "Stream terminated with error");
                                     }
@@ -159,6 +167,12 @@ public class AgentChatService {
         try {
         AgentSession session = getOrCreateSession(userId, request);
 
+        // 状态转移：INIT → ACTIVE（首条消息时触发，ADR-064）
+        SessionStatus currentStatus = sessionStateMachine.getCurrentStatus(session.getId());
+        if (currentStatus == SessionStatus.INIT) {
+            sessionStateMachine.transition(session.getId(), SessionStatus.INIT, SessionStatus.ACTIVE, "First message");
+        }
+
         String userMessage = request.getMessage();
 
         // ① 意图识别（三层漏斗：规则 → LLM → Embedding → SEARCH 兜底）
@@ -176,9 +190,9 @@ public class AgentChatService {
         Optional<RouteDecision> shortCircuit = intentRouter.tryShortCircuit(intentResult);
         if (shortCircuit.isPresent()) {
             intentMetrics.recordRoute(true, intentResult.getIntent().name());
-            AgentTurn turn = createTurn(session, userMessage);
+            AgentTurn turn = createTurn(session, userMessage, intentResult);
             return new ChatContext(session, null, turn, System.currentTimeMillis(),
-                    0, null, intentResult, shortCircuit.get());
+                    0, null, intentResult, shortCircuit.get(), null);
         }
 
         // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索，意图驱动检索策略 ADR-024）
@@ -199,11 +213,27 @@ public class AgentChatService {
         PromptVersion promptVersion = promptVersionManager.getCurrentVersion(userId);
         String systemPrompt = promptAssembler.assemble(intentResult.getIntent(), retrievalResults, promptVersion);
 
-        List<DeepSeekRequest.Message> messages = buildMessages(session, userMessage, systemPrompt);
-        int promptTokens = countPromptTokens(messages);
-        AgentTurn turn = createTurn(session, userMessage);
-        return new ChatContext(session, messages, turn, System.currentTimeMillis(),
-                promptTokens, retrievalContextJson, intentResult, null);
+        // L4 对话历史（优先从 Redis 短期记忆加载，含滚动摘要/槽位/Pin 前缀；Redis 为空时降级到 DB）
+        List<AgentTurn> history = loadHistoryWithMemory(session);
+
+        // L1 用户画像（长期记忆，ADR-059，按意图/槽位匹配 Top-K 记忆）
+        Map<String, String> slots = conversationMemoryService.loadSlots(session.getId());
+        String userProfile = longTermMemoryService.loadUserProfile(userId, intentResult, slots);
+
+        // 创建当前 turn（先创建以获取 turnNumber，供快照使用）
+        AgentTurn turn = createTurn(session, userMessage, intentResult);
+
+        // 上下文工程：L0-L5 分层装载 + Token 预算 + 降级链（ADR-070~072）
+        ContextAssembler.AssembledContext assembled = contextAssembler.assemble(
+                session.getId(), turn.getTurnNumber(), userMessage,
+                intentResult, systemPrompt, history, userProfile);
+
+        // 异步写入上下文快照（ADR-076，fire-and-forget，失败不阻塞主流程）
+        contextSnapshotService.saveSnapshot(assembled.snapshot());
+
+        String promptVersionStr = promptVersion != null ? promptVersion.getVersion() : null;
+        return new ChatContext(session, assembled.messages(), turn, System.currentTimeMillis(),
+                assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr);
         } finally {
             MDC.remove("traceId");
         }
@@ -244,17 +274,6 @@ public class AgentChatService {
                 .build();
     }
 
-    private int countPromptTokens(List<DeepSeekRequest.Message> messages) {
-        int total = 0;
-        for (DeepSeekRequest.Message msg : messages) {
-            if (msg.getContent() != null) {
-                total += ENCODING.countTokens(msg.getContent());
-            }
-            total += 4;
-        }
-        return total;
-    }
-
     private AgentSession getOrCreateSession(String userId, ChatRequest request) {
         if (request.getSessionId() != null && !request.getSessionId().isEmpty()) {
             AgentSession session = sessionMapper.selectById(request.getSessionId());
@@ -276,25 +295,30 @@ public class AgentChatService {
         AgentSession session = AgentSession.builder()
                 .userId(userId)
                 .title(title)
-                .status("ACTIVE")
+                .status(SessionStatus.INIT.name())
                 .messageCount(0)
                 .totalTokens(0)
                 .totalCost(BigDecimal.ZERO)
                 .lastMessageAt(LocalDateTime.now())
                 .build();
         sessionMapper.insert(session);
+
+        // 初始化 Redis 短期记忆（ADR-054，promptVersion/llmModel 后续在 completeTurn 中更新）
+        conversationMemoryService.initSession(session.getId(), userId, null, null);
+
+        // 初始化会话状态机为 INIT（ADR-064）
+        sessionStateMachine.setStatus(session.getId(), SessionStatus.INIT, "Session created");
+
         return session;
     }
 
-    private List<DeepSeekRequest.Message> buildMessages(AgentSession session, String currentMessage,
-            String systemPrompt) {
-        List<DeepSeekRequest.Message> messages = new ArrayList<>();
-
-        messages.add(DeepSeekRequest.Message.builder()
-                .role("system")
-                .content(systemPrompt)
-                .build());
-
+    /**
+     * 加载对话历史（L4 层，按时间正序）。
+     *
+     * 只取 COMPLETED 状态的轮次，按 turnNumber 倒序取最近 N 条后反转为正序。
+     * 实际截断由 ContextAssembler 按 Token 预算执行。
+     */
+    private List<AgentTurn> loadHistory(AgentSession session) {
         LambdaQueryWrapper<AgentTurn> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AgentTurn::getSessionId, session.getId())
                 .eq(AgentTurn::getStatus, "COMPLETED")
@@ -302,27 +326,72 @@ public class AgentChatService {
                 .last("LIMIT " + historyLimit);
         List<AgentTurn> history = turnMapper.selectList(wrapper);
         Collections.reverse(history);
+        return history;
+    }
 
-        for (AgentTurn t : history) {
-            messages.add(DeepSeekRequest.Message.builder()
-                    .role("user")
-                    .content(t.getUserMessage())
-                    .build());
-            messages.add(DeepSeekRequest.Message.builder()
-                    .role("assistant")
-                    .content(t.getAssistantMessage())
+    /**
+     * 加载对话历史（Redis 短期记忆优先，DB 降级）。
+     *
+     * 装配顺序（ADR-054 读写时序）：
+     *   1. 滚动摘要 → 虚拟轮次（user="[历史对话摘要]", assistant=summary）
+     *   2. 槽位     → 虚拟轮次（user="[已确认约束]", assistant=slots JSON）
+     *   3. Pin 消息 → 虚拟轮次（user="[用户偏好]", assistant=pinned 内容）
+     *   4. 最近 N 轮原文消息（从 Redis 加载，Redis 为空时降级到 DB）
+     *
+     * 滚动摘要/槽位/Pin 作为虚拟 AgentTurn 注入 history 头部，
+     * 由 ContextAssembler 自然纳入 L4 token 预算管理。
+     */
+    private List<AgentTurn> loadHistoryWithMemory(AgentSession session) {
+        String sessionId = session.getId();
+        List<AgentTurn> history = new ArrayList<>();
+
+        // 1. 滚动摘要（L4 前缀）
+        String rollingSummary = conversationMemoryService.loadSummary(sessionId);
+        if (rollingSummary != null && !rollingSummary.isBlank()) {
+            history.add(AgentTurn.builder()
+                    .userMessage("[历史对话摘要]")
+                    .assistantMessage(rollingSummary)
                     .build());
         }
 
-        messages.add(DeepSeekRequest.Message.builder()
-                .role("user")
-                .content(currentMessage)
-                .build());
+        // 2. 槽位（L4 前缀）
+        Map<String, String> slots = conversationMemoryService.loadSlots(sessionId);
+        if (slots != null && !slots.isEmpty()) {
+            history.add(AgentTurn.builder()
+                    .userMessage("[已确认约束]")
+                    .assistantMessage(slots.toString())
+                    .build());
+        }
 
-        return messages;
+        // 3. Pin 消息（L4 前缀）
+        List<MemoryMessage> pinned = conversationMemoryService.loadPinned(sessionId);
+        if (pinned != null && !pinned.isEmpty()) {
+            StringBuilder pinContent = new StringBuilder();
+            for (MemoryMessage msg : pinned) {
+                if (msg.getContent() != null) {
+                    pinContent.append(msg.getContent()).append("\n");
+                }
+            }
+            if (pinContent.length() > 0) {
+                history.add(AgentTurn.builder()
+                        .userMessage("[用户偏好]")
+                        .assistantMessage(pinContent.toString().trim())
+                        .build());
+            }
+        }
+
+        // 4. 最近 N 轮原文消息（Redis 优先，DB 降级）
+        List<AgentTurn> recentTurns = conversationMemoryService.loadHistoryAsTurns(sessionId);
+        if (recentTurns.isEmpty()) {
+            // Redis 为空（新会话或 Redis 故障），降级到 DB
+            recentTurns = loadHistory(session);
+        }
+        history.addAll(recentTurns);
+
+        return history;
     }
 
-    private AgentTurn createTurn(AgentSession session, String userMessage) {
+    private AgentTurn createTurn(AgentSession session, String userMessage, IntentResult intentResult) {
         int turnNumber = (session.getMessageCount() != null ? session.getMessageCount() : 0) + 1;
         AgentTurn turn = AgentTurn.builder()
                 .sessionId(session.getId())
@@ -331,14 +400,18 @@ public class AgentChatService {
                 .messageRole("user")
                 .status("STREAMING")
                 .modelName(modelName)
+                .intent(intentResult != null ? intentResult.getIntent().name() : null)
+                .intentConfidence(intentResult != null ? BigDecimal.valueOf(intentResult.getConfidence()) : null)
+                .feedback("NONE")
+                .interrupted(0)
                 .build();
         turnMapper.insert(turn);
         return turn;
     }
 
     private void completeTurn(AgentTurn turn, AgentSession session, String content, long elapsedMs,
-            DeepSeekResponse.Usage usage, int promptTokens, String retrievalContextJson,
-            IntentResult intentResult) {
+            DeepSeekResponse.Usage usage, int inputTokens, String retrievalContextJson,
+            IntentResult intentResult, String promptVersion) {
         try {
             int completionTokens;
             int totalTokens;
@@ -350,7 +423,7 @@ public class AgentChatService {
                         : ENCODING.countTokens(content);
             } else {
                 completionTokens = ENCODING.countTokens(content);
-                totalTokens = promptTokens + completionTokens;
+                totalTokens = inputTokens + completionTokens;
             }
 
             // 输出后 Constitutional AI 验证（ADR-SP-03）
@@ -369,16 +442,36 @@ public class AgentChatService {
             turn.setResponseTimeMs((int) elapsedMs);
             turn.setTokensUsed(totalTokens);
             turn.setRetrievalContext(retrievalContextJson);
+            turn.setInputTokens(inputTokens);
+            turn.setOutputTokens(completionTokens);
             turnMapper.updateById(turn);
 
             session.setMessageCount(turn.getTurnNumber());
             session.setTotalTokens((session.getTotalTokens() != null ? session.getTotalTokens() : 0) + totalTokens);
+            session.setTotalInputTokens((session.getTotalInputTokens() != null ? session.getTotalInputTokens() : 0) + inputTokens);
+            session.setTotalOutputTokens((session.getTotalOutputTokens() != null ? session.getTotalOutputTokens() : 0) + completionTokens);
+            if (promptVersion != null && session.getPromptVersion() == null) {
+                session.setPromptVersion(promptVersion);
+            }
+            if (session.getLlmModel() == null) {
+                session.setLlmModel(modelName);
+            }
             session.setLastMessageAt(LocalDateTime.now());
             sessionMapper.updateById(session);
 
+            // 写入 Redis 短期记忆（ADR-054 读写时序：LLM 回答后写）
+            String userMessage = turn.getUserMessage();
+            writeToMemory(session.getId(), turn.getTurnNumber(), userMessage, content,
+                    intentResult, inputTokens, completionTokens);
+
+            // 检查是否需要压缩（messages 长度 > 10 时触发三级压缩 ADR-050）
+            if (conversationMemoryService.needsCompression(session.getId())) {
+                triggerCompression(session.getId());
+            }
+
             log.info(
-                    "Turn completed: sessionId={}, turn={}, promptTokens={}, completionTokens={}, totalTokens={}, elapsedMs={}, violation={}",
-                    session.getId(), turn.getTurnNumber(), promptTokens, completionTokens, totalTokens, elapsedMs,
+                    "Turn completed: sessionId={}, turn={}, inputTokens={}, outputTokens={}, totalTokens={}, elapsedMs={}, violation={}",
+                    session.getId(), turn.getTurnNumber(), inputTokens, completionTokens, totalTokens, elapsedMs,
                     violation);
         } catch (Exception e) {
             log.error("Failed to complete turn {}", turn.getId(), e);
@@ -399,17 +492,138 @@ public class AgentChatService {
             turn.setResponseTimeMs((int) elapsedMs);
             turn.setTokensUsed(0);
             turn.setToolsUsed(intentJson);
+            turn.setInputTokens(0);
+            turn.setOutputTokens(0);
             turnMapper.updateById(turn);
 
             session.setMessageCount(turn.getTurnNumber());
             session.setLastMessageAt(LocalDateTime.now());
+            if (session.getLlmModel() == null) {
+                session.setLlmModel(modelName);
+            }
             sessionMapper.updateById(session);
+
+            // 写入 Redis 短期记忆（模板回复也记录，保持上下文连贯；不触发压缩）
+            writeToMemory(session.getId(), turn.getTurnNumber(), turn.getUserMessage(), templateReply,
+                    ctx.intentResult(), 0, 0);
 
             log.info("Short-circuit turn completed: sessionId={}, turn={}, elapsedMs={}, intent={}",
                     session.getId(), turn.getTurnNumber(), elapsedMs,
                     ctx.intentResult() != null ? ctx.intentResult().getIntent() : "null");
         } catch (Exception e) {
             log.error("Failed to complete short-circuit turn {}", ctx.turn().getId(), e);
+        }
+    }
+
+    /**
+     * 写入 Redis 短期记忆（ADR-054 读写时序：LLM 回答后写）。
+     *
+     * 写入内容：
+     *   - user 消息 + assistant 消息 → messages List
+     *   - turn_count + 1, last_active_at 更新, current_intent 更新 → meta Hash
+     *   - 5 Key TTL 续期 2 小时
+     */
+    private void writeToMemory(String sessionId, int turnNumber, String userMessage, String assistantContent,
+            IntentResult intentResult, int inputTokens, int outputTokens) {
+        try {
+            long ts = System.currentTimeMillis() / 1000;
+
+            // 写入 user 消息
+            if (userMessage != null) {
+                conversationMemoryService.appendMessage(sessionId, MemoryMessage.builder()
+                        .turnId(turnNumber)
+                        .role("user")
+                        .content(userMessage)
+                        .tokens(ENCODING.countTokens(userMessage))
+                        .ts(ts)
+                        .build());
+            }
+
+            // 写入 assistant 消息
+            if (assistantContent != null) {
+                conversationMemoryService.appendMessage(sessionId, MemoryMessage.builder()
+                        .turnId(turnNumber)
+                        .role("assistant")
+                        .content(assistantContent)
+                        .tokens(ENCODING.countTokens(assistantContent))
+                        .ts(ts)
+                        .build());
+            }
+
+            // 更新 meta
+            conversationMemoryService.incrementTurnCount(sessionId);
+            conversationMemoryService.recordIntent(sessionId,
+                    intentResult != null ? intentResult.getIntent().name() : "UNKNOWN");
+            conversationMemoryService.updateMeta(sessionId, "last_active_at", String.valueOf(ts));
+
+            // TTL 续期
+            conversationMemoryService.renewTTL(sessionId);
+        } catch (Exception e) {
+            log.warn("Failed to write to memory: sessionId={}, error={}", sessionId, e.getMessage());
+        }
+    }
+
+    /**
+     * 触发三级压缩（ADR-050~053）。
+     *
+     * 流程：
+     *   1. 加载旧摘要 + 已有槽位
+     *   2. 获取需要压缩的旧消息（保留最近 5 条）
+     *   3. 调用 ContextCompressionService 三合一 LLM 压缩
+     *   4. 更新 Redis summary/slots/pinned
+     *   5. LTRIM messages 保留最近 5 条
+     *
+     * 降级（ADR-053）：LLM 失败时截断保留最近 4 条（2 轮），不生成摘要。
+     */
+    private void triggerCompression(String sessionId) {
+        try {
+            String oldSummary = conversationMemoryService.loadSummary(sessionId);
+            Map<String, String> existingSlots = conversationMemoryService.loadSlots(sessionId);
+
+            int keepCount = 5;
+            List<MemoryMessage> toCompress = conversationMemoryService.getMessagesToCompress(sessionId, keepCount);
+            if (toCompress.isEmpty()) {
+                log.debug("No messages to compress: sessionId={}", sessionId);
+                return;
+            }
+
+            ContextCompressionService.CompressionResult result = contextCompressionService.compress(
+                    oldSummary, toCompress, existingSlots);
+
+            // 更新滚动摘要
+            if (result.summary() != null) {
+                conversationMemoryService.updateSummary(sessionId, result.summary());
+            }
+
+            // 更新槽位
+            if (result.slots() != null && !result.slots().isEmpty()) {
+                conversationMemoryService.updateSlots(sessionId, result.slots());
+            }
+
+            // Pin 新消息
+            if (result.pins() != null && !result.pins().isEmpty()) {
+                for (ContextCompressionService.PinnedMessage pin : result.pins()) {
+                    conversationMemoryService.pinMessage(sessionId, MemoryMessage.builder()
+                            .role("user")
+                            .content(pin.content())
+                            .ts(System.currentTimeMillis() / 1000)
+                            .build());
+                }
+            }
+
+            // 截断 messages（降级模式保留更少）
+            if (result.fallback()) {
+                conversationMemoryService.trimMessages(sessionId, 4);
+            } else {
+                conversationMemoryService.trimMessages(sessionId, keepCount);
+            }
+
+            log.info("Compression completed: sessionId={}, fallback={}, messagesCompressed={}, summaryLen={}, pins={}",
+                    sessionId, result.fallback(), toCompress.size(),
+                    result.summary() != null ? result.summary().length() : 0,
+                    result.pins() != null ? result.pins().size() : 0);
+        } catch (Exception e) {
+            log.warn("Compression failed: sessionId={}, error={}", sessionId, e.getMessage());
         }
     }
 
@@ -448,12 +662,25 @@ public class AgentChatService {
         }
     }
 
+    /**
+     * 标记会话为 ERROR 状态（连续失败或致命错误时调用）。
+     */
+    private void markSessionError(AgentSession session, String reason) {
+        try {
+            session.setStatus("ERROR");
+            session.setErrorReason(reason);
+            sessionMapper.updateById(session);
+        } catch (Exception e) {
+            log.error("Failed to mark session error {}", session.getId(), e);
+        }
+    }
+
     public record ChatEvent(String type, String data) {
     }
 
     private record ChatContext(AgentSession session, List<DeepSeekRequest.Message> messages,
-            AgentTurn turn, long startTime, int promptTokens, String retrievalContext,
-            IntentResult intentResult, RouteDecision routeDecision) {
+            AgentTurn turn, long startTime, int inputTokens, String retrievalContext,
+            IntentResult intentResult, RouteDecision routeDecision, String promptVersion) {
     }
 
     /**

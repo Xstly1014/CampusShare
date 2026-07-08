@@ -397,3 +397,125 @@ END$$
 DELIMITER ;
 CALL migrate_knowledge_articles_v2();
 DROP PROCEDURE IF EXISTS migrate_knowledge_articles_v2;
+
+-- ========================================
+-- 17. agent_sessions 上下文工程字段迁移（ADR-070~076）
+--    新增：prompt_version / llm_model / intent_summary / total_input_tokens /
+--         total_output_tokens / quality_score / error_reason
+-- ========================================
+DROP PROCEDURE IF EXISTS migrate_agent_sessions_context_engineering;
+DELIMITER $$
+CREATE PROCEDURE migrate_agent_sessions_context_engineering()
+BEGIN
+    -- prompt_version VARCHAR(16)：本次会话使用的 System Prompt 版本（如 v1.0.0）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'prompt_version') THEN
+        ALTER TABLE agent_sessions ADD COLUMN prompt_version VARCHAR(16) DEFAULT NULL COMMENT '使用的 System Prompt 版本（SemVer）' AFTER category_id;
+    END IF;
+
+    -- llm_model VARCHAR(32)：使用的 LLM 模型名（如 deepseek-chat）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'llm_model') THEN
+        ALTER TABLE agent_sessions ADD COLUMN llm_model VARCHAR(32) DEFAULT NULL COMMENT '使用的 LLM 模型名' AFTER prompt_version;
+    END IF;
+
+    -- intent_summary VARCHAR(256)：会话内意图汇总（用于运营分析与冷启动排查）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'intent_summary') THEN
+        ALTER TABLE agent_sessions ADD COLUMN intent_summary VARCHAR(256) DEFAULT NULL COMMENT '会话意图汇总（JSON，如 {"HOW_TO":3,"SEARCH":2}）' AFTER llm_model;
+    END IF;
+
+    -- total_input_tokens INT DEFAULT 0：累计输入 token 数
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'total_input_tokens') THEN
+        ALTER TABLE agent_sessions ADD COLUMN total_input_tokens INT DEFAULT 0 COMMENT '累计输入 token 数（上下文工程）' AFTER intent_summary;
+    END IF;
+
+    -- total_output_tokens INT DEFAULT 0：累计输出 token 数
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'total_output_tokens') THEN
+        ALTER TABLE agent_sessions ADD COLUMN total_output_tokens INT DEFAULT 0 COMMENT '累计输出 token 数' AFTER total_input_tokens;
+    END IF;
+
+    -- quality_score DECIMAL(3,2)：会话整体质量评分（0-1）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'quality_score') THEN
+        ALTER TABLE agent_sessions ADD COLUMN quality_score DECIMAL(3,2) DEFAULT NULL COMMENT '会话质量评分（0-1，由反馈和长度加权）' AFTER total_output_tokens;
+    END IF;
+
+    -- error_reason VARCHAR(256)：会话失败原因（status=ERROR 时填写）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_sessions' AND COLUMN_NAME = 'error_reason') THEN
+        ALTER TABLE agent_sessions ADD COLUMN error_reason VARCHAR(256) DEFAULT NULL COMMENT '会话失败原因（status=ERROR 时）' AFTER quality_score;
+    END IF;
+END$$
+DELIMITER ;
+CALL migrate_agent_sessions_context_engineering();
+DROP PROCEDURE IF EXISTS migrate_agent_sessions_context_engineering;
+
+-- ========================================
+-- 18. agent_turns 上下文工程字段迁移（ADR-070~076）
+--    新增：intent / intent_confidence / input_tokens / output_tokens /
+--         feedback / context_snapshot_id / interrupted
+-- ========================================
+DROP PROCEDURE IF EXISTS migrate_agent_turns_context_engineering;
+DELIMITER $$
+CREATE PROCEDURE migrate_agent_turns_context_engineering()
+BEGIN
+    -- intent VARCHAR(32)：本轮识别到的 L1 意图（HOW_TO/SEARCH/NAVIGATE/CLARIFY/OUT_OF_SCOPE）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'intent') THEN
+        ALTER TABLE agent_turns ADD COLUMN intent VARCHAR(32) DEFAULT NULL COMMENT 'L1 意图（HOW_TO/SEARCH/NAVIGATE/CLARIFY/OUT_OF_SCOPE）' AFTER status;
+    END IF;
+
+    -- intent_confidence DECIMAL(3,2)：意图识别置信度（0-1，<0.6 触发 SEARCH 兜底）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'intent_confidence') THEN
+        ALTER TABLE agent_turns ADD COLUMN intent_confidence DECIMAL(3,2) DEFAULT NULL COMMENT '意图置信度（0-1）' AFTER intent;
+    END IF;
+
+    -- input_tokens INT：本轮发送给 LLM 的输入 token 数（含 system/history/retrieval/user）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'input_tokens') THEN
+        ALTER TABLE agent_turns ADD COLUMN input_tokens INT DEFAULT NULL COMMENT '本轮输入 token 数（上下文工程统计）' AFTER intent_confidence;
+    END IF;
+
+    -- output_tokens INT：本轮 LLM 输出 token 数
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'output_tokens') THEN
+        ALTER TABLE agent_turns ADD COLUMN output_tokens INT DEFAULT NULL COMMENT '本轮输出 token 数' AFTER input_tokens;
+    END IF;
+
+    -- feedback VARCHAR(8)：用户反馈（LIKE/DISLIKE/NONE）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'feedback') THEN
+        ALTER TABLE agent_turns ADD COLUMN feedback VARCHAR(8) DEFAULT 'NONE' COMMENT '用户反馈（LIKE/DISLIKE/NONE）' AFTER output_tokens;
+    END IF;
+
+    -- context_snapshot_id BIGINT：关联 agent_context_snapshots.id（上下文快照）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'context_snapshot_id') THEN
+        ALTER TABLE agent_turns ADD COLUMN context_snapshot_id BIGINT DEFAULT NULL COMMENT '关联上下文快照ID（agent_context_snapshots.id）' AFTER feedback;
+    END IF;
+
+    -- interrupted TINYINT DEFAULT 0：是否被用户中断（如刷新/切走）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'interrupted') THEN
+        ALTER TABLE agent_turns ADD COLUMN interrupted TINYINT DEFAULT 0 COMMENT '是否被中断（0-否，1-是）' AFTER context_snapshot_id;
+    END IF;
+
+    -- 新增 intent 索引（按意图统计聚合）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND INDEX_NAME = 'idx_intent') THEN
+        ALTER TABLE agent_turns ADD INDEX idx_intent (intent);
+    END IF;
+
+    -- 新增 context_snapshot_id 索引（按快照反查）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND INDEX_NAME = 'idx_context_snapshot') THEN
+        ALTER TABLE agent_turns ADD INDEX idx_context_snapshot (context_snapshot_id);
+    END IF;
+END$$
+DELIMITER ;
+CALL migrate_agent_turns_context_engineering();
+DROP PROCEDURE IF EXISTS migrate_agent_turns_context_engineering;
