@@ -108,7 +108,27 @@ public class AgentChatService {
                     // 快路径：模板回复（OUT_OF_SCOPE/NAVIGATE），不调 LLM
                     if (ctx.routeDecision() != null && ctx.routeDecision().isShortCircuit()) {
                         String templateReply = ctx.routeDecision().getTemplateReply();
-                        Flux<ChatEvent> deltaFlux = Flux.just(new ChatEvent("delta", templateReply))
+                        String navigateRoute = ctx.routeDecision().getNavigateRoute();
+                        Flux<ChatEvent> eventFlux = Flux.just(new ChatEvent("delta", templateReply));
+
+                        // NAVIGATE 意图：发送 navigate 事件（前端用于渲染跳转卡片 + SPA 导航）
+                        if (navigateRoute != null && !navigateRoute.isEmpty()) {
+                            String navJson;
+                            try {
+                                Map<String, String> navPayload = new HashMap<>();
+                                navPayload.put("route", navigateRoute);
+                                String navLabel = buildNavigateLabel(ctx.intentResult(), navigateRoute);
+                                navPayload.put("label", navLabel);
+                                navJson = objectMapper.writeValueAsString(navPayload);
+                            } catch (Exception e) {
+                                navJson = "{\"route\":\"" + navigateRoute + "\"}";
+                            }
+                            Flux<ChatEvent> navEvent = Flux.just(new ChatEvent("navigate", navJson));
+                            eventFlux = Flux.concat(eventFlux, navEvent);
+                        }
+
+                        Flux<ChatEvent> finalEventFlux = eventFlux;
+                        Flux<ChatEvent> deltaFlux = finalEventFlux
                                 .doFinally(signal -> {
                                     long elapsed = System.currentTimeMillis() - ctx.startTime();
                                     Mono.fromRunnable(() ->
@@ -121,6 +141,13 @@ public class AgentChatService {
                     // 慢路径：RAG + LLM 流式
                     StringBuilder assistantContent = new StringBuilder();
                     AtomicReference<DeepSeekResponse.Usage> usageRef = new AtomicReference<>();
+
+                    // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
+                    Flux<ChatEvent> refsEvent = Flux.empty();
+                    if (ctx.retrievalResults() != null && !ctx.retrievalResults().isEmpty()) {
+                        String refsJson = buildRefsJson(ctx.retrievalResults());
+                        refsEvent = Flux.just(new ChatEvent("refs", refsJson));
+                    }
 
                     Flux<ChatEvent> deltaStream = deepSeekClient.chatCompletionStream(ctx.messages())
                             .doOnNext(chunk -> {
@@ -147,7 +174,7 @@ public class AgentChatService {
                                 }).subscribeOn(Schedulers.boundedElastic()).subscribe();
                             });
 
-                    return Flux.concat(sessionEvent, deltaStream);
+                    return Flux.concat(sessionEvent, refsEvent, deltaStream);
                 });
     }
 
@@ -159,6 +186,73 @@ public class AgentChatService {
         } catch (JsonProcessingException e) {
             return "{\"sessionId\":\"" + ctx.session().getId() + "\"}";
         }
+    }
+
+    /**
+     * 构建引用源数据 JSON（前端用于渲染可点击引用卡片）。
+     *
+     * 输出格式：
+     * [
+     *   {
+     *     "index": 1,
+     *     "id": "post-uuid",
+     *     "type": "POST",
+     *     "title": "帖子标题",
+     *     "url": "/post/post-uuid"
+     *   },
+     *   ...
+     * ]
+     */
+    private String buildRefsJson(List<RetrievalResult> results) {
+        try {
+            List<Map<String, Object>> refs = new ArrayList<>();
+            int index = 1;
+            for (RetrievalResult r : results) {
+                Map<String, Object> ref = new HashMap<>();
+                ref.put("index", index);
+                ref.put("id", r.id());
+                ref.put("type", r.source().name());
+                ref.put("title", r.title());
+                // 构建前端跳转路径
+                if (r.source() == RetrievalResult.Source.POST) {
+                    ref.put("url", "/post/" + r.id());
+                } else {
+                    ref.put("url", null); // 知识库文章暂不支持跳转
+                }
+                refs.add(ref);
+                index++;
+                if (index > 10) break; // 最多 10 个引用
+            }
+            return objectMapper.writeValueAsString(refs);
+        } catch (Exception e) {
+            log.warn("Failed to build refs JSON: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
+    /**
+     * 根据 navigateRoute 生成人类可读的跳转标签（前端展示在跳转卡片上）。
+     */
+    private String buildNavigateLabel(IntentResult intentResult, String route) {
+        if (route == null) return "点击跳转";
+        return switch (route) {
+            case "/profile" -> "个人主页";
+            case "/profile/posts" -> "我的发布";
+            case "/profile/liked" -> "我的点赞";
+            case "/profile/starred" -> "我的收藏";
+            case "/profile/comments" -> "我的评论";
+            case "/profile/history" -> "浏览历史";
+            case "/profile/following" -> "我的关注";
+            case "/profile/followers" -> "我的粉丝";
+            case "/home" -> "首页";
+            case "/messages" -> "消息";
+            case "/notifications" -> "通知";
+            case "/warehouse" -> "收纳篮";
+            case "/agent" -> "AI 助手";
+            case "/settings/account" -> "账号设置";
+            case "/creator-verification" -> "创作者认证";
+            default -> "点击跳转";
+        };
     }
 
     private ChatContext prepareContext(String userId, ChatRequest request) {
@@ -192,7 +286,7 @@ public class AgentChatService {
             intentMetrics.recordRoute(true, intentResult.getIntent().name());
             AgentTurn turn = createTurn(session, userMessage, intentResult);
             return new ChatContext(session, null, turn, System.currentTimeMillis(),
-                    0, null, intentResult, shortCircuit.get(), null);
+                    0, null, intentResult, shortCircuit.get(), null, null);
         }
 
         // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索，意图驱动检索策略 ADR-024）
@@ -233,7 +327,8 @@ public class AgentChatService {
 
         String promptVersionStr = promptVersion != null ? promptVersion.getVersion() : null;
         return new ChatContext(session, assembled.messages(), turn, System.currentTimeMillis(),
-                assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr);
+                assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr,
+                retrievalResults);
         } finally {
             MDC.remove("traceId");
         }
@@ -680,7 +775,8 @@ public class AgentChatService {
 
     private record ChatContext(AgentSession session, List<DeepSeekRequest.Message> messages,
             AgentTurn turn, long startTime, int inputTokens, String retrievalContext,
-            IntentResult intentResult, RouteDecision routeDecision, String promptVersion) {
+            IntentResult intentResult, RouteDecision routeDecision, String promptVersion,
+            List<RetrievalResult> retrievalResults) {
     }
 
     /**

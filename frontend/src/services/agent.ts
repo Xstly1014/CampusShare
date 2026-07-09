@@ -36,8 +36,23 @@ export interface AgentTurn {
   createdAt: string
 }
 
+export interface ChatRef {
+  index: number
+  id: string
+  type: 'POST' | 'KNOWLEDGE'
+  title: string
+  url: string | null
+}
+
+export interface ChatNavigate {
+  route: string
+  label: string
+}
+
 export interface ChatStreamCallbacks {
   onDelta: (content: string) => void
+  onRefs: (refs: ChatRef[]) => void
+  onNavigate?: (navigate: ChatNavigate) => void
   onDone: () => void
   onError: (message: string) => void
 }
@@ -114,6 +129,24 @@ export async function chatStream(
               const parsed = JSON.parse(data)
               if (parsed.sessionId) {
                 extractedSessionId = parsed.sessionId
+              }
+            } catch {
+              /* ignore */
+            }
+          } else if (currentEvent === 'refs') {
+            try {
+              const parsed = JSON.parse(data)
+              if (Array.isArray(parsed)) {
+                callbacks.onRefs(parsed)
+              }
+            } catch {
+              /* ignore */
+            }
+          } else if (currentEvent === 'navigate') {
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.route) {
+                callbacks.onNavigate?.(parsed)
               }
             } catch {
               /* ignore */

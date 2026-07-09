@@ -58,6 +58,10 @@ export default function Router() {
           element={<PrivateRoute>{withPageBoundary(<PostDetailPage />)}</PrivateRoute>}
         />
         <Route
+          path="/post/:postId"
+          element={<PrivateRoute>{withPageBoundary(<PostDetailPage />)}</PrivateRoute>}
+        />
+        <Route
           path="/warehouse"
           element={<PrivateRoute>{withPageBoundary(<WarehousePage />)}</PrivateRoute>}
         />

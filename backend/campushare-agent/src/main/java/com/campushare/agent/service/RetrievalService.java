@@ -176,6 +176,13 @@ public class RetrievalService {
                     // ③ 帖子向量检索（带 slots 过滤，ADR-025）
                     try {
                         List<RetrievalResult> pv = postVectorStore.search(queryVec, config.postTopK(), config.slots());
+                        log.debug("Post vector search: returned {} results", pv.size());
+                        if (!pv.isEmpty()) {
+                            RetrievalResult first = pv.get(0);
+                            log.debug("Post vector first result: id={}, title={}, contentLen={}",
+                                    first.id(), first.title(),
+                                    first.content() != null ? first.content().length() : 0);
+                        }
                         if (!pv.isEmpty()) retrievalLists.add(pv);
                     } catch (Exception e) {
                         log.warn("Post vector search failed", e);

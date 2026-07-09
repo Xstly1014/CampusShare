@@ -16,12 +16,14 @@ import {
   FolderInput,
   MoreVertical,
   Pencil,
+  ArrowRight,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { agentApi, chatStream } from '../services/agent'
-import type { AgentSession, AgentCategory } from '../services/agent'
+import type { AgentSession, AgentCategory, ChatRef, ChatNavigate } from '../services/agent'
 import { toast } from '../stores/toastStore'
 import { useAuth } from '../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import NavBar from '../components/common/NavBar'
 import SwipeToDelete from '../components/common/SwipeToDelete'
 
@@ -30,6 +32,8 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp?: string
+  refs?: ChatRef[]
+  navigate?: ChatNavigate
 }
 
 const WELCOME_MESSAGE = `你好！我是 CampusShare 智能助手 👋
@@ -46,6 +50,7 @@ const SESSION_STORAGE_KEY = 'agent_current_session_id'
 
 export default function AgentPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE },
@@ -306,6 +311,14 @@ export default function AgentPage() {
             ),
           )
         },
+        onRefs: (refs: ChatRef[]) => {
+          setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, refs } : m)))
+        },
+        onNavigate: (nav: ChatNavigate) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMsgId ? { ...m, navigate: nav } : m)),
+          )
+        },
         onDone: () => {
           setStreaming(false)
           fetchSessions()
@@ -343,6 +356,113 @@ export default function AgentPage() {
       handleSend()
     }
   }
+
+  // ========== 引用渲染 ==========
+
+  const preprocessContentWithRefs = (content: string, refs?: ChatRef[]) => {
+    if (!refs || refs.length === 0) return content
+    return content.replace(/\[(\d+)\]/g, (match, numStr) => {
+      const num = parseInt(numStr, 10)
+      const ref = refs.find((r) => r.index === num)
+      if (ref) {
+        return `[\`${num}\`](#ref-${num})`
+      }
+      return match
+    })
+  }
+
+  const markdownComponents = (refs?: ChatRef[]) => ({
+    a: ({
+      href,
+      children,
+      ...props
+    }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => {
+      const refMatch = href?.match(/^#ref-(\d+)$/)
+      if (refMatch && refs) {
+        const refNum = parseInt(refMatch[1]!, 10)
+        const ref = refs.find((r) => r.index === refNum)
+        if (ref) {
+          return (
+            <span
+              className="inline-flex items-center justify-center min-w-[18px] min-h-[18px] px-1 mx-0.5 text-[10px] font-semibold text-white bg-blue-500 rounded-full cursor-pointer hover:bg-blue-600 transition-colors align-super"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                if (ref.url) navigate(ref.url)
+              }}
+              {...props}
+            >
+              {refNum}
+            </span>
+          )
+        }
+      }
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+          {children}
+        </a>
+      )
+    },
+  })
+
+  const RefCardList = ({ refs }: { refs: ChatRef[] }) => {
+    if (!refs || refs.length === 0) return null
+    return (
+      <div className="mt-2 space-y-1.5">
+        <div className="text-xs text-gray-400 font-medium">引用来源</div>
+        {refs.map((ref) => {
+          const clickable = !!ref.url
+          return (
+            <div
+              key={ref.id}
+              onClick={() => clickable && navigate(ref.url!)}
+              className={`flex items-start gap-2 p-2 rounded-lg border transition-colors ${
+                clickable
+                  ? 'bg-blue-50 border-blue-100 cursor-pointer hover:bg-blue-100'
+                  : 'bg-gray-50 border-gray-100 cursor-default'
+              }`}
+            >
+              <span
+                className={`flex-shrink-0 w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-semibold mt-0.5 ${
+                  clickable ? 'bg-blue-500' : 'bg-gray-400'
+                }`}
+              >
+                {ref.index}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div
+                  className={`text-sm font-medium truncate ${
+                    clickable ? 'text-blue-700' : 'text-gray-600'
+                  }`}
+                >
+                  {ref.title}
+                </div>
+                <div className={`text-xs ${clickable ? 'text-blue-400' : 'text-gray-400'}`}>
+                  {ref.type === 'POST' ? '帖子' : '知识库'}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const NavigateCard = ({ nav }: { nav: ChatNavigate }) => (
+    <div
+      onClick={() => navigate(nav.route)}
+      className="mt-2 flex items-center gap-3 p-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl cursor-pointer hover:from-blue-600 hover:to-blue-700 transition-all shadow-md active:scale-[0.98]"
+    >
+      <div className="flex-shrink-0 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+        <ArrowRight className="w-5 h-5 text-white" />
+      </div>
+      <div className="flex-1">
+        <div className="text-white font-medium text-sm">{nav.label}</div>
+        <div className="text-blue-100 text-xs">点击前往</div>
+      </div>
+      <ChevronRight className="w-5 h-5 text-white/70" />
+    </div>
+  )
 
   const renderSessionItem = (s: AgentSession) => (
     <SwipeToDelete
@@ -682,7 +802,13 @@ export default function AgentPage() {
                           : 'prose prose-sm max-w-none bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_strong]:text-gray-900 [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm'
                       }`}
                     >
-                      {isUser ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
+                      {isUser ? (
+                        msg.content
+                      ) : (
+                        <ReactMarkdown components={markdownComponents(msg.refs)}>
+                          {preprocessContentWithRefs(msg.content, msg.refs)}
+                        </ReactMarkdown>
+                      )}
                       {!isUser &&
                         msg.id === messages[messages.length - 1]?.id &&
                         streaming &&
@@ -709,6 +835,8 @@ export default function AgentPage() {
                           </span>
                         )}
                     </div>
+                    {!isUser && msg.refs && msg.refs.length > 0 && <RefCardList refs={msg.refs} />}
+                    {!isUser && msg.navigate && <NavigateCard nav={msg.navigate} />}
                   </div>
                 </div>
               )
