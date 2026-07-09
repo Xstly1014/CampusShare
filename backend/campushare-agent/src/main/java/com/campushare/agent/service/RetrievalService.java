@@ -158,6 +158,13 @@ public class RetrievalService {
 
                     if (!vectorAvailable) {
                         log.warn("Query embedding is empty, skipping vector searches, fallback to keyword only");
+                    } else if (log.isInfoEnabled()) {
+                        log.info("Query embedding: dim={}, first3=[{},{},{}], query='{}'",
+                                queryVec.length,
+                                String.format("%.4f", queryVec[0]),
+                                queryVec.length > 1 ? String.format("%.4f", queryVec[1]) : "N/A",
+                                queryVec.length > 2 ? String.format("%.4f", queryVec[2]) : "N/A",
+                                query.length() > 50 ? query.substring(0, 50) + "..." : query);
                     }
 
                     // ① 知识库向量检索
@@ -185,12 +192,12 @@ public class RetrievalService {
                         try {
                             List<RetrievalResult> pv = postVectorStore.search(queryVec, config.postTopK(), config.slots());
                             log.info("Post vector search: returned {} results for query='{}'", pv.size(), query);
-                            if (!pv.isEmpty()) {
-                                RetrievalResult first = pv.get(0);
-                                log.info("Post vector first result: id={}, title={}, score={}, contentLen={}",
-                                        first.id(), first.title(),
-                                        String.format("%.3f", first.score()),
-                                        first.content() != null ? first.content().length() : 0);
+                            for (int i = 0; i < Math.min(3, pv.size()); i++) {
+                                RetrievalResult r = pv.get(i);
+                                log.info("Post vector #{}: id={}, title='{}', score={}",
+                                        i + 1, r.id(),
+                                        r.title() != null && r.title().length() > 40 ? r.title().substring(0, 40) + "..." : r.title(),
+                                        String.format("%.4f", r.score()));
                             }
                             if (!pv.isEmpty()) retrievalLists.add(pv);
                         } catch (Exception e) {

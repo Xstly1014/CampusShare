@@ -15,8 +15,10 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 /**
  * 硅基流动 Embedding 客户端。
@@ -117,11 +119,10 @@ public class EmbeddingClient {
                         if (resp.getData() == null) {
                             return Collections.<float[]>emptyList();
                         }
-                        List<float[]> result = new ArrayList<>(resp.getData().size());
-                        for (EmbeddingResponse.EmbeddingItem item : resp.getData()) {
-                            result.add(item.getEmbedding());
-                        }
-                        return result;
+                        return resp.getData().stream()
+                                .sorted(Comparator.comparingInt(EmbeddingResponse.EmbeddingItem::getIndex))
+                                .map(EmbeddingResponse.EmbeddingItem::getEmbedding)
+                                .collect(Collectors.toList());
                     })
                     .transform(CircuitBreakerOperator.of(embeddingCircuitBreaker))
                     .retryWhen(Retry.backoff(maxRetryAttempts, Duration.ofMillis(retryBackoffMs))
