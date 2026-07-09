@@ -6,6 +6,7 @@ import com.campushare.agent.enums.Intent;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * System Prompt 装配器。
@@ -137,12 +138,23 @@ public class PromptAssembler {
                 sb.append(" | 命中分块数：").append(hits);
             }
 
-            // category/school：帖子来源信息
+            // category/school/postType：帖子来源信息（跳过 UUID 格式的 ID，避免误导 LLM）
             if (r.source() == RetrievalResult.Source.POST && r.metadata() != null) {
-                if (r.metadata().get("category") instanceof String cat && !cat.isEmpty()) {
+                String pt = getMetadataString(r.metadata(), "postType");
+                String cat = getMetadataString(r.metadata(), "category");
+                String sch = getMetadataString(r.metadata(), "school");
+                if (pt != null) {
+                    String typeLabel = switch (pt) {
+                        case "resource" -> "资源帖";
+                        case "discussion" -> "讨论帖";
+                        default -> pt;
+                    };
+                    sb.append(" | 类型：").append(typeLabel);
+                }
+                if (cat != null && !isUuid(cat)) {
                     sb.append(" | 分类：").append(cat);
                 }
-                if (r.metadata().get("school") instanceof String sch && !sch.isEmpty()) {
+                if (sch != null && !isUuid(sch)) {
                     sb.append(" | 学校：").append(sch);
                 }
             }
@@ -157,5 +169,15 @@ public class PromptAssembler {
         if (score >= 0.8) return "高";
         if (score >= 0.5) return "中";
         return "低";
+    }
+
+    private String getMetadataString(Map<String, Object> meta, String key) {
+        Object v = meta.get(key);
+        return v instanceof String s && !s.isEmpty() ? s : null;
+    }
+
+    private boolean isUuid(String s) {
+        return s != null && s.matches(
+                "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
     }
 }

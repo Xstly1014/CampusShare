@@ -64,7 +64,7 @@ public class PostVectorStore {
     public List<RetrievalResult> search(float[] queryVec, int topK) {
         String vectorStr = toVectorString(queryVec);
         String sql = """
-                SELECT post_id, post_title, post_content_excerpt, category, school,
+                SELECT post_id, post_title, post_content_excerpt, post_type, category, school,
                        1 - (embedding <=> ?::vector) AS similarity
                 FROM post_vectors
                 ORDER BY embedding <=> ?::vector
@@ -73,6 +73,7 @@ public class PostVectorStore {
         return jdbcTemplate.query(sql,
                 (rs, rowNum) -> {
                     Map<String, Object> meta = new HashMap<>();
+                    meta.put("postType", rs.getString("post_type"));
                     meta.put("category", rs.getString("category"));
                     meta.put("school", rs.getString("school"));
                     return RetrievalResult.post(
@@ -117,7 +118,7 @@ public class PostVectorStore {
      */
     public List<RetrievalResult> keywordSearch(String query, int topK) {
         String sql = """
-                SELECT post_id, post_title, post_content_excerpt, category, school,
+                SELECT post_id, post_title, post_content_excerpt, post_type, category, school,
                        GREATEST(similarity(post_title, ?), similarity(post_content_excerpt, ?)) AS sim
                 FROM post_vectors
                 WHERE post_title % ? OR post_content_excerpt % ?
@@ -127,6 +128,7 @@ public class PostVectorStore {
         return jdbcTemplate.query(sql,
                 (rs, rowNum) -> {
                     Map<String, Object> meta = new HashMap<>();
+                    meta.put("postType", rs.getString("post_type"));
                     meta.put("category", rs.getString("category"));
                     meta.put("school", rs.getString("school"));
                     return RetrievalResult.post(
