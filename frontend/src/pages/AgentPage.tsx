@@ -161,6 +161,7 @@ export default function AgentPage() {
             role: 'assistant',
             content: turn.assistantMessage,
             timestamp: turn.createdAt,
+            refs: turn.refs ?? undefined,
           })
         }
       }
@@ -365,7 +366,8 @@ export default function AgentPage() {
       const num = parseInt(numStr, 10)
       const ref = refs.find((r) => r.index === num)
       if (ref) {
-        return `[\`${num}\`](#ref-${num})`
+        const marker = ref.type === 'POST' ? 'ref-post' : 'ref-kb'
+        return `[\`${num}\`](#${marker}-${num})`
       }
       return match
     })
@@ -377,18 +379,19 @@ export default function AgentPage() {
       children,
       ...props
     }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => {
-      const refMatch = href?.match(/^#ref-(\d+)$/)
-      if (refMatch && refs) {
-        const refNum = parseInt(refMatch[1]!, 10)
-        const ref = refs.find((r) => r.index === refNum)
-        if (ref) {
+      const postMatch = href?.match(/^#ref-post-(\d+)$/)
+      const kbMatch = href?.match(/^#ref-kb-(\d+)$/)
+      if (postMatch && refs) {
+        const refNum = parseInt(postMatch[1]!, 10)
+        const ref = refs.find((r) => r.index === refNum && r.type === 'POST')
+        if (ref?.url) {
           return (
             <span
-              className="inline-flex items-center justify-center min-w-[18px] min-h-[18px] px-1 mx-0.5 text-[10px] font-semibold text-white bg-blue-500 rounded-full cursor-pointer hover:bg-blue-600 transition-colors align-super"
+              className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 mx-0.5 text-[10px] font-semibold text-white bg-blue-500 rounded-full cursor-pointer hover:bg-blue-600 transition-colors align-super"
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                if (ref.url) navigate(ref.url)
+                navigate(ref.url!)
               }}
               {...props}
             >
@@ -396,6 +399,14 @@ export default function AgentPage() {
             </span>
           )
         }
+      }
+      if (kbMatch && refs) {
+        const refNum = parseInt(kbMatch[1]!, 10)
+        return (
+          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 mx-0.5 text-[10px] font-medium text-gray-400 bg-gray-100 rounded-full align-super">
+            {refNum}
+          </span>
+        )
       }
       return (
         <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
@@ -407,43 +418,26 @@ export default function AgentPage() {
 
   const RefCardList = ({ refs }: { refs: ChatRef[] }) => {
     if (!refs || refs.length === 0) return null
+    const postRefs = refs.filter((r) => r.type === 'POST')
+    if (postRefs.length === 0) return null
     return (
       <div className="mt-2 space-y-1.5">
         <div className="text-xs text-gray-400 font-medium">引用来源</div>
-        {refs.map((ref) => {
-          const clickable = !!ref.url
-          return (
-            <div
-              key={ref.id}
-              onClick={() => clickable && navigate(ref.url!)}
-              className={`flex items-start gap-2 p-2 rounded-lg border transition-colors ${
-                clickable
-                  ? 'bg-blue-50 border-blue-100 cursor-pointer hover:bg-blue-100'
-                  : 'bg-gray-50 border-gray-100 cursor-default'
-              }`}
-            >
-              <span
-                className={`flex-shrink-0 w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-semibold mt-0.5 ${
-                  clickable ? 'bg-blue-500' : 'bg-gray-400'
-                }`}
-              >
-                {ref.index}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div
-                  className={`text-sm font-medium truncate ${
-                    clickable ? 'text-blue-700' : 'text-gray-600'
-                  }`}
-                >
-                  {ref.title}
-                </div>
-                <div className={`text-xs ${clickable ? 'text-blue-400' : 'text-gray-400'}`}>
-                  {ref.type === 'POST' ? '帖子' : '知识库'}
-                </div>
-              </div>
+        {postRefs.map((ref) => (
+          <div
+            key={ref.id}
+            onClick={() => ref.url && navigate(ref.url!)}
+            className="flex items-start gap-2 p-2 rounded-lg border transition-colors bg-blue-50 border-blue-100 cursor-pointer hover:bg-blue-100"
+          >
+            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-semibold mt-0.5">
+              {ref.index}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate text-blue-700">{ref.title}</div>
+              <div className="text-xs text-blue-400">帖子</div>
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     )
   }
@@ -491,9 +485,9 @@ export default function AgentPage() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-16">
+    <div className="h-[calc(100vh-64px)] bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
+      <div className="bg-white border-b border-gray-100 flex-shrink-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -756,98 +750,102 @@ export default function AgentPage() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 max-w-3xl mx-auto w-full px-4 py-4 overflow-y-auto">
-        {loadingHistory ? (
-          <div className="text-center py-16">
-            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          </div>
-        ) : (
-          <div key={chatKey} className="space-y-4 animate-chat-fade-in">
-            {messages.map((msg) => {
-              const isUser = msg.role === 'user'
-              return (
-                <div key={msg.id} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      isUser
-                        ? 'bg-gradient-to-br from-blue-500 to-blue-600'
-                        : 'bg-gradient-to-br from-purple-500 to-blue-600'
-                    }`}
-                  >
-                    {isUser ? (
-                      user?.avatarUrl ? (
-                        <img
-                          src={
-                            user.avatarUrl.startsWith('/files/')
-                              ? `/api${user.avatarUrl}`
-                              : user.avatarUrl
-                          }
-                          alt={user.username}
-                          className="w-full h-full object-cover rounded-full"
-                        />
-                      ) : (
-                        <User className="w-4 h-4 text-white" />
-                      )
-                    ) : (
-                      <Bot className="w-4 h-4 text-white" />
-                    )}
-                  </div>
-                  <div
-                    className={`max-w-[80%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}
-                  >
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div className="max-w-3xl mx-auto w-full px-4 py-4">
+          {loadingHistory ? (
+            <div className="text-center py-16">
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            </div>
+          ) : (
+            <div key={chatKey} className="space-y-4 animate-chat-fade-in">
+              {messages.map((msg) => {
+                const isUser = msg.role === 'user'
+                return (
+                  <div key={msg.id} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
                     <div
-                      className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed select-text ${
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                         isUser
-                          ? 'bg-blue-600 text-white rounded-tr-sm whitespace-pre-wrap'
-                          : 'prose prose-sm max-w-none bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_strong]:text-gray-900 [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm'
+                          ? 'bg-gradient-to-br from-blue-500 to-blue-600'
+                          : 'bg-gradient-to-br from-purple-500 to-blue-600'
                       }`}
                     >
                       {isUser ? (
-                        msg.content
+                        user?.avatarUrl ? (
+                          <img
+                            src={
+                              user.avatarUrl.startsWith('/files/')
+                                ? `/api${user.avatarUrl}`
+                                : user.avatarUrl
+                            }
+                            alt={user.username}
+                            className="w-full h-full object-cover rounded-full"
+                          />
+                        ) : (
+                          <User className="w-4 h-4 text-white" />
+                        )
                       ) : (
-                        <ReactMarkdown components={markdownComponents(msg.refs)}>
-                          {preprocessContentWithRefs(msg.content, msg.refs)}
-                        </ReactMarkdown>
+                        <Bot className="w-4 h-4 text-white" />
                       )}
-                      {!isUser &&
-                        msg.id === messages[messages.length - 1]?.id &&
-                        streaming &&
-                        msg.content && (
-                          <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse" />
-                        )}
-                      {!isUser &&
-                        msg.id === messages[messages.length - 1]?.id &&
-                        streaming &&
-                        !msg.content && (
-                          <span className="inline-flex gap-1">
-                            <span
-                              className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
-                              style={{ animationDelay: '0ms' }}
-                            />
-                            <span
-                              className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
-                              style={{ animationDelay: '150ms' }}
-                            />
-                            <span
-                              className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
-                              style={{ animationDelay: '300ms' }}
-                            />
-                          </span>
-                        )}
                     </div>
-                    {!isUser && msg.refs && msg.refs.length > 0 && <RefCardList refs={msg.refs} />}
-                    {!isUser && msg.navigate && <NavigateCard nav={msg.navigate} />}
+                    <div
+                      className={`max-w-[80%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}
+                    >
+                      <div
+                        className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed select-text ${
+                          isUser
+                            ? 'bg-blue-600 text-white rounded-tr-sm whitespace-pre-wrap'
+                            : 'prose prose-sm max-w-none bg-white border border-gray-100 text-gray-700 rounded-tl-sm shadow-sm [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_strong]:text-gray-900 [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-900 [&_pre]:text-gray-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_a]:text-blue-600 [&_a]:underline [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm'
+                        }`}
+                      >
+                        {isUser ? (
+                          msg.content
+                        ) : (
+                          <ReactMarkdown components={markdownComponents(msg.refs)}>
+                            {preprocessContentWithRefs(msg.content, msg.refs)}
+                          </ReactMarkdown>
+                        )}
+                        {!isUser &&
+                          msg.id === messages[messages.length - 1]?.id &&
+                          streaming &&
+                          msg.content && (
+                            <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 align-middle animate-pulse" />
+                          )}
+                        {!isUser &&
+                          msg.id === messages[messages.length - 1]?.id &&
+                          streaming &&
+                          !msg.content && (
+                            <span className="inline-flex gap-1">
+                              <span
+                                className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                                style={{ animationDelay: '0ms' }}
+                              />
+                              <span
+                                className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                                style={{ animationDelay: '150ms' }}
+                              />
+                              <span
+                                className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                                style={{ animationDelay: '300ms' }}
+                              />
+                            </span>
+                          )}
+                      </div>
+                      {!isUser && msg.refs && msg.refs.length > 0 && (
+                        <RefCardList refs={msg.refs} />
+                      )}
+                      {!isUser && msg.navigate && <NavigateCard nav={msg.navigate} />}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
+                )
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-gray-100">
+      <div className="bg-white border-t border-gray-100 flex-shrink-0">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-end gap-3">
           <div className="flex-1 relative">
             <textarea

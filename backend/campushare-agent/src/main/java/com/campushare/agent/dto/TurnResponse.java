@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -21,4 +23,5 @@ public class TurnResponse {
     private Integer tokensUsed;
     private String status;
     private LocalDateTime createdAt;
+    private List<Map<String, Object>> refs;
 }

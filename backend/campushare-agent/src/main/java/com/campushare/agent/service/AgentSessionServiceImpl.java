@@ -11,13 +11,18 @@ import com.campushare.agent.mapper.AgentSessionMapper;
 import com.campushare.agent.mapper.AgentTurnMapper;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.common.result.ResultCode;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -30,6 +35,7 @@ public class AgentSessionServiceImpl implements AgentSessionService {
     private final SessionArchivalService sessionArchivalService;
     private final ConversationMemoryService conversationMemoryService;
     private final SessionStateMachine sessionStateMachine;
+    private final ObjectMapper objectMapper;
 
     @Override
     public SessionResponse createSession(String userId, SessionCreateRequest request) {
@@ -138,6 +144,41 @@ public class AgentSessionServiceImpl implements AgentSessionService {
                 .tokensUsed(turn.getTokensUsed())
                 .status(turn.getStatus())
                 .createdAt(turn.getCreatedAt())
+                .refs(buildRefsFromContext(turn.getRetrievalContext()))
                 .build();
+    }
+
+    private List<Map<String, Object>> buildRefsFromContext(String retrievalContextJson) {
+        if (retrievalContextJson == null || retrievalContextJson.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode arr = objectMapper.readTree(retrievalContextJson);
+            if (!arr.isArray()) return null;
+            List<Map<String, Object>> refs = new ArrayList<>();
+            int index = 1;
+            for (JsonNode r : arr) {
+                Map<String, Object> ref = new HashMap<>();
+                String source = r.path("source").asText("");
+                String id = r.path("id").asText("");
+                String title = r.path("title").asText("");
+                ref.put("index", index);
+                ref.put("id", id);
+                ref.put("type", source);
+                ref.put("title", title);
+                if ("POST".equals(source)) {
+                    ref.put("url", "/post/" + id);
+                } else {
+                    ref.put("url", null);
+                }
+                refs.add(ref);
+                index++;
+                if (index > 10) break;
+            }
+            return refs.isEmpty() ? null : refs;
+        } catch (Exception e) {
+            log.warn("Failed to build refs from retrievalContext: {}", e.getMessage());
+            return null;
+        }
     }
 }

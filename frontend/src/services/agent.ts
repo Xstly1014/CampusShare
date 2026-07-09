@@ -34,6 +34,7 @@ export interface AgentTurn {
   status: string
   errorMessage?: string
   createdAt: string
+  refs?: ChatRef[]
 }
 
 export interface ChatRef {
@@ -94,7 +95,49 @@ export async function chatStream(
   const decoder = new TextDecoder()
   let buffer = ''
   let currentEvent = 'delta'
+  let dataBuffer = ''
   let extractedSessionId: string | null = sessionId
+
+  const dispatchEvent = () => {
+    const data = dataBuffer
+    dataBuffer = ''
+    if (!data && currentEvent !== 'done') return
+    switch (currentEvent) {
+      case 'delta':
+        callbacks.onDelta(data)
+        break
+      case 'done':
+        callbacks.onDone()
+        break
+      case 'error':
+        callbacks.onError(data)
+        break
+      case 'session':
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.sessionId) extractedSessionId = parsed.sessionId
+        } catch {
+          /* ignore */
+        }
+        break
+      case 'refs':
+        try {
+          const parsed = JSON.parse(data)
+          if (Array.isArray(parsed)) callbacks.onRefs(parsed)
+        } catch {
+          /* ignore */
+        }
+        break
+      case 'navigate':
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.route) callbacks.onNavigate?.(parsed)
+        } catch {
+          /* ignore */
+        }
+        break
+    }
+  }
 
   try {
     while (true) {
@@ -107,54 +150,25 @@ export async function chatStream(
       buffer = lines.pop() || ''
 
       for (const rawLine of lines) {
-        const line = rawLine.trimEnd()
-        if (line === '') continue
-
+        const line = rawLine.replace(/\r$/, '')
+        if (line === '') {
+          dispatchEvent()
+          continue
+        }
+        if (line.startsWith(':')) continue
         if (line.startsWith('event:')) {
+          if (dataBuffer) dispatchEvent()
           currentEvent = line.slice(6).trim()
           continue
         }
-
         if (line.startsWith('data:')) {
-          const data = line.slice(5).trim()
-
-          if (currentEvent === 'delta') {
-            callbacks.onDelta(data)
-          } else if (currentEvent === 'done') {
-            callbacks.onDone()
-          } else if (currentEvent === 'error') {
-            callbacks.onError(data)
-          } else if (currentEvent === 'session') {
-            try {
-              const parsed = JSON.parse(data)
-              if (parsed.sessionId) {
-                extractedSessionId = parsed.sessionId
-              }
-            } catch {
-              /* ignore */
-            }
-          } else if (currentEvent === 'refs') {
-            try {
-              const parsed = JSON.parse(data)
-              if (Array.isArray(parsed)) {
-                callbacks.onRefs(parsed)
-              }
-            } catch {
-              /* ignore */
-            }
-          } else if (currentEvent === 'navigate') {
-            try {
-              const parsed = JSON.parse(data)
-              if (parsed.route) {
-                callbacks.onNavigate?.(parsed)
-              }
-            } catch {
-              /* ignore */
-            }
-          }
+          if (dataBuffer) dataBuffer += '\n'
+          dataBuffer += line.slice(5).replace(/^ /, '')
+          continue
         }
       }
     }
+    if (dataBuffer) dispatchEvent()
   } catch (e) {
     callbacks.onError((e as Error).message || '流读取异常')
   } finally {
