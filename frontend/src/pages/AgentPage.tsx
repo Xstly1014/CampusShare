@@ -377,17 +377,26 @@ export default function AgentPage() {
 
   // ========== 引用渲染 ==========
 
+  const fixCjkMarkdown = (content: string): string => {
+    return content
+      .replace(/\*\*(?![\u200B])(?=\p{P})/gu, '**\u200B')
+      .replace(/\*(?![\u200B*])(?=\p{P})/gu, '*\u200B')
+  }
+
   const preprocessContentWithRefs = (content: string, refs?: ChatRef[]) => {
-    if (!refs || refs.length === 0) return content
-    return content.replace(/\[(\d+)\]/g, (match, numStr) => {
-      const num = parseInt(numStr, 10)
-      const ref = refs.find((r) => r.index === num)
-      if (ref) {
-        const marker = ref.type === 'POST' ? 'ref-post' : 'ref-kb'
-        return `[\`${num}\`](#${marker}-${num})`
-      }
-      return match
-    })
+    let processed = content
+    if (refs && refs.length > 0) {
+      processed = processed.replace(/\[(\d+)\]/g, (match, numStr) => {
+        const num = parseInt(numStr, 10)
+        const ref = refs.find((r) => r.index === num)
+        if (ref) {
+          const marker = ref.type === 'POST' ? 'ref-post' : 'ref-kb'
+          return `[\`${num}\`](#${marker}-${num})`
+        }
+        return match
+      })
+    }
+    return fixCjkMarkdown(processed)
   }
 
   const markdownComponents = (refs?: ChatRef[]) => ({
