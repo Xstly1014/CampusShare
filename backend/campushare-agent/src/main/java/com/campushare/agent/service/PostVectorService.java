@@ -68,9 +68,13 @@ public class PostVectorService {
                     String text = dto.getTitle() + "\n" +
                             (dto.getContentExcerpt() != null ? dto.getContentExcerpt() : "");
                     return embeddingClient.embed(text)
-                            .doOnNext(vec -> upsertPostVector(dto, vec))
-                            .switchIfEmpty(Mono.fromRunnable(() ->
-                                    log.warn("Embedding empty for post {}, skipping upsert", postId)))
+                            .flatMap(vec -> {
+                                if (vec == null || vec.length == 0) {
+                                    log.warn("Embedding empty for post {}, skipping upsert", postId);
+                                    return Mono.empty();
+                                }
+                                return Mono.fromRunnable(() -> upsertPostVector(dto, vec));
+                            })
                             .then();
                 })
                 .onErrorResume(e -> {

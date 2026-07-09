@@ -85,7 +85,7 @@ public class EmbeddingClient {
                 .doOnError(e -> log.error("Embedding API error after retries", e))
                 .onErrorResume(e -> {
                     log.warn("Embedding failed, degrading to empty vector", e);
-                    return Mono.empty();
+                    return Mono.just(new float[0]);
                 });
     }
 

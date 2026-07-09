@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,7 +89,12 @@ public class PostVectorStore {
 
     /**
      * 向量相似度检索（带 slots 过滤，ADR-025）。
-     * slots 中的 school/category/postType 作为 SQL WHERE 等值条件；为 null 或全空时走原方法。
+     *
+     * 注意：当前 post_vectors 表中 category/school 字段存储的是 UUID，
+     * 而 LLM 解析出的 slots 中 school/category 是中文名称字符串，
+     * SQL 等值过滤会导致查不到结果。暂时禁用 SQL 层面的等值过滤，
+     * 仅扩大 topK 取更多结果，由向量相似度+关键词排序保证相关性。
+     * TODO: 待 post-service 返回 schoolName/categoryName 后恢复过滤。
      *
      * @param queryVec 查询向量
      * @param topK 返回数量
@@ -102,48 +106,10 @@ public class PostVectorStore {
                 && isBlank(slots.getPostType()))) {
             return search(queryVec, topK);
         }
-
-        String vectorStr = toVectorString(queryVec);
-        StringBuilder sql = new StringBuilder("""
-                SELECT post_id, post_title, post_content_excerpt, category, school,
-                       1 - (embedding <=> ?::vector) AS similarity
-                FROM post_vectors
-                WHERE 1=1
-                """);
-        List<Object> params = new ArrayList<>();
-        params.add(vectorStr);
-
-        if (!isBlank(slots.getSchool())) {
-            sql.append(" AND school = ?");
-            params.add(slots.getSchool());
-        }
-        if (!isBlank(slots.getCategory())) {
-            sql.append(" AND category = ?");
-            params.add(slots.getCategory());
-        }
-        if (!isBlank(slots.getPostType())) {
-            sql.append(" AND post_type = ?");
-            params.add(slots.getPostType());
-        }
-        sql.append(" ORDER BY embedding <=> ?::vector LIMIT ?");
-        params.add(vectorStr);
-        params.add(topK);
-
-        return jdbcTemplate.query(sql.toString(),
-                (rs, rowNum) -> {
-                    Map<String, Object> meta = new HashMap<>();
-                    meta.put("category", rs.getString("category"));
-                    meta.put("school", rs.getString("school"));
-                    return RetrievalResult.post(
-                            rs.getString("post_id"),
-                            rs.getString("post_title"),
-                            rs.getString("post_content_excerpt"),
-                            rs.getDouble("similarity"),
-                            meta
-                    );
-                },
-                params.toArray()
-        );
+        int expandedTopK = Math.min(topK * 3, 50);
+        log.debug("Post vector search with slots: school={}, category={}, postType={}, expandedTopK={}",
+                slots.getSchool(), slots.getCategory(), slots.getPostType(), expandedTopK);
+        return search(queryVec, expandedTopK);
     }
 
     /**
@@ -177,7 +143,7 @@ public class PostVectorStore {
 
     /**
      * 关键词检索（带 slots 过滤，ADR-025）。
-     * slots 为 null 或全空时走原方法。
+     * 暂时禁用 SQL 等值过滤（原因同向量检索），仅扩大 topK。
      *
      * @param query 查询文本
      * @param topK 返回数量
@@ -189,49 +155,8 @@ public class PostVectorStore {
                 && isBlank(slots.getPostType()))) {
             return keywordSearch(query, topK);
         }
-
-        StringBuilder sql = new StringBuilder("""
-                SELECT post_id, post_title, post_content_excerpt, category, school,
-                       GREATEST(similarity(post_title, ?), similarity(post_content_excerpt, ?)) AS sim
-                FROM post_vectors
-                WHERE (post_title % ? OR post_content_excerpt % ?)
-                """);
-        List<Object> params = new ArrayList<>();
-        params.add(query);
-        params.add(query);
-        params.add(query);
-        params.add(query);
-
-        if (!isBlank(slots.getSchool())) {
-            sql.append(" AND school = ?");
-            params.add(slots.getSchool());
-        }
-        if (!isBlank(slots.getCategory())) {
-            sql.append(" AND category = ?");
-            params.add(slots.getCategory());
-        }
-        if (!isBlank(slots.getPostType())) {
-            sql.append(" AND post_type = ?");
-            params.add(slots.getPostType());
-        }
-        sql.append(" ORDER BY sim DESC LIMIT ?");
-        params.add(topK);
-
-        return jdbcTemplate.query(sql.toString(),
-                (rs, rowNum) -> {
-                    Map<String, Object> meta = new HashMap<>();
-                    meta.put("category", rs.getString("category"));
-                    meta.put("school", rs.getString("school"));
-                    return RetrievalResult.post(
-                            rs.getString("post_id"),
-                            rs.getString("post_title"),
-                            rs.getString("post_content_excerpt"),
-                            rs.getDouble("sim"),
-                            meta
-                    );
-                },
-                params.toArray()
-        );
+        int expandedTopK = Math.min(topK * 3, 50);
+        return keywordSearch(query, expandedTopK);
     }
 
     /**

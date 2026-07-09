@@ -154,14 +154,21 @@ public class RetrievalService {
         return embeddingClient.embed(query)
                 .map(queryVec -> {
                     List<List<RetrievalResult>> retrievalLists = new ArrayList<>();
+                    boolean vectorAvailable = queryVec != null && queryVec.length > 0;
+
+                    if (!vectorAvailable) {
+                        log.warn("Query embedding is empty, skipping vector searches, fallback to keyword only");
+                    }
 
                     // ① 知识库向量检索
-                    try {
-                        List<ChunkResult> kvChunks = knowledgeVectorStore.searchChunks(queryVec, config.knowledgeTopK());
-                        List<RetrievalResult> kv = aggregateByArticle(kvChunks);
-                        if (!kv.isEmpty()) retrievalLists.add(kv);
-                    } catch (Exception e) {
-                        log.warn("Knowledge vector search failed", e);
+                    if (vectorAvailable) {
+                        try {
+                            List<ChunkResult> kvChunks = knowledgeVectorStore.searchChunks(queryVec, config.knowledgeTopK());
+                            List<RetrievalResult> kv = aggregateByArticle(kvChunks);
+                            if (!kv.isEmpty()) retrievalLists.add(kv);
+                        } catch (Exception e) {
+                            log.warn("Knowledge vector search failed", e);
+                        }
                     }
 
                     // ② 知识库关键词检索
@@ -174,24 +181,28 @@ public class RetrievalService {
                     }
 
                     // ③ 帖子向量检索（带 slots 过滤，ADR-025）
-                    try {
-                        List<RetrievalResult> pv = postVectorStore.search(queryVec, config.postTopK(), config.slots());
-                        log.debug("Post vector search: returned {} results", pv.size());
-                        if (!pv.isEmpty()) {
-                            RetrievalResult first = pv.get(0);
-                            log.debug("Post vector first result: id={}, title={}, contentLen={}",
-                                    first.id(), first.title(),
-                                    first.content() != null ? first.content().length() : 0);
+                    if (vectorAvailable) {
+                        try {
+                            List<RetrievalResult> pv = postVectorStore.search(queryVec, config.postTopK(), config.slots());
+                            log.info("Post vector search: returned {} results for query='{}'", pv.size(), query);
+                            if (!pv.isEmpty()) {
+                                RetrievalResult first = pv.get(0);
+                                log.info("Post vector first result: id={}, title={}, score={}, contentLen={}",
+                                        first.id(), first.title(),
+                                        String.format("%.3f", first.score()),
+                                        first.content() != null ? first.content().length() : 0);
+                            }
+                            if (!pv.isEmpty()) retrievalLists.add(pv);
+                        } catch (Exception e) {
+                            log.warn("Post vector search failed", e);
                         }
-                        if (!pv.isEmpty()) retrievalLists.add(pv);
-                    } catch (Exception e) {
-                        log.warn("Post vector search failed", e);
                     }
 
                     // ④ 帖子关键词检索（按配置启用）
                     if (config.usePostKeyword() && config.postKeywordTopK() > 0) {
                         try {
                             List<RetrievalResult> pk = postVectorStore.keywordSearch(query, config.postKeywordTopK(), config.slots());
+                            log.info("Post keyword search: returned {} results for query='{}'", pk.size(), query);
                             if (!pk.isEmpty()) retrievalLists.add(pk);
                         } catch (Exception e) {
                             log.warn("Post keyword search failed", e);
@@ -205,6 +216,10 @@ public class RetrievalService {
                     }
 
                     List<RetrievalResult> fused = rrfFusion(retrievalLists, config.rerankTopK());
+                    long postCount = fused.stream().filter(r -> r.source() == RetrievalResult.Source.POST).count();
+                    long knowledgeCount = fused.stream().filter(r -> r.source() == RetrievalResult.Source.KNOWLEDGE).count();
+                    log.info("Retrieval fusion result: total={}, post={}, knowledge={} for query='{}'",
+                            fused.size(), postCount, knowledgeCount, query);
                     applyQualityWeight(fused);
                     crossSourceDedup(fused);
                     truncateByTokenBudget(fused, config.tokenBudget());
@@ -217,6 +232,7 @@ public class RetrievalService {
 
                     return fused;
                 })
+                .defaultIfEmpty(Collections.emptyList())
                 .onErrorResume(e -> {
                     log.warn("Retrieval failed, degrading to empty context", e);
                     return Mono.just(Collections.emptyList());

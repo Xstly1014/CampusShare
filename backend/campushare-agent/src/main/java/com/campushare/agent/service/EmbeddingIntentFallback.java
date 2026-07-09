@@ -51,7 +51,14 @@ public class EmbeddingIntentFallback {
         // 异步预计算，不阻塞 Spring 启动
         Flux.fromIterable(INTENT_DESCRIPTIONS.entrySet())
                 .flatMap(e -> embeddingClient.embed(e.getValue())
-                        .doOnNext(vec -> intentVectors.put(e.getKey(), vec))
+                        .flatMap(vec -> {
+                            if (vec == null || vec.length == 0) {
+                                log.warn("Failed to preload intent vector for {}: empty embedding", e.getKey());
+                                return Mono.empty();
+                            }
+                            intentVectors.put(e.getKey(), vec);
+                            return Mono.just(e.getKey());
+                        })
                         .onErrorResume(err -> {
                             log.warn("Failed to preload intent vector for {}: {}",
                                     e.getKey(), err.getMessage());
