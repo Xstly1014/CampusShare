@@ -42,6 +42,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -638,6 +639,24 @@ public class PostServiceImpl implements PostService {
         return toVectorDTO(post);
     }
 
+    private static final Map<String, String> SCHOOL_NAME_MAP;
+    static {
+        Map<String, String> m = new HashMap<>();
+        m.put("1", "北京大学");
+        m.put("2", "清华大学");
+        m.put("3", "复旦大学");
+        m.put("4", "浙江大学");
+        m.put("5", "上海交通大学");
+        m.put("6", "南京大学");
+        m.put("7", "武汉大学");
+        m.put("8", "中国人民大学");
+        m.put("9", "中山大学");
+        m.put("10", "厦门大学");
+        m.put("11", "哈尔滨工业大学");
+        m.put("12", "深圳大学");
+        SCHOOL_NAME_MAP = Collections.unmodifiableMap(m);
+    }
+
     private PostVectorDTO toVectorDTO(Post post) {
         PostVectorDTO dto = new PostVectorDTO();
         dto.setId(post.getId());
@@ -646,7 +665,12 @@ public class PostServiceImpl implements PostService {
         dto.setContentExcerpt(content != null && content.length() > 500 ? content.substring(0, 500) : content);
         dto.setPostType(post.getPostType());
         dto.setCategoryId(post.getCategoryId());
+        if (post.getCategoryId() != null) {
+            Category cat = categoryCache.getCategory(post.getCategoryId());
+            dto.setCategoryName(cat != null ? cat.getName() : null);
+        }
         dto.setSchoolId(post.getSchoolId());
+        dto.setSchoolName(post.getSchoolId() != null ? SCHOOL_NAME_MAP.get(post.getSchoolId()) : null);
         dto.setAuthorId(post.getAuthorId());
         dto.setLikeCount(post.getLikeCount());
         dto.setViewCount(post.getViewCount());

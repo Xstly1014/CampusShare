@@ -138,7 +138,7 @@ public class PromptAssembler {
                 sb.append(" | 命中分块数：").append(hits);
             }
 
-            // category/school/postType：帖子来源信息（跳过 UUID 格式的 ID，避免误导 LLM）
+            // category/school/postType：帖子来源信息
             if (r.source() == RetrievalResult.Source.POST && r.metadata() != null) {
                 String pt = getMetadataString(r.metadata(), "postType");
                 String cat = getMetadataString(r.metadata(), "category");
@@ -151,10 +151,10 @@ public class PromptAssembler {
                     };
                     sb.append(" | 类型：").append(typeLabel);
                 }
-                if (cat != null && !isUuid(cat)) {
+                if (cat != null) {
                     sb.append(" | 分类：").append(cat);
                 }
-                if (sch != null && !isUuid(sch)) {
+                if (sch != null) {
                     sb.append(" | 学校：").append(sch);
                 }
             }

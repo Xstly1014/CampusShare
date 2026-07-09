@@ -18,7 +18,9 @@ public class PostVectorDTO {
     private String contentExcerpt;
     private String postType;
     private String categoryId;
+    private String categoryName;
     private String schoolId;
+    private String schoolName;
     private String authorId;
     private Integer likeCount;
     private Integer viewCount;

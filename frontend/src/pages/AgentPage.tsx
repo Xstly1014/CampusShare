@@ -33,6 +33,7 @@ interface ChatMessage {
   content: string
   timestamp?: string
   refs?: ChatRef[]
+  pendingRefs?: ChatRef[]
   navigate?: ChatNavigate
 }
 
@@ -313,7 +314,9 @@ export default function AgentPage() {
           )
         },
         onRefs: (refs: ChatRef[]) => {
-          setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, refs } : m)))
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMsgId ? { ...m, pendingRefs: refs } : m)),
+          )
         },
         onNavigate: (nav: ChatNavigate) => {
           setMessages((prev) =>
@@ -321,20 +324,34 @@ export default function AgentPage() {
           )
         },
         onDone: () => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, refs: m.pendingRefs, pendingRefs: undefined } : m,
+            ),
+          )
           setStreaming(false)
           fetchSessions()
         },
         onError: (message: string) => {
-          setStreaming(false)
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id === assistantMsgId) {
+                return {
+                  ...m,
+                  refs: m.pendingRefs,
+                  pendingRefs: undefined,
+                  content: m.content || `抱歉，出错了：${message}`,
+                }
+              }
+              return m
+            }),
+          )
           if (!streamContentRef.current) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId ? { ...m, content: `抱歉，出错了：${message}` } : m,
-              ),
-            )
+            toast.error(message)
           } else {
             toast.error(message)
           }
+          setStreaming(false)
           fetchSessions()
         },
       }).then(({ sessionId: newSessionId }) => {

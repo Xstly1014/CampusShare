@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS post_vectors (
   post_content_excerpt TEXT,
   post_type VARCHAR(32),
   category VARCHAR(64),
+  category_name VARCHAR(64),
   school VARCHAR(64),
+  school_name VARCHAR(64),
   author_id VARCHAR(36),
   author_verified BOOLEAN,
   like_count INT DEFAULT 0,
@@ -48,7 +50,9 @@ CREATE INDEX IF NOT EXISTS idx_post_vectors_embedding ON post_vectors
 
 -- 结构化过滤索引（向量检索 + 条件过滤）
 CREATE INDEX IF NOT EXISTS idx_post_vectors_category ON post_vectors(category);
+CREATE INDEX IF NOT EXISTS idx_post_vectors_category_name ON post_vectors(category_name);
 CREATE INDEX IF NOT EXISTS idx_post_vectors_school ON post_vectors(school);
+CREATE INDEX IF NOT EXISTS idx_post_vectors_school_name ON post_vectors(school_name);
 CREATE INDEX IF NOT EXISTS idx_post_vectors_type ON post_vectors(post_type);
 CREATE INDEX IF NOT EXISTS idx_post_vectors_created ON post_vectors(created_at DESC);
 

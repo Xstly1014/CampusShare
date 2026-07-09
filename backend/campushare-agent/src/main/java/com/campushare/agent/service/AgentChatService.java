@@ -22,6 +22,7 @@ import com.campushare.agent.prompt.PromptAssembler;
 import com.campushare.agent.prompt.PromptVersionManager;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.common.result.ResultCode;
+import com.campushare.agent.util.SchoolNameUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.knuddels.jtokkit.Encodings;
@@ -174,7 +175,7 @@ public class AgentChatService {
                                 }).subscribeOn(Schedulers.boundedElastic()).subscribe();
                             });
 
-                    return Flux.concat(sessionEvent, refsEvent, deltaStream);
+                    return Flux.concat(sessionEvent, deltaStream, refsEvent);
                 });
     }
 
@@ -271,6 +272,29 @@ public class AgentChatService {
 
         // ① 意图识别（三层漏斗：规则 → LLM → Embedding → SEARCH 兜底）
         IntentResult intentResult = recognizeIntent(userMessage, session.getId());
+
+        // ①.5 学校名称规则预提取 + 别名规范化（不依赖 LLM，确保学校过滤一定生效）
+        // LLM 可能输出"北大"等简称导致 ILIKE 过滤失败，此处用正则从原始 query 中直接提取
+        String ruleExtractedSchool = SchoolNameUtils.extractFromQuery(userMessage);
+        if (ruleExtractedSchool != null) {
+            if (intentResult.getSlots() == null) {
+                intentResult.setSlots(IntentResult.SlotResult.builder()
+                        .school(ruleExtractedSchool)
+                        .build());
+            } else {
+                String normalizedLlmSchool = SchoolNameUtils.normalize(intentResult.getSlots().getSchool());
+                if (normalizedLlmSchool == null || !normalizedLlmSchool.equals(ruleExtractedSchool)) {
+                    intentResult.getSlots().setSchool(ruleExtractedSchool);
+                    log.debug("Rule-based school extraction overrides LLM: query='{}', llm='{}', rule='{}'",
+                            userMessage, intentResult.getSlots().getSchool(), ruleExtractedSchool);
+                }
+            }
+        } else if (intentResult.getSlots() != null && intentResult.getSlots().getSchool() != null) {
+            String normalized = SchoolNameUtils.normalize(intentResult.getSlots().getSchool());
+            if (normalized != null) {
+                intentResult.getSlots().setSchool(normalized);
+            }
+        }
 
         // ② 预生成注入检测（硬拦截 Prompt 泄露；软拦截其他注入仅 log + meter）
         if (constitutionalAIValidator.shouldHardBlock(userMessage)) {

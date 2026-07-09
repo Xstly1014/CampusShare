@@ -58,15 +58,16 @@ public final class PromptConstants {
     /** L2 任务级：内容检索（SEARCH）。 */
     public static final String SEARCH_PROMPT = """
             # 当前任务
-            用户在检索学习资源。请基于检索结果列出相关资源，每条标注引用编号。
+            用户在检索校园资源。请基于检索结果列出相关资源，每条标注引用编号。
 
             ## 参考资料使用指南
             - 检索结果是语义匹配的，即使标题不完全包含用户搜索词，也可能在语义上高度相关，请信任检索结果
-            - 帖子结果标注了「分类」「学校」（若有），帮助判断资源匹配度
+            - 帖子结果标注了「类型」「分类」「学校」，这些是帖子的真实来源信息，请据此判断匹配度
+            - **重要**：如果帖子标注的「学校」与用户查询中的学校一致，说明该帖子确实属于该学校，即使帖子内容看似无关也请列出（可能内容是相关的但摘要截断了）
             - 知识库结果标注了「可信度」，优先推荐高可信度资料
             - 多个结果时可分组列出（如：知识库资料 / 帖子资源）
             - 只要检索结果非空，就不要说"未找到相关资源"，而是列出找到的内容并说明匹配程度
-            - 若帖子标题未明确提及学校/科目，但内容涉及相关话题，仍然可以推荐并引用
+            - 如果帖子标题与用户搜索关键词相关（如"社团招新"），且学校匹配，则该帖子就是用户要找的结果，请推荐并引用
 
             只有当检索结果完全为空（<context> 中显示"无可用检索结果"）时，才回答"未找到相关资源，建议换个关键词试试"。
             """;
@@ -189,7 +190,7 @@ public final class PromptConstants {
               "confidence": 0.0-1.0,
               "rewritten_query": "改写后的查询（规范化+同义词扩展）",
               "slots": {
-                "school": "清华|北大|复旦|...|null",
+                "school": "北京大学|清华大学|复旦大学|浙江大学|上海交通大学|南京大学|武汉大学|中国人民大学|中山大学|厦门大学|哈尔滨工业大学|深圳大学|null",
                 "category": "音乐|游戏|面经|...|null",
                 "post_type": "resource|discussion|null",
                 "sort": "最新|最热|null"
@@ -202,14 +203,15 @@ public final class PromptConstants {
             2. 含指代词（那个/它/上面那个）时，强制 CLARIFY/coreference
             3. rewritten_query 需做：全角转半角、繁转简、同义词扩展
             4. hyde_doc 始终返回 null（MVP 阶段不启用 HyDE）
+            5. **school 字段必须输出完整学校名称（如"北京大学"而非"北大"，"清华大学"而非"清华"），否则 SQL 过滤会失败**
 
             ## Few-shot 示例
 
             用户：怎么发帖？
             输出：{"intent":"HOW_TO","sub_intent":"feature_help","confidence":0.95,"rewritten_query":"如何发布帖子","slots":null,"hyde_doc":null}
 
-            用户：求清华操作系统期末卷子
-            输出：{"intent":"SEARCH","sub_intent":"resource","confidence":0.92,"rewritten_query":"操作系统 期末 卷子","slots":{"school":"清华","category":null,"post_type":"resource","sort":null},"hyde_doc":null}
+            用户：求清华大学操作系统期末卷子
+            输出：{"intent":"SEARCH","sub_intent":"resource","confidence":0.92,"rewritten_query":"操作系统 期末 卷子","slots":{"school":"清华大学","category":null,"post_type":"resource","sort":null},"hyde_doc":null}
 
             用户：个人中心在哪
             输出：{"intent":"NAVIGATE","sub_intent":"feature_loc","confidence":0.94,"rewritten_query":"个人中心 入口","slots":null,"hyde_doc":null}
