@@ -3,6 +3,7 @@ package com.campushare.agent.util;
 import com.knuddels.jtokkit.Encodings;
 import com.knuddels.jtokkit.api.Encoding;
 import com.knuddels.jtokkit.api.EncodingRegistry;
+import com.knuddels.jtokkit.api.IntArrayList;
 import com.knuddels.jtokkit.api.ModelType;
 
 public final class TokenCounter {
@@ -39,7 +40,10 @@ public final class TokenCounter {
         if (tokens.size() <= maxTokens) {
             return text;
         }
-        var truncated = tokens.subList(0, maxTokens);
+        IntArrayList truncated = new IntArrayList(maxTokens);
+        for (int i = 0; i < maxTokens && i < tokens.size(); i++) {
+            truncated.add(tokens.get(i));
+        }
         return ENCODING.decode(truncated);
     }
 }

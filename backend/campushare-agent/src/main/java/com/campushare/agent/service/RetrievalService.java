@@ -166,6 +166,7 @@ public class RetrievalService {
                         try {
                             List<ChunkResult> kvChunks = knowledgeVectorStore.searchChunks(queryVec, config.knowledgeTopK());
                             List<RetrievalResult> kv = aggregateByArticle(kvChunks);
+                            kv = filterByThreshold(kv, config.similarityThreshold());
                             if (!kv.isEmpty()) retrievalLists.add(kv);
                         } catch (Exception e) {
                             log.warn("Knowledge vector search failed", e);
@@ -176,16 +177,18 @@ public class RetrievalService {
                     try {
                         List<ChunkResult> kkChunks = knowledgeVectorStore.keywordSearchChunks(query, config.knowledgeKeywordTopK());
                         List<RetrievalResult> kk = aggregateByArticle(kkChunks);
+                        kk = filterByThreshold(kk, config.similarityThreshold());
                         if (!kk.isEmpty()) retrievalLists.add(kk);
                     } catch (Exception e) {
                         log.warn("Knowledge keyword search failed", e);
                     }
 
                     // ③ 帖子向量检索（带 slots 过滤，ADR-025）
-                    if (vectorAvailable) {
+                    if (vectorAvailable && config.postTopK() > 0) {
                         try {
                             List<RetrievalResult> pv = postVectorStore.search(queryVec, config.postTopK(), config.slots());
                             log.info("Post vector search: returned {} results for query='{}'", pv.size(), query);
+                            pv = filterByThreshold(pv, config.similarityThreshold());
                             for (int i = 0; i < Math.min(3, pv.size()); i++) {
                                 RetrievalResult r = pv.get(i);
                                 log.info("Post vector #{}: id={}, title='{}', score={}",
@@ -204,6 +207,7 @@ public class RetrievalService {
                         try {
                             List<RetrievalResult> pk = postVectorStore.keywordSearch(query, config.postKeywordTopK(), config.slots());
                             log.info("Post keyword search: returned {} results for query='{}'", pk.size(), query);
+                            pk = filterByThreshold(pk, config.similarityThreshold());
                             if (!pk.isEmpty()) retrievalLists.add(pk);
                         } catch (Exception e) {
                             log.warn("Post keyword search failed", e);
@@ -266,7 +270,7 @@ public class RetrievalService {
             case HOW_TO -> RetrievalConfig.builder()
                     .knowledgeTopK(8 + confidenceBoost)
                     .knowledgeKeywordTopK(5 + confidenceBoost)
-                    .postTopK(2)
+                    .postTopK(0)
                     .postKeywordTopK(0)
                     .rerankTopK(rerankTopK)
                     .similarityThreshold(0.5)
@@ -551,6 +555,24 @@ public class RetrievalService {
         return Arrays.stream(text.split("[\\s,，。.!！？?、]+"))
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * 按相似度阈值过滤结果。
+     * 移除 score 低于 threshold 的结果，防止不相关内容进入 RRF 融合。
+     */
+    private List<RetrievalResult> filterByThreshold(List<RetrievalResult> results, double threshold) {
+        if (results == null || results.isEmpty() || threshold <= 0) {
+            return results;
+        }
+        List<RetrievalResult> filtered = results.stream()
+                .filter(r -> r.score() >= threshold)
+                .collect(Collectors.toList());
+        if (filtered.size() < results.size()) {
+            log.debug("Threshold filter: removed {}/{} results below threshold={}",
+                    results.size() - filtered.size(), results.size(), String.format("%.2f", threshold));
+        }
+        return filtered;
     }
 
     private double jaccardSimilarity(Set<String> a, Set<String> b) {

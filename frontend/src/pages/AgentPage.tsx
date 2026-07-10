@@ -78,6 +78,7 @@ export default function AgentPage() {
   const [moveTargetSessionId, setMoveTargetSessionId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<boolean>(false)
   const streamContentRef = useRef<string>('')
   // 初次进入页面或切换会话时使用瞬时滚动，避免"从顶部滑到底部"的动画；
@@ -299,6 +300,8 @@ export default function AgentPage() {
     setStreaming(true)
     abortRef.current = false
     streamContentRef.current = ''
+
+    setTimeout(() => inputRef.current?.focus(), 0)
 
     setMessages((prev) => [...prev, { id: assistantMsgId, role: 'assistant', content: '' }])
 
@@ -875,6 +878,7 @@ export default function AgentPage() {
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-end gap-3">
           <div className="flex-1 relative">
             <textarea
+              ref={inputRef}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
