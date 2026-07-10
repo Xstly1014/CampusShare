@@ -70,7 +70,7 @@ class ContextAssemblerTest {
             String userQuery = "How do I post?";
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 1, userQuery, ir, systemPrompt, null, null);
+                    "session-1", 1, userQuery, ir, systemPrompt, null, null, null, null);
 
             assertThat(result.messages()).hasSize(2);
             assertThat(result.messages().get(0).getRole()).isEqualTo("system");
@@ -89,7 +89,7 @@ class ContextAssemblerTest {
             );
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 3, "question 3", ir, "system prompt", history, null);
+                    "session-1", 3, "question 3", ir, "system prompt", history, null, null, null);
 
             // system(1) + 2*(user+assistant)(4) + current user(1) = 6
             assertThat(result.messages()).hasSize(6);
@@ -113,7 +113,7 @@ class ContextAssemblerTest {
             String profile = "用户偏好：中文回答，喜欢简洁";
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 1, "hello", ir, "base system", null, profile);
+                    "session-1", 1, "hello", ir, "base system", null, profile, null, null);
 
             assertThat(result.messages().get(0).getRole()).isEqualTo("system");
             assertThat(result.messages().get(0).getContent())
@@ -128,7 +128,7 @@ class ContextAssemblerTest {
             IntentResult ir = intent(Intent.SEARCH);
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 1, "search query", ir, "system", Collections.emptyList(), "");
+                    "session-1", 1, "search query", ir, "system", Collections.emptyList(), "", null, null);
 
             assertThat(result.messages()).hasSize(2);
             // 空字符串画像不追加到 system
@@ -146,10 +146,10 @@ class ContextAssemblerTest {
             IntentResult ir = intent(Intent.HOW_TO);
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 1, "query", ir, "system prompt", null, null);
+                    "session-1", 1, "query", ir, "system prompt", null, null, null, null);
 
             ContextSnapshot snapshot = result.snapshot();
-            assertThat(snapshot.layerTokens()).containsKeys("L0_SYSTEM", "L1_PROFILE", "L4_HISTORY", "L5_USER_INPUT", "TOTAL");
+            assertThat(snapshot.layerTokens()).containsKeys("L0_SYSTEM", "L1_PROFILE", "L2_TOOL_DEFS", "L4_HISTORY", "L5_USER_INPUT", "TOTAL");
             assertThat(snapshot.layerTokens().get("L0_SYSTEM")).isGreaterThan(0);
             assertThat(snapshot.layerTokens().get("L5_USER_INPUT")).isGreaterThan(0);
             assertThat(snapshot.layerTokens().get("L4_HISTORY")).isEqualTo(0);
@@ -163,21 +163,22 @@ class ContextAssemblerTest {
             List<AgentTurn> history = List.of(turn(1, "q1", "a1"));
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 2, "q2", ir, "system", history, "profile");
+                    "session-1", 2, "q2", ir, "system", history, "profile", null, null);
 
             int l0 = result.snapshot().layerTokens().get("L0_SYSTEM");
             int l1 = result.snapshot().layerTokens().get("L1_PROFILE");
+            int l2 = result.snapshot().layerTokens().get("L2_TOOL_DEFS");
             int l4 = result.snapshot().layerTokens().get("L4_HISTORY");
             int l5 = result.snapshot().layerTokens().get("L5_USER_INPUT");
 
-            assertThat(result.totalTokens()).isEqualTo(l0 + l1 + l4 + l5);
+            assertThat(result.totalTokens()).isEqualTo(l0 + l1 + l2 + l4 + l5);
         }
 
         @Test
         @DisplayName("null intent 时使用 DEFAULT 预算")
         void assemble_nullIntent_usesDefaultBudget() {
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 1, "query", null, "system", null, null);
+                    "session-1", 1, "query", null, "system", null, null, null, null);
 
             // 不抛异常，使用 DEFAULT 预算
             assertThat(result.messages()).hasSize(2);
@@ -193,7 +194,7 @@ class ContextAssemblerTest {
         @DisplayName("L4 超预算时截断到最近轮次，truncated=true")
         void assemble_historyExceedsBudget_truncated() {
             IntentResult ir = intent(Intent.HOW_TO);
-            // HOW_TO 的 L4 预算 = 1500 tokens
+            // HOW_TO 的 L4 预算 = 1000 tokens
             // 构造超长历史，每轮约 500 tokens
             String longMsg = "word ".repeat(200); // ~200 tokens per message
             List<AgentTurn> history = new ArrayList<>();
@@ -202,7 +203,7 @@ class ContextAssemblerTest {
             }
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 11, "query", ir, "system", history, null);
+                    "session-1", 11, "query", ir, "system", history, null, null, null);
 
             assertThat(result.snapshot().truncated()).isTrue();
             assertThat(result.snapshot().truncationReason()).isEqualTo("L4_HISTORY_TRUNCATED");
@@ -223,7 +224,7 @@ class ContextAssemblerTest {
             );
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 3, "query", ir, "system", history, null);
+                    "session-1", 3, "query", ir, "system", history, null, null, null);
 
             assertThat(result.snapshot().truncated()).isFalse();
             assertThat(result.snapshot().truncationReason()).isNull();
@@ -249,7 +250,7 @@ class ContextAssemblerTest {
             }
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 6, "query", ir, hugeSystem, history, null);
+                    "session-1", 6, "query", ir, hugeSystem, history, null, null, null);
 
             assertThat(result.snapshot().truncated()).isTrue();
             // 降级原因应该是 DEGRADE_L4_TO_2_ROUNDS 或更严重
@@ -276,7 +277,7 @@ class ContextAssemblerTest {
             }
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 6, "query", ir, hugeSystem, history, profile);
+                    "session-1", 6, "query", ir, hugeSystem, history, profile, null, null);
 
             assertThat(result.snapshot().truncated()).isTrue();
             // system prompt 过大时 L1 必然被丢弃（degrade 2）
@@ -297,7 +298,7 @@ class ContextAssemblerTest {
             }
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 11, "query", ir, hugeSystem, history, null);
+                    "session-1", 11, "query", ir, hugeSystem, history, null, null, null);
 
             assertThat(result.snapshot().truncated()).isTrue();
             // 硬上限后最多 1 轮历史
@@ -316,7 +317,7 @@ class ContextAssemblerTest {
             IntentResult ir = intent(Intent.SEARCH);
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-abc", 42, "query", ir, "system", null, null);
+                    "session-abc", 42, "query", ir, "system", null, null, null, null);
 
             ContextSnapshot snapshot = result.snapshot();
             assertThat(snapshot.sessionId()).isEqualTo("session-abc");
@@ -330,7 +331,7 @@ class ContextAssemblerTest {
             List<AgentTurn> history = List.of(turn(1, "q1", "a1"));
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 2, "q2", ir, "system", history, null);
+                    "session-1", 2, "q2", ir, "system", history, null, null, null);
 
             assertThat(result.snapshot().messages()).isEqualTo(result.messages());
             assertThat(result.snapshot().messages()).hasSameSizeAs(result.messages());
@@ -342,7 +343,7 @@ class ContextAssemblerTest {
             IntentResult ir = intent(Intent.SEARCH);
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 1, "query", ir, "system", null, null);
+                    "session-1", 1, "query", ir, "system", null, null, null, null);
 
             assertThat(result.snapshot().totalInputTokens()).isEqualTo(result.totalTokens());
         }
@@ -353,7 +354,7 @@ class ContextAssemblerTest {
             IntentResult ir = intent(Intent.SEARCH);
 
             ContextAssembler.AssembledContext result = assembler.assemble(
-                    "session-1", 1, "query", ir, "system", null, null);
+                    "session-1", 1, "query", ir, "system", null, null, null, null);
 
             assertThat(result.snapshot().usedMemoryIds()).isNull();
         }

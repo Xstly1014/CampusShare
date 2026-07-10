@@ -63,6 +63,12 @@ public class UserMemory implements Serializable {
     /** 最近一次被装载入上下文的时间 */
     private LocalDateTime lastUsedAt;
 
+    /** 被访问/使用次数 */
+    private Integer accessCount;
+
+    /** 最近一次被访问的时间 */
+    private LocalDateTime lastAccessedAt;
+
     /** 软删除时间（30 天回收站，TableLogic 自动过滤） */
     @TableLogic
     private LocalDateTime deletedAt;

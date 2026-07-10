@@ -23,12 +23,9 @@ import com.campushare.agent.prompt.PromptVersionManager;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.common.result.ResultCode;
 import com.campushare.agent.util.SchoolNameUtils;
+import com.campushare.agent.util.TokenCounter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.knuddels.jtokkit.Encodings;
-import com.knuddels.jtokkit.api.Encoding;
-import com.knuddels.jtokkit.api.EncodingRegistry;
-import com.knuddels.jtokkit.api.ModelType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -46,9 +43,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -73,12 +72,10 @@ public class AgentChatService {
     private final ConversationMemoryService conversationMemoryService;
     private final ContextCompressionService contextCompressionService;
     private final LongTermMemoryService longTermMemoryService;
+    private final MemoryRetrievalService memoryRetrievalService;
     private final SessionStateMachine sessionStateMachine;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private static final EncodingRegistry ENCODING_REGISTRY = Encodings.newDefaultEncodingRegistry();
-    private static final Encoding ENCODING = ENCODING_REGISTRY.getEncodingForModel(ModelType.GPT_3_5_TURBO);
 
     private volatile Counter violationCounter;
     private volatile Counter injectionDetectedCounter;
@@ -326,17 +323,35 @@ public class AgentChatService {
 
         List<RetrievalResult> retrievalResults = retrievalService.retrieve(
                 retrieveQuery, intentResult, previousResults).block();
-        String retrievalContextJson = formatRetrievalContextJson(retrievalResults);
+
+        Set<Long> usedMemoryIds = new HashSet<>();
+
+        List<RetrievalResult> profileMemories = memoryRetrievalService.loadProfileMemories(userId);
+        for (RetrievalResult m : profileMemories) {
+            try { usedMemoryIds.add(Long.parseLong(m.id())); } catch (NumberFormatException ignored) {}
+        }
+        String userProfile = memoryRetrievalService.formatProfileText(profileMemories);
+
+        List<RetrievalResult> relevantMemories = memoryRetrievalService.retrieveRelevantMemories(
+                userId, retrieveQuery, intentResult).block();
+        List<RetrievalResult> allResults = new ArrayList<>();
+        if (relevantMemories != null && !relevantMemories.isEmpty()) {
+            allResults.addAll(relevantMemories);
+            for (RetrievalResult m : relevantMemories) {
+                try { usedMemoryIds.add(Long.parseLong(m.id())); } catch (NumberFormatException ignored) {}
+            }
+        }
+        if (retrievalResults != null && !retrievalResults.isEmpty()) {
+            allResults.addAll(retrievalResults);
+        }
+
+        String retrievalContextJson = formatRetrievalContextJson(allResults);
 
         PromptVersion promptVersion = promptVersionManager.getCurrentVersion(userId);
-        String systemPrompt = promptAssembler.assemble(intentResult.getIntent(), retrievalResults, promptVersion);
+        String systemPrompt = promptAssembler.assemble(intentResult.getIntent(), allResults, promptVersion);
 
         // L4 对话历史（优先从 Redis 短期记忆加载，含滚动摘要/槽位/Pin 前缀；Redis 为空时降级到 DB）
         List<AgentTurn> history = loadHistoryWithMemory(session);
-
-        // L1 用户画像（长期记忆，ADR-059，按意图/槽位匹配 Top-K 记忆）
-        Map<String, String> slots = conversationMemoryService.loadSlots(session.getId());
-        String userProfile = longTermMemoryService.loadUserProfile(userId, intentResult, slots);
 
         // 创建当前 turn（先创建以获取 turnNumber，供快照使用）
         AgentTurn turn = createTurn(session, userMessage, intentResult);
@@ -344,7 +359,8 @@ public class AgentChatService {
         // 上下文工程：L0-L5 分层装载 + Token 预算 + 降级链（ADR-070~072）
         ContextAssembler.AssembledContext assembled = contextAssembler.assemble(
                 session.getId(), turn.getTurnNumber(), userMessage,
-                intentResult, systemPrompt, history, userProfile);
+                intentResult, systemPrompt, history, userProfile, null,
+                usedMemoryIds.isEmpty() ? null : new ArrayList<>(usedMemoryIds));
 
         // 异步写入上下文快照（ADR-076，fire-and-forget，失败不阻塞主流程）
         contextSnapshotService.saveSnapshot(assembled.snapshot());
@@ -352,7 +368,7 @@ public class AgentChatService {
         String promptVersionStr = promptVersion != null ? promptVersion.getVersion() : null;
         return new ChatContext(session, assembled.messages(), turn, System.currentTimeMillis(),
                 assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr,
-                retrievalResults);
+                allResults);
         } finally {
             MDC.remove("traceId");
         }
@@ -539,9 +555,9 @@ public class AgentChatService {
                 totalTokens = usage.getTotalTokens();
                 completionTokens = usage.getCompletionTokens() != null
                         ? usage.getCompletionTokens()
-                        : ENCODING.countTokens(content);
+                        : TokenCounter.countTokens(content);
             } else {
-                completionTokens = ENCODING.countTokens(content);
+                completionTokens = TokenCounter.countTokens(content);
                 totalTokens = inputTokens + completionTokens;
             }
 
@@ -653,7 +669,7 @@ public class AgentChatService {
                         .turnId(turnNumber)
                         .role("user")
                         .content(userMessage)
-                        .tokens(ENCODING.countTokens(userMessage))
+                        .tokens(TokenCounter.countTokens(userMessage))
                         .ts(ts)
                         .build());
             }
@@ -664,7 +680,7 @@ public class AgentChatService {
                         .turnId(turnNumber)
                         .role("assistant")
                         .content(assistantContent)
-                        .tokens(ENCODING.countTokens(assistantContent))
+                        .tokens(TokenCounter.countTokens(assistantContent))
                         .ts(ts)
                         .build());
             }
@@ -709,9 +725,13 @@ public class AgentChatService {
             ContextCompressionService.CompressionResult result = contextCompressionService.compress(
                     oldSummary, toCompress, existingSlots);
 
-            // 更新滚动摘要
+            // 更新滚动摘要（持久化到MySQL，记录覆盖的轮次ID）
             if (result.summary() != null) {
-                conversationMemoryService.updateSummary(sessionId, result.summary());
+                String coveredIds = toCompress.stream()
+                        .map(m -> String.valueOf(m.getTurnId()))
+                        .reduce((a, b) -> a + "," + b)
+                        .orElse("");
+                conversationMemoryService.updateSummary(sessionId, result.summary(), coveredIds, 0);
             }
 
             // 更新槽位

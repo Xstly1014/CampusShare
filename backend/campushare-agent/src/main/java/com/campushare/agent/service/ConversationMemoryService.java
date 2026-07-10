@@ -1,14 +1,24 @@
 package com.campushare.agent.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.agent.dto.MemoryMessage;
 import com.campushare.agent.entity.AgentTurn;
+import com.campushare.agent.entity.ContextSlot;
+import com.campushare.agent.entity.ContextSummary;
+import com.campushare.agent.entity.PinMessage;
+import com.campushare.agent.mapper.ContextSlotMapper;
+import com.campushare.agent.mapper.ContextSummaryMapper;
+import com.campushare.agent.mapper.PinMessageMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,6 +48,9 @@ public class ConversationMemoryService {
 
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
+    private final ContextSummaryMapper summaryMapper;
+    private final ContextSlotMapper slotMapper;
+    private final PinMessageMapper pinMapper;
 
     private static final String KEY_PREFIX = "agent:session:";
     private static final Duration TTL = Duration.ofHours(2);
@@ -141,10 +154,20 @@ public class ConversationMemoryService {
 
     /**
      * 加载滚动摘要。
+     * Redis 未命中时从 MySQL 加载（压缩结果持久化）。
      */
     public String loadSummary(String sessionId) {
         try {
-            return redis.opsForValue().get(summaryKey(sessionId));
+            String summary = redis.opsForValue().get(summaryKey(sessionId));
+            if (summary != null) return summary;
+            // Redis miss → 从 MySQL 加载最新摘要
+            ContextSummary latest = summaryMapper.findLatestBySessionId(sessionId);
+            if (latest != null) {
+                // 回写 Redis 作为热缓存
+                redis.opsForValue().set(summaryKey(sessionId), latest.getSummaryText(), TTL);
+                return latest.getSummaryText();
+            }
+            return null;
         } catch (Exception e) {
             log.warn("Failed to load summary: sessionId={}, error={}", sessionId, e.getMessage());
             return null;
@@ -153,13 +176,30 @@ public class ConversationMemoryService {
 
     /**
      * 加载槽位。
+     * Redis 未命中时从 MySQL 加载（槽位冻结持久化）。
      */
     public Map<String, String> loadSlots(String sessionId) {
         try {
             Map<Object, Object> raw = redis.opsForHash().entries(slotsKey(sessionId));
-            if (raw.isEmpty()) return Collections.emptyMap();
+            if (raw != null && !raw.isEmpty()) {
+                Map<String, String> slots = new HashMap<>();
+                raw.forEach((k, v) -> slots.put(k.toString(), v.toString()));
+                return slots;
+            }
+            // Redis miss → 从 MySQL 加载
+            List<ContextSlot> dbSlots = slotMapper.selectList(
+                    new LambdaQueryWrapper<ContextSlot>().eq(ContextSlot::getSessionId, sessionId));
             Map<String, String> slots = new HashMap<>();
-            raw.forEach((k, v) -> slots.put(k.toString(), v.toString()));
+            if (!dbSlots.isEmpty()) {
+                Map<String, String> redisMap = new HashMap<>();
+                for (ContextSlot s : dbSlots) {
+                    slots.put(s.getSlotKey(), s.getSlotValue());
+                    redisMap.put(s.getSlotKey(), s.getSlotValue());
+                }
+                // 回写 Redis
+                redis.opsForHash().putAll(slotsKey(sessionId), redisMap);
+                redis.expire(slotsKey(sessionId), TTL);
+            }
             return slots;
         } catch (Exception e) {
             log.warn("Failed to load slots: sessionId={}, error={}", sessionId, e.getMessage());
@@ -169,11 +209,32 @@ public class ConversationMemoryService {
 
     /**
      * 加载 Pin 消息。
+     * Redis 未命中时从 MySQL 加载（Pin消息持久化）。
      */
     public List<MemoryMessage> loadPinned(String sessionId) {
         try {
             List<String> jsonList = redis.opsForList().range(pinnedKey(sessionId), 0, -1);
-            if (jsonList == null || jsonList.isEmpty()) return Collections.emptyList();
+            if (jsonList == null || jsonList.isEmpty()) {
+                // Redis miss → 从 MySQL 加载
+                List<PinMessage> dbPins = pinMapper.selectList(
+                        new LambdaQueryWrapper<PinMessage>().eq(PinMessage::getSessionId, sessionId)
+                                .orderByAsc(PinMessage::getCreatedAt));
+                if (dbPins.isEmpty()) return Collections.emptyList();
+                List<MemoryMessage> messages = new ArrayList<>(dbPins.size());
+                for (PinMessage p : dbPins) {
+                    MemoryMessage msg = new MemoryMessage();
+                    msg.setRole("assistant");
+                    msg.setContent(p.getContent());
+                    msg.setPinned(true);
+                    messages.add(msg);
+                    // 回写 Redis
+                    try {
+                        redis.opsForList().rightPush(pinnedKey(sessionId), objectMapper.writeValueAsString(msg));
+                    } catch (Exception ignored) {}
+                }
+                redis.expire(pinnedKey(sessionId), TTL);
+                return messages;
+            }
             List<MemoryMessage> messages = new ArrayList<>(jsonList.size());
             for (String json : jsonList) {
                 messages.add(objectMapper.readValue(json, MemoryMessage.class));
@@ -265,18 +326,44 @@ public class ConversationMemoryService {
     }
 
     /**
-     * 更新滚动摘要。
+     * 更新滚动摘要（Redis + MySQL异步持久化）。
      */
     public void updateSummary(String sessionId, String summary) {
-        try {
-            redis.opsForValue().set(summaryKey(sessionId), summary, TTL);
-        } catch (Exception e) {
-            log.warn("Failed to update summary: sessionId={}, error={}", sessionId, e.getMessage());
-        }
+        updateSummary(sessionId, summary, null, 0);
     }
 
     /**
-     * 更新槽位（合并写入，不覆盖已有字段）。
+     * 更新滚动摘要（Redis + MySQL异步持久化），包含覆盖轮次信息。
+     */
+    public void updateSummary(String sessionId, String summary, String coveredTurnIds, int tokenCount) {
+        try {
+            redis.opsForValue().set(summaryKey(sessionId), summary, TTL);
+        } catch (Exception e) {
+            log.warn("Failed to update summary in Redis: sessionId={}, error={}", sessionId, e.getMessage());
+        }
+        // 异步写入 MySQL 持久化
+        persistSummaryAsync(sessionId, summary, coveredTurnIds, tokenCount);
+    }
+
+    private void persistSummaryAsync(String sessionId, String summary, String coveredTurnIds, int tokenCount) {
+        Mono.fromRunnable(() -> {
+            try {
+                ContextSummary entity = ContextSummary.builder()
+                        .sessionId(sessionId)
+                        .summaryText(summary)
+                        .coveredTurnIds(coveredTurnIds != null ? coveredTurnIds : "")
+                        .tokenCount(tokenCount)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                summaryMapper.insert(entity);
+            } catch (Exception e) {
+                log.warn("Failed to persist summary to MySQL: sessionId={}, error={}", sessionId, e.getMessage());
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
+    }
+
+    /**
+     * 更新槽位（合并写入 Redis + MySQL持久化）。
      */
     public void updateSlots(String sessionId, Map<String, String> slots) {
         if (slots == null || slots.isEmpty()) return;
@@ -284,12 +371,41 @@ public class ConversationMemoryService {
             redis.opsForHash().putAll(slotsKey(sessionId), slots);
             redis.expire(slotsKey(sessionId), TTL);
         } catch (Exception e) {
-            log.warn("Failed to update slots: sessionId={}, error={}", sessionId, e.getMessage());
+            log.warn("Failed to update slots in Redis: sessionId={}, error={}", sessionId, e.getMessage());
         }
+        // 异步写入 MySQL（upsert 语义：INSERT ... ON DUPLICATE KEY UPDATE）
+        persistSlotsAsync(sessionId, slots);
+    }
+
+    private void persistSlotsAsync(String sessionId, Map<String, String> slots) {
+        Mono.fromRunnable(() -> {
+            try {
+                for (Map.Entry<String, String> entry : slots.entrySet()) {
+                    ContextSlot existing = slotMapper.selectOne(
+                            new LambdaQueryWrapper<ContextSlot>()
+                                    .eq(ContextSlot::getSessionId, sessionId)
+                                    .eq(ContextSlot::getSlotKey, entry.getKey()));
+                    if (existing != null) {
+                        existing.setSlotValue(entry.getValue());
+                        slotMapper.updateById(existing);
+                    } else {
+                        ContextSlot entity = ContextSlot.builder()
+                                .sessionId(sessionId)
+                                .slotKey(entry.getKey())
+                                .slotValue(entry.getValue())
+                                .frozenAt(LocalDateTime.now())
+                                .build();
+                        slotMapper.insert(entity);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to persist slots to MySQL: sessionId={}, error={}", sessionId, e.getMessage());
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
 
     /**
-     * Pin 一条消息。
+     * Pin 一条消息（Redis + MySQL异步持久化）。
      */
     public void pinMessage(String sessionId, MemoryMessage message) {
         try {
@@ -300,8 +416,27 @@ public class ConversationMemoryService {
                 redis.opsForList().trim(pinnedKey(sessionId), -MAX_PINNED, -1);
             }
         } catch (Exception e) {
-            log.warn("Failed to pin message: sessionId={}, error={}", sessionId, e.getMessage());
+            log.warn("Failed to pin message in Redis: sessionId={}, error={}", sessionId, e.getMessage());
         }
+        // 异步写入 MySQL
+        persistPinAsync(sessionId, message);
+    }
+
+    private void persistPinAsync(String sessionId, MemoryMessage message) {
+        Mono.fromRunnable(() -> {
+            try {
+                PinMessage entity = PinMessage.builder()
+                        .sessionId(sessionId)
+                        .content(message.getContent())
+                        .pinnedBy("AGENT")
+                        .reason("compression")
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                pinMapper.insert(entity);
+            } catch (Exception e) {
+                log.warn("Failed to persist pin to MySQL: sessionId={}, error={}", sessionId, e.getMessage());
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
 
     /**

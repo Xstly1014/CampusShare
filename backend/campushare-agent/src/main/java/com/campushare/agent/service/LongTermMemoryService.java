@@ -2,25 +2,28 @@ package com.campushare.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.agent.dto.IntentResult;
+import com.campushare.agent.dto.RetrievalResult;
 import com.campushare.agent.entity.UserMemory;
+import com.campushare.agent.entity.UserMemoryHistory;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
+import com.campushare.agent.llm.EmbeddingClient;
+import com.campushare.agent.mapper.UserMemoryHistoryMapper;
 import com.campushare.agent.mapper.UserMemoryMapper;
+import com.campushare.agent.store.MemoryVectorStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -44,7 +47,11 @@ import java.util.stream.Collectors;
 public class LongTermMemoryService {
 
     private final UserMemoryMapper userMemoryMapper;
+    private final UserMemoryHistoryMapper historyMapper;
     private final DeepSeekClient deepSeekClient;
+    private final EmbeddingClient embeddingClient;
+    private final MemoryVectorStore memoryVectorStore;
+    private final ConflictResolver conflictResolver;
     private final ObjectMapper objectMapper;
 
     /** 装载 Top-K 条记忆 */
@@ -79,17 +86,27 @@ public class LongTermMemoryService {
     @Value("${app.long-term-memory.decay.enabled:true}")
     private boolean decayEnabled;
 
+    /** EXPLICIT 明确记忆周衰减率（很慢，用户明确说过的） */
+    private static final BigDecimal EXPLICIT_DECAY_RATE = BigDecimal.valueOf(0.02);
+
+    /** PREFERENCE/FACT 类型周衰减率（用户偏好/事实变化慢） */
+    private static final BigDecimal PREFERENCE_FACT_DECAY_RATE = BigDecimal.valueOf(0.03);
+
     /** INFERRED BEHAVIOR 类型周衰减率（0.1 = 每周乘以 0.9） */
     private static final BigDecimal BEHAVIOR_DECAY_RATE = BigDecimal.valueOf(0.1);
 
     /** TASK 类型周衰减率（0.3 = 每周乘以 0.7） */
     private static final BigDecimal TASK_DECAY_RATE = BigDecimal.valueOf(0.3);
 
-    /** 衰减后 confidence 低于此阈值则删除 */
-    private static final BigDecimal DECAY_DELETE_THRESHOLD = BigDecimal.valueOf(0.3);
+    /** 衰减后 confidence 低于此阈值则软删除 */
+    private static final BigDecimal DECAY_DELETE_THRESHOLD = BigDecimal.valueOf(0.2);
 
     /** TASK 类型多少周未更新则删除 */
     private static final int TASK_STALE_WEEKS = 4;
+
+    /** 高频访问增强阈值：近7天访问≥3次，衰减率减半 */
+    private static final int HIGH_ACCESS_THRESHOLD = 3;
+    private static final int RECENT_ACCESS_DAYS = 7;
 
     /**
      * 装载用户画像（L1 层，ADR-059 5.1 装载策略）。
@@ -259,11 +276,25 @@ public class LongTermMemoryService {
         for (UserMemory m : memories) {
             try {
                 m.setLastUsedAt(now);
+                m.setLastAccessedAt(now);
+                m.setAccessCount(m.getAccessCount() != null ? m.getAccessCount() + 1 : 1);
                 userMemoryMapper.updateById(m);
+                asyncRecordVectorAccess(m.getId());
             } catch (Exception e) {
                 log.debug("Failed to touch memory: id={}, error={}", m.getId(), e.getMessage());
             }
         }
+    }
+
+    private void asyncRecordVectorAccess(Long memoryId) {
+        if (memoryId == null) return;
+        Mono.fromRunnable(() -> {
+            try {
+                memoryVectorStore.recordAccess(memoryId);
+            } catch (Exception e) {
+                log.debug("Failed to record vector access: id={}", memoryId);
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
 
     /**
@@ -331,8 +362,9 @@ public class LongTermMemoryService {
                             .eq(UserMemory::getMemoryKey, key)
             );
 
+            UserMemory saved;
+            String action;
             if (existing != null) {
-                // 已存在：累加置信度
                 BigDecimal newConfidence = existing.getConfidence() != null
                         ? existing.getConfidence().add(BigDecimal.valueOf(0.1))
                         : confidence;
@@ -344,9 +376,10 @@ public class LongTermMemoryService {
                 existing.setEvidenceCount((existing.getEvidenceCount() != null
                         ? existing.getEvidenceCount() : 0) + 1);
                 userMemoryMapper.updateById(existing);
-                return existing;
+                saved = existing;
+                action = "UPDATE";
+                logHistory(existing, action, "confidence updated");
             } else {
-                // 新增
                 UserMemory memory = UserMemory.builder()
                         .userId(userId)
                         .memoryType(type)
@@ -359,8 +392,15 @@ public class LongTermMemoryService {
                         .volatileFlag(0)
                         .build();
                 userMemoryMapper.insert(memory);
-                return memory;
+                saved = memory;
+                action = "INSERT";
+                logHistory(memory, action, "new memory created");
             }
+
+            conflictResolver.resolveOnInsert(saved);
+            asyncUpsertVector(saved);
+
+            return saved;
         } catch (Exception e) {
             log.warn("Failed to upsert memory: userId={}, key={}, error={}", userId, key, e.getMessage());
             return null;
@@ -446,12 +486,17 @@ public class LongTermMemoryService {
     // ========== 记忆衰减（ADR-060） ==========
 
     /**
-     * 每周日 02:00 执行记忆衰减任务（ADR-060）。
+     * 每周日 02:00 执行记忆衰减任务（ADR-060/062）。
      *
-     * 衰减规则：
-     *   - EXPLICIT PREFERENCE/FACT：不衰减（用户明确声明不会过期）
-     *   - INFERRED BEHAVIOR：每周衰减 0.1（confidence *= 0.9），<0.3 软删除
+     * 衰减策略：
+     *   - EXPLICIT 明确记忆：周衰减 0.02（confidence *= 0.98），基本不遗忘
+     *   - PREFERENCE/FACT：周衰减 0.03（confidence *= 0.97），变化慢
+     *   - INFERRED BEHAVIOR：周衰减 0.1（confidence *= 0.9）
      *   - TASK：每周衰减 0.3（confidence *= 0.7），4 周未更新软删除
+     *
+     * 增强机制：
+     *   - 近7天访问次数 ≥3，衰减率减半（使用越多越不容易忘）
+     *   - confidence < 0.2 时软删除（不物理删除，30天回收站）
      */
     @Scheduled(cron = "0 0 2 ? * SUN")
     public void decayMemories() {
@@ -464,61 +509,82 @@ public class LongTermMemoryService {
 
         int decayed = 0;
         int deleted = 0;
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(RECENT_ACCESS_DAYS);
+        LocalDateTime fourWeeksAgo = LocalDateTime.now().minusWeeks(TASK_STALE_WEEKS);
 
         try {
-            // 1. 衰减 INFERRED BEHAVIOR
-            List<UserMemory> behaviorMemories = userMemoryMapper.selectList(
+            List<UserMemory> activeMemories = userMemoryMapper.selectList(
                     new LambdaQueryWrapper<UserMemory>()
-                            .eq(UserMemory::getSource, "INFERRED")
-                            .eq(UserMemory::getMemoryType, "BEHAVIOR")
+                            .isNull(UserMemory::getDeletedAt)
                             .gt(UserMemory::getConfidence, DECAY_DELETE_THRESHOLD)
             );
-            for (UserMemory m : behaviorMemories) {
-                BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ZERO;
-                BigDecimal newConf = oldConf.multiply(BigDecimal.ONE.subtract(BEHAVIOR_DECAY_RATE));
-                if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
-                    softDeleteMemory(m, "Decay below threshold (BEHAVIOR)");
-                    deleted++;
-                } else {
-                    m.setConfidence(newConf);
-                    userMemoryMapper.updateById(m);
-                    decayed++;
-                }
-            }
 
-            // 2. 衰减 + 清理 TASK（所有来源的 TASK 都衰减）
-            LocalDateTime fourWeeksAgo = LocalDateTime.now().minusWeeks(TASK_STALE_WEEKS);
-            List<UserMemory> taskMemories = userMemoryMapper.selectList(
-                    new LambdaQueryWrapper<UserMemory>()
-                            .eq(UserMemory::getMemoryType, "TASK")
-                            .gt(UserMemory::getConfidence, DECAY_DELETE_THRESHOLD)
-            );
-            for (UserMemory m : taskMemories) {
-                // 4 周未更新直接删除
-                if (m.getUpdatedAt() != null && m.getUpdatedAt().isBefore(fourWeeksAgo)) {
-                    softDeleteMemory(m, "Stale task (4 weeks no update)");
-                    deleted++;
-                    continue;
-                }
-                // 否则按 0.3/周衰减
-                BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ZERO;
-                BigDecimal newConf = oldConf.multiply(BigDecimal.ONE.subtract(TASK_DECAY_RATE));
-                if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
-                    softDeleteMemory(m, "Decay below threshold (TASK)");
-                    deleted++;
-                } else {
-                    m.setConfidence(newConf);
-                    userMemoryMapper.updateById(m);
-                    decayed++;
+            for (UserMemory m : activeMemories) {
+                try {
+                    if ("TASK".equals(m.getMemoryType()) && m.getUpdatedAt() != null
+                            && m.getUpdatedAt().isBefore(fourWeeksAgo)) {
+                        softDeleteMemory(m, "Stale task (4 weeks no update)");
+                        deleted++;
+                        continue;
+                    }
+
+                    BigDecimal baseDecayRate = getBaseDecayRate(m);
+                    BigDecimal actualDecayRate = baseDecayRate;
+                    if (m.getAccessCount() != null && m.getAccessCount() >= HIGH_ACCESS_THRESHOLD
+                            && m.getLastAccessedAt() != null && m.getLastAccessedAt().isAfter(sevenDaysAgo)) {
+                        actualDecayRate = baseDecayRate.divide(BigDecimal.valueOf(2), 4, java.math.RoundingMode.HALF_UP);
+                    }
+
+                    BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ONE;
+                    BigDecimal multiplier = BigDecimal.ONE.subtract(actualDecayRate);
+                    BigDecimal newConf = oldConf.multiply(multiplier).setScale(4, java.math.RoundingMode.HALF_UP);
+
+                    if (memoryVectorStore != null) {
+                        try {
+                            memoryVectorStore.updateDecayScore(m.getId(), newConf.doubleValue());
+                        } catch (Exception e) {
+                            log.warn("Failed to update vector decay score: memoryId={}", m.getId());
+                        }
+                    }
+
+                    if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
+                        softDeleteMemory(m, "Decay below threshold (type=" + m.getMemoryType() + ")");
+                        deleted++;
+                    } else {
+                        m.setConfidence(newConf);
+                        userMemoryMapper.updateById(m);
+                        logHistory(m, "DECAY",
+                                String.format("weekly decay: rate=%.3f, oldConf=%.3f, newConf=%.3f",
+                                        actualDecayRate, oldConf, newConf));
+                        decayed++;
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to decay memory: id={}, error={}", m.getId(), e.getMessage());
                 }
             }
 
             long elapsed = System.currentTimeMillis() - startTime;
-            log.info("Weekly memory decay complete: decayed={}, deleted={}, elapsed={}ms",
-                    decayed, deleted, elapsed);
+            log.info("Weekly memory decay complete: activeMemories={}, decayed={}, deleted={}, elapsed={}ms",
+                    activeMemories.size(), decayed, deleted, elapsed);
         } catch (Exception e) {
             log.error("Weekly memory decay task failed", e);
         }
+    }
+
+    private BigDecimal getBaseDecayRate(UserMemory m) {
+        String type = m.getMemoryType();
+        String source = m.getSource();
+
+        if ("EXPLICIT".equals(source)) {
+            return EXPLICIT_DECAY_RATE;
+        }
+        if ("PREFERENCE".equals(type) || "FACT".equals(type)) {
+            return PREFERENCE_FACT_DECAY_RATE;
+        }
+        if ("TASK".equals(type)) {
+            return TASK_DECAY_RATE;
+        }
+        return BEHAVIOR_DECAY_RATE;
     }
 
     /**
@@ -526,12 +592,97 @@ public class LongTermMemoryService {
      */
     private void softDeleteMemory(UserMemory memory, String reason) {
         try {
+            logHistory(memory, "DELETE", reason);
             memory.setDeletedAt(LocalDateTime.now());
             userMemoryMapper.updateById(memory);
+            asyncDeleteVector(memory.getId());
             log.debug("Soft deleted memory: id={}, userId={}, key={}, reason={}",
                     memory.getId(), memory.getUserId(), memory.getMemoryKey(), reason);
         } catch (Exception e) {
             log.warn("Failed to soft delete memory: id={}, error={}", memory.getId(), e.getMessage());
         }
+    }
+
+    private void asyncUpsertVector(UserMemory memory) {
+        if (memory == null || memory.getId() == null) return;
+        String content = buildMemoryContent(memory);
+        Mono.fromCallable(() -> embeddingClient.embed(content).block())
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        embedding -> {
+                            if (embedding != null && embedding.length > 0) {
+                                try {
+                                    memoryVectorStore.upsert(
+                                            memory.getId(),
+                                            memory.getUserId(),
+                                            memory.getMemoryType(),
+                                            memory.getMemoryKey(),
+                                            content,
+                                            memory.getConfidence() != null ? memory.getConfidence() : BigDecimal.ONE,
+                                            memory.getSource(),
+                                            embedding
+                                    );
+                                    log.debug("Upserted memory vector: id={}, key={}", memory.getId(), memory.getMemoryKey());
+                                } catch (Exception e) {
+                                    log.warn("Failed to upsert memory vector: id={}, error={}", memory.getId(), e.getMessage());
+                                }
+                            }
+                        },
+                        e -> log.warn("Failed to embed memory for vector upsert: id={}, error={}", memory.getId(), e.getMessage())
+                );
+    }
+
+    private void asyncDeleteVector(Long memoryId) {
+        if (memoryId == null) return;
+        Mono.fromRunnable(() -> {
+            try {
+                memoryVectorStore.delete(memoryId);
+            } catch (Exception e) {
+                log.warn("Failed to delete memory vector: id={}, error={}", memoryId, e.getMessage());
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
+    }
+
+    private String buildMemoryContent(UserMemory memory) {
+        String typeLabel = switch (memory.getMemoryType()) {
+            case "PREFERENCE" -> "用户偏好";
+            case "FACT" -> "用户事实";
+            case "BEHAVIOR" -> "行为模式";
+            case "TASK" -> "当前任务";
+            case "SKILL" -> "用户技能";
+            case "EVENT" -> "相关事件";
+            default -> memory.getMemoryType();
+        };
+        return typeLabel + ": " + memory.getMemoryKey() + " = " + memory.getMemoryValue();
+    }
+
+    /**
+     * 异步写入记忆变更审计历史（fire-and-forget，不阻塞主流程）。
+     *
+     * @param memory 变更后的记忆（写入的是变更前快照的value/confidence）
+     * @param action 操作类型：INSERT/UPDATE/DELETE/DECAY/CONFLICT_RESOLVED
+     * @param reason 操作原因
+     */
+    public void logHistory(UserMemory memory, String action, String reason) {
+        if (memory == null) return;
+        Mono.fromRunnable(() -> {
+            try {
+                UserMemoryHistory h = UserMemoryHistory.builder()
+                        .userId(memory.getUserId())
+                        .memoryType(memory.getMemoryType())
+                        .memoryKey(memory.getMemoryKey())
+                        .memoryValue(memory.getMemoryValue())
+                        .confidence(memory.getConfidence())
+                        .source(memory.getSource())
+                        .action(action)
+                        .reason(reason)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                historyMapper.insert(h);
+            } catch (Exception e) {
+                log.warn("Failed to write memory history: userId={}, key={}, action={}, error={}",
+                        memory.getUserId(), memory.getMemoryKey(), action, e.getMessage());
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
 }

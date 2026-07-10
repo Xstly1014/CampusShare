@@ -119,8 +119,13 @@ public class PromptAssembler {
         for (int i = 0; i < results.size(); i++) {
             RetrievalResult r = results.get(i);
             sb.append("---\n");
+            String sourceLabel = switch (r.source()) {
+                case KNOWLEDGE -> "知识库";
+                case POST -> "帖子";
+                case MEMORY -> "用户记忆";
+            };
             sb.append("[").append(i + 1).append("] 来源：")
-              .append(r.source() == RetrievalResult.Source.KNOWLEDGE ? "知识库" : "帖子")
+              .append(sourceLabel)
               .append(" | 标题：").append(r.title());
 
             // headingPath：知识库分块的章节位置（如 "使用指南 > 发帖 > 步骤"）
@@ -156,6 +161,20 @@ public class PromptAssembler {
                 }
                 if (sch != null) {
                     sb.append(" | 学校：").append(sch);
+                }
+            }
+
+            // 置信度/来源：用户记忆信息
+            if (r.source() == RetrievalResult.Source.MEMORY && r.metadata() != null) {
+                Object conf = r.metadata().get("confidence");
+                Object src = r.metadata().get("source");
+                if (conf instanceof Number c) {
+                    sb.append(" | 置信度：").append(String.format("%.0f%%", c.doubleValue() * 100));
+                }
+                if ("EXPLICIT".equals(src)) {
+                    sb.append(" | 用户明确说过");
+                } else {
+                    sb.append(" | 行为推断");
                 }
             }
 

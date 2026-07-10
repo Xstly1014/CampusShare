@@ -24,7 +24,8 @@ public record RetrievalResult(
 ) {
     public enum Source {
         KNOWLEDGE,
-        POST
+        POST,
+        MEMORY
     }
 
     public static RetrievalResult knowledge(String id, String title, String content, double score, Map<String, Object> metadata) {
@@ -33,5 +34,9 @@ public record RetrievalResult(
 
     public static RetrievalResult post(String id, String title, String content, double score, Map<String, Object> metadata) {
         return new RetrievalResult(id, title, content, score, Source.POST, metadata);
+    }
+
+    public static RetrievalResult memory(String id, String title, String content, double score, Map<String, Object> metadata) {
+        return new RetrievalResult(id, title, content, score, Source.MEMORY, metadata);
     }
 }

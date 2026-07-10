@@ -5,10 +5,7 @@ import com.campushare.agent.dto.IntentResult;
 import com.campushare.agent.dto.TokenBudget;
 import com.campushare.agent.entity.AgentTurn;
 import com.campushare.agent.llm.DeepSeekRequest;
-import com.knuddels.jtokkit.Encodings;
-import com.knuddels.jtokkit.api.Encoding;
-import com.knuddels.jtokkit.api.EncodingRegistry;
-import com.knuddels.jtokkit.api.ModelType;
+import com.campushare.agent.util.TokenCounter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -43,9 +40,6 @@ import java.util.Map;
 @Service
 public class ContextAssembler {
 
-    private static final EncodingRegistry ENCODING_REGISTRY = Encodings.newDefaultEncodingRegistry();
-    private static final Encoding ENCODING = ENCODING_REGISTRY.getEncodingForModel(ModelType.GPT_3_5_TURBO);
-
     /** 单条消息的 overhead token 数（role + formatting） */
     private static final int MESSAGE_OVERHEAD_TOKENS = 4;
 
@@ -62,11 +56,14 @@ public class ContextAssembler {
      * @param systemPrompt  L0 System Prompt（来自 PromptAssembler，已含检索结果）
      * @param history       L4 对话历史（按时间正序，最旧的在前）
      * @param userProfile   L1 用户画像（可为 null）
+     * @param toolSchemas   L2 工具定义 Schema（可为 null，Function Calling 启用时传入）
+     * @param usedMemoryIds 本轮使用的长期记忆 ID 列表（可为 null）
      * @return 组装结果（messages + token 计数 + 快照）
      */
     public AssembledContext assemble(String sessionId, int turnId, String userQuery,
             IntentResult intent, String systemPrompt,
-            List<AgentTurn> history, String userProfile) {
+            List<AgentTurn> history, String userProfile,
+            String toolSchemas, List<Long> usedMemoryIds) {
 
         TokenBudget budget = TokenBudget.forIntent(intent);
 
@@ -87,6 +84,12 @@ public class ContextAssembler {
             }
         }
 
+        // L2: 工具定义（永驻，当前为 null，Function Calling 启用时注入）
+        int l2Tokens = 0;
+        if (toolSchemas != null && !toolSchemas.isBlank()) {
+            l2Tokens = countTokens(toolSchemas) + MESSAGE_OVERHEAD_TOKENS;
+        }
+
         // L4: 对话历史（可压缩）
         List<AgentTurn> workingHistory = history != null ? new ArrayList<>(history) : Collections.emptyList();
         int l4Tokens = countHistoryTokens(workingHistory);
@@ -101,10 +104,11 @@ public class ContextAssembler {
             truncationReason = "L4_HISTORY_TRUNCATED";
         }
 
-        // 超预算降级链
-        int total = l0Tokens + l1Tokens + l4Tokens + l5Tokens;
+        // 超预算降级链（使用 maxInput 而非 total，预留输出空间）
+        int inputBudget = budget.maxInput();
+        int total = l0Tokens + l1Tokens + l2Tokens + l4Tokens + l5Tokens;
 
-        if (total > budget.total()) {
+        if (total > inputBudget) {
             // 降级 1: L4 截断到最近 2 轮（2 个 AgentTurn = 4 条消息 = 2 个 user+assistant 对）
             if (workingHistory.size() > 2) {
                 workingHistory = new ArrayList<>(workingHistory.subList(
@@ -113,78 +117,92 @@ public class ContextAssembler {
                 truncated = true;
                 truncationReason = "DEGRADE_L4_TO_2_ROUNDS";
             }
-            total = l0Tokens + l1Tokens + l4Tokens + l5Tokens;
-            log.debug("Degrade step 1 (L4 to 2 rounds): total={}, budget={}", total, budget.total());
+            total = l0Tokens + l1Tokens + l2Tokens + l4Tokens + l5Tokens;
+            log.debug("Degrade step 1 (L4 to 2 rounds): total={}, inputBudget={}", total, inputBudget);
         }
 
-        if (total > budget.total() && l1Tokens > 0) {
+        if (total > inputBudget && l1Tokens > 0) {
             // 降级 2: L1 裁剪（丢弃用户画像）
             l1Content = null;
             l1Tokens = 0;
-            total = l0Tokens + l4Tokens + l5Tokens;
+            total = l0Tokens + l2Tokens + l4Tokens + l5Tokens;
             truncated = true;
             truncationReason = "DEGRADE_L1_DROPPED";
-            log.debug("Degrade step 2 (L1 dropped): total={}, budget={}", total, budget.total());
+            log.debug("Degrade step 2 (L1 dropped): total={}, inputBudget={}", total, inputBudget);
         }
 
-        if (total > budget.total()) {
+        if (total > inputBudget) {
             // 降级 3: 硬上限兜底 — L4 截断到最近 1 轮（1 个 AgentTurn = 2 条消息）
             if (workingHistory.size() > 1) {
                 workingHistory = new ArrayList<>(workingHistory.subList(
                         workingHistory.size() - 1, workingHistory.size()));
                 l4Tokens = countHistoryTokens(workingHistory);
             }
-            total = l0Tokens + l1Tokens + l4Tokens + l5Tokens;
+            total = l0Tokens + l1Tokens + l2Tokens + l4Tokens + l5Tokens;
             truncated = true;
             truncationReason = "HARD_LIMIT_L4_TO_1_ROUND";
-            log.warn("Hard limit applied: sessionId={}, turnId={}, total={}, budget={}",
-                    sessionId, turnId, total, budget.total());
+            log.warn("Hard limit applied: sessionId={}, turnId={}, total={}, inputBudget={}",
+                    sessionId, turnId, total, inputBudget);
         }
 
         // 构建 messages
         List<DeepSeekRequest.Message> messages = buildMessages(
-                systemPrompt, l1Content, workingHistory, userQuery);
+                systemPrompt, l1Content, toolSchemas, workingHistory, userQuery);
 
         // 构建 layerTokens 快照
         Map<String, Integer> layerTokens = new LinkedHashMap<>();
         layerTokens.put("L0_SYSTEM", l0Tokens);
         layerTokens.put("L1_PROFILE", l1Tokens);
+        layerTokens.put("L2_TOOL_DEFS", l2Tokens);
         layerTokens.put("L4_HISTORY", l4Tokens);
         layerTokens.put("L5_USER_INPUT", l5Tokens);
         layerTokens.put("TOTAL", total);
 
         ContextSnapshot snapshot = new ContextSnapshot(
                 sessionId, turnId, messages, layerTokens, total,
-                null, truncated, truncationReason);
+                usedMemoryIds, truncated, truncationReason);
 
         if (truncated) {
-            log.info("Context truncated: sessionId={}, turnId={}, reason={}, total={}, budget={}",
-                    sessionId, turnId, truncationReason, total, budget.total());
+            log.info("Context truncated: sessionId={}, turnId={}, reason={}, total={}, inputBudget={}",
+                    sessionId, turnId, truncationReason, total, inputBudget);
         }
 
         return new AssembledContext(messages, total, snapshot);
     }
 
     /**
-     * 构建发给 LLM 的 messages 列表。
+     * 构建发给 LLM 的 messages 列表（XML标签分层规范）。
      *
-     * 顺序：system（L0+L1） → 历史（L4，user/assistant 交替） → 当前用户输入（L5）
+     * 标签结构（附加在system消息中）：
+     * <system_rules>     — L0 系统规则
+     * <user_profile>     — L1 用户画像
+     * <available_tools>  — L2 工具定义
+     *
+     * 对话历史（L4）保持标准 user/assistant 交替格式，
+     * 当前用户输入（L5）用 <user_query> 标签包裹。
      */
     private List<DeepSeekRequest.Message> buildMessages(String systemPrompt, String userProfile,
-            List<AgentTurn> history, String currentMessage) {
+            String toolSchemas, List<AgentTurn> history, String currentMessage) {
         List<DeepSeekRequest.Message> messages = new ArrayList<>();
 
-        // L0 + L1: System Prompt（若用户画像存在，追加到末尾）
-        String fullSystemPrompt = systemPrompt;
+        // L0 + L1 + L2: System 消息（XML标签分层）
+        StringBuilder fullSystemPrompt = new StringBuilder();
+        fullSystemPrompt.append("<system_rules>\n").append(systemPrompt).append("\n</system_rules>\n");
+
         if (userProfile != null && !userProfile.isBlank()) {
-            fullSystemPrompt = systemPrompt + "\n\n# 用户画像\n" + userProfile + "\n";
+            fullSystemPrompt.append("\n<user_profile>\n").append(userProfile).append("\n</user_profile>\n");
         }
+
+        if (toolSchemas != null && !toolSchemas.isBlank()) {
+            fullSystemPrompt.append("\n<available_tools>\n").append(toolSchemas).append("\n</available_tools>\n");
+        }
+
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
-                .content(fullSystemPrompt)
+                .content(fullSystemPrompt.toString())
                 .build());
 
-        // L4: 对话历史（按时间正序，最旧的在前）
+        // L4: 对话历史（保持标准 user/assistant 交替格式）
         for (AgentTurn t : history) {
             if (t.getUserMessage() != null) {
                 messages.add(DeepSeekRequest.Message.builder()
@@ -200,20 +218,17 @@ public class ContextAssembler {
             }
         }
 
-        // L5: 当前用户输入
+        // L5: 当前用户输入（用 <user_query> 标签包裹）
         messages.add(DeepSeekRequest.Message.builder()
                 .role("user")
-                .content(currentMessage)
+                .content("<user_query>\n" + currentMessage + "\n</user_query>")
                 .build());
 
         return messages;
     }
 
     private int countTokens(String text) {
-        if (text == null || text.isEmpty()) {
-            return 0;
-        }
-        return ENCODING.countTokens(text);
+        return TokenCounter.countTokens(text);
     }
 
     private int countHistoryTokens(List<AgentTurn> history) {
@@ -261,16 +276,7 @@ public class ContextAssembler {
      * 截断文本到指定 token 数内（保留前面的内容）。
      */
     private String truncateToTokens(String text, int maxTokens) {
-        if (text == null || text.isEmpty()) {
-            return text;
-        }
-        int tokens = countTokens(text);
-        if (tokens <= maxTokens) {
-            return text;
-        }
-        // 按 token 比例估算截断位置（避免逐字符解码的复杂性）
-        int maxChars = (int) (text.length() * ((double) maxTokens / tokens));
-        return text.substring(0, Math.min(maxChars, text.length())) + "...";
+        return TokenCounter.truncateToTokens(text, maxTokens);
     }
 
     /**

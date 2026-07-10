@@ -2,6 +2,9 @@ package com.campushare.agent.service;
 
 import com.campushare.agent.dto.MemoryMessage;
 import com.campushare.agent.entity.AgentTurn;
+import com.campushare.agent.mapper.ContextSlotMapper;
+import com.campushare.agent.mapper.ContextSummaryMapper;
+import com.campushare.agent.mapper.PinMessageMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,6 +52,12 @@ class ConversationMemoryServiceTest {
     private ListOperations<String, String> listOps;
     @Mock
     private ValueOperations<String, String> valueOps;
+    @Mock
+    private ContextSummaryMapper summaryMapper;
+    @Mock
+    private ContextSlotMapper slotMapper;
+    @Mock
+    private PinMessageMapper pinMapper;
 
     private ConversationMemoryService service;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -60,7 +69,7 @@ class ConversationMemoryServiceTest {
         lenient().when(redis.opsForHash()).thenReturn(hashOps);
         lenient().when(redis.opsForList()).thenReturn(listOps);
         lenient().when(redis.opsForValue()).thenReturn(valueOps);
-        service = new ConversationMemoryService(redis, objectMapper);
+        service = new ConversationMemoryService(redis, objectMapper, summaryMapper, slotMapper, pinMapper);
     }
 
     // ========== 1. 初始化 ==========

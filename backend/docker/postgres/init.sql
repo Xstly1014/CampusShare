@@ -107,3 +107,53 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_vectors_status ON knowledge_vectors(sta
 -- 关键词 trgm 索引（pg_trgm 替代 BM25，加速 ILIKE 模糊查询）
 CREATE INDEX IF NOT EXISTS idx_knowledge_vectors_title_trgm ON knowledge_vectors USING gin (title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_knowledge_vectors_content_trgm ON knowledge_vectors USING gin (chunk_content gin_trgm_ops);
+
+-- ========================================
+-- 4. 用户长期记忆向量表（ADR-059~063）
+-- ========================================
+-- 存储用户记忆的向量化表示，支持语义检索与关键词召回
+CREATE TABLE IF NOT EXISTS memory_vectors (
+    id              VARCHAR(36) PRIMARY KEY,
+    user_id         VARCHAR(64) NOT NULL,
+    memory_type     VARCHAR(32) NOT NULL,
+    memory_key      VARCHAR(128) NOT NULL,
+    memory_value    TEXT NOT NULL,
+    confidence      DECIMAL(3,2) NOT NULL DEFAULT 1.00,
+    source          VARCHAR(32) NOT NULL DEFAULT 'IMPLICIT',
+    embedding       vector(1024),
+    access_count    INTEGER NOT NULL DEFAULT 0,
+    last_accessed_at TIMESTAMP,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    decay_score     DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HNSW 向量索引（余弦相似度）
+CREATE INDEX IF NOT EXISTS idx_memory_vectors_embedding ON memory_vectors
+  USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+
+-- 用户ID + is_active 索引
+CREATE INDEX IF NOT EXISTS idx_memory_vectors_user_id ON memory_vectors(user_id, is_active);
+
+-- 记忆类型索引
+CREATE INDEX IF NOT EXISTS idx_memory_vectors_memory_type ON memory_vectors(memory_type);
+
+-- 关键词 trgm 索引
+CREATE INDEX IF NOT EXISTS idx_memory_vectors_value_trgm ON memory_vectors USING gin (memory_value gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_memory_vectors_key_trgm ON memory_vectors USING gin (memory_key gin_trgm_ops);
+
+-- 更新时间触发器
+CREATE OR REPLACE FUNCTION update_memory_vectors_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_memory_vectors_updated_at ON memory_vectors;
+CREATE TRIGGER trg_memory_vectors_updated_at
+    BEFORE UPDATE ON memory_vectors
+    FOR EACH ROW
+    EXECUTE FUNCTION update_memory_vectors_updated_at();
