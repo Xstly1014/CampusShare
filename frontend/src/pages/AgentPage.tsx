@@ -94,6 +94,16 @@ export default function AgentPage() {
     }
   }, [messages, streaming])
 
+  useEffect(() => {
+    if (!sending) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          inputRef.current?.focus()
+        })
+      })
+    }
+  }, [sending])
+
   const fetchSessions = useCallback(async () => {
     try {
       const res = await agentApi.getSessions()
@@ -185,6 +195,11 @@ export default function AgentPage() {
       toast.error('加载会话失败')
     } finally {
       setLoadingHistory(false)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          inputRef.current?.focus()
+        })
+      })
     }
   }
 
@@ -197,13 +212,17 @@ export default function AgentPage() {
 
   const startNewChat = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY)
-    // 新对话使用瞬时滚动，避免从原会话位置滑回顶部的动画
     shouldInstantScrollRef.current = true
     setMessages([{ id: 'welcome', role: 'assistant', content: WELCOME_MESSAGE }])
     setCurrentSessionId(null)
     setSidebarOpen(false)
     setChatKey((k) => k + 1)
     toast.success('已开始新对话')
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
+    })
   }
 
   const handleSwipeDelete = async (sessionId: string) => {
@@ -300,8 +319,6 @@ export default function AgentPage() {
     setStreaming(true)
     abortRef.current = false
     streamContentRef.current = ''
-
-    setTimeout(() => inputRef.current?.focus(), 0)
 
     setMessages((prev) => [...prev, { id: assistantMsgId, role: 'assistant', content: '' }])
 

@@ -39,6 +39,7 @@ import reactor.core.publisher.SignalType;
 import reactor.core.scheduler.Schedulers;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -103,13 +104,13 @@ public class AgentChatService {
                     String sessionJson = buildSessionJson(ctx);
                     Flux<ChatEvent> sessionEvent = Flux.just(new ChatEvent("session", sessionJson));
 
-                    // 快路径：模板回复（OUT_OF_SCOPE/NAVIGATE），不调 LLM
+                    // 快路径：模板回复（OUT_OF_SCOPE/NAVIGATE），不调 LLM，但仍逐字流式输出
                     if (ctx.routeDecision() != null && ctx.routeDecision().isShortCircuit()) {
                         String templateReply = ctx.routeDecision().getTemplateReply();
                         String navigateRoute = ctx.routeDecision().getNavigateRoute();
-                        Flux<ChatEvent> eventFlux = Flux.just(new ChatEvent("delta", templateReply));
+                        Flux<ChatEvent> deltaFlux = streamText(templateReply);
 
-                        // NAVIGATE 意图：发送 navigate 事件（前端用于渲染跳转卡片 + SPA 导航）
+                        // NAVIGATE 意图：delta 全部输出完毕后发送 navigate 事件
                         if (navigateRoute != null && !navigateRoute.isEmpty()) {
                             String navJson;
                             try {
@@ -122,18 +123,16 @@ public class AgentChatService {
                                 navJson = "{\"route\":\"" + navigateRoute + "\"}";
                             }
                             Flux<ChatEvent> navEvent = Flux.just(new ChatEvent("navigate", navJson));
-                            eventFlux = Flux.concat(eventFlux, navEvent);
+                            deltaFlux = Flux.concat(deltaFlux, navEvent);
                         }
 
-                        Flux<ChatEvent> finalEventFlux = eventFlux;
-                        Flux<ChatEvent> deltaFlux = finalEventFlux
+                        Flux<ChatEvent> finalDeltaFlux = deltaFlux
                                 .doFinally(signal -> {
                                     long elapsed = System.currentTimeMillis() - ctx.startTime();
-                                    Mono.fromRunnable(() ->
-                                            completeShortCircuitTurn(ctx, templateReply, elapsed))
+                                    Mono.fromRunnable(() -> completeShortCircuitTurn(ctx, templateReply, elapsed))
                                             .subscribeOn(Schedulers.boundedElastic()).subscribe();
                                 });
-                        return Flux.concat(sessionEvent, deltaFlux);
+                        return Flux.concat(sessionEvent, finalDeltaFlux);
                     }
 
                     // 慢路径：RAG + LLM 流式
@@ -191,14 +190,14 @@ public class AgentChatService {
      *
      * 输出格式：
      * [
-     *   {
-     *     "index": 1,
-     *     "id": "post-uuid",
-     *     "type": "POST",
-     *     "title": "帖子标题",
-     *     "url": "/post/post-uuid"
-     *   },
-     *   ...
+     * {
+     * "index": 1,
+     * "id": "post-uuid",
+     * "type": "POST",
+     * "title": "帖子标题",
+     * "url": "/post/post-uuid"
+     * },
+     * ...
      * ]
      */
     private String buildRefsJson(List<RetrievalResult> results) {
@@ -219,7 +218,8 @@ public class AgentChatService {
                 }
                 refs.add(ref);
                 index++;
-                if (index > 10) break; // 最多 10 个引用
+                if (index > 10)
+                    break; // 最多 10 个引用
             }
             return objectMapper.writeValueAsString(refs);
         } catch (Exception e) {
@@ -229,10 +229,37 @@ public class AgentChatService {
     }
 
     /**
+     * 将文本拆分为小片段并以打字机效果逐段输出（快路径流式化）。
+     *
+     * 每 2 个字符为一个 chunk，chunk 间延迟 25ms，
+     * 输出速度约 80 字符/秒，与 LLM 慢路径 token 流式速度体感一致。
+     * CJK 字符和 emoji 使用 codePoints 遍历，避免破坏代理对。
+     */
+    private Flux<ChatEvent> streamText(String text) {
+        if (text == null || text.isEmpty()) {
+            return Flux.empty();
+        }
+        int[] codePoints = text.codePoints().toArray();
+        List<String> chunks = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < codePoints.length; i++) {
+            sb.appendCodePoint(codePoints[i]);
+            if (sb.length() >= 2 || i == codePoints.length - 1) {
+                chunks.add(sb.toString());
+                sb.setLength(0);
+            }
+        }
+        return Flux.fromIterable(chunks)
+                .delayElements(Duration.ofMillis(25))
+                .map(chunk -> new ChatEvent("delta", chunk));
+    }
+
+    /**
      * 根据 navigateRoute 生成人类可读的跳转标签（前端展示在跳转卡片上）。
      */
     private String buildNavigateLabel(IntentResult intentResult, String route) {
-        if (route == null) return "点击跳转";
+        if (route == null)
+            return "点击跳转";
         return switch (route) {
             case "/profile" -> "个人主页";
             case "/profile/posts" -> "我的发布";
@@ -257,118 +284,126 @@ public class AgentChatService {
         // MDC 链路追踪：traceId 贯穿意图识别→检索→prompt 装配日志（ADR-030）
         MDC.put("traceId", UUID.randomUUID().toString().substring(0, 8));
         try {
-        AgentSession session = getOrCreateSession(userId, request);
+            AgentSession session = getOrCreateSession(userId, request);
 
-        // 状态转移：INIT → ACTIVE（首条消息时触发，ADR-064）
-        SessionStatus currentStatus = sessionStateMachine.getCurrentStatus(session.getId());
-        if (currentStatus == SessionStatus.INIT) {
-            sessionStateMachine.transition(session.getId(), SessionStatus.INIT, SessionStatus.ACTIVE, "First message");
-        }
+            // 状态转移：INIT → ACTIVE（首条消息时触发，ADR-064）
+            SessionStatus currentStatus = sessionStateMachine.getCurrentStatus(session.getId());
+            if (currentStatus == SessionStatus.INIT) {
+                sessionStateMachine.transition(session.getId(), SessionStatus.INIT, SessionStatus.ACTIVE,
+                        "First message");
+            }
 
-        String userMessage = request.getMessage();
+            String userMessage = request.getMessage();
 
-        // ① 意图识别（三层漏斗：规则 → LLM → Embedding → SEARCH 兜底）
-        IntentResult intentResult = recognizeIntent(userMessage, session.getId());
+            // ① 意图识别（三层漏斗：规则 → LLM → Embedding → SEARCH 兜底）
+            IntentResult intentResult = recognizeIntent(userMessage, session.getId());
 
-        // ①.5 学校名称规则预提取 + 别名规范化（不依赖 LLM，确保学校过滤一定生效）
-        // LLM 可能输出"北大"等简称导致 ILIKE 过滤失败，此处用正则从原始 query 中直接提取
-        String ruleExtractedSchool = SchoolNameUtils.extractFromQuery(userMessage);
-        if (ruleExtractedSchool != null) {
-            if (intentResult.getSlots() == null) {
-                intentResult.setSlots(IntentResult.SlotResult.builder()
-                        .school(ruleExtractedSchool)
-                        .build());
-            } else {
-                String normalizedLlmSchool = SchoolNameUtils.normalize(intentResult.getSlots().getSchool());
-                if (normalizedLlmSchool == null || !normalizedLlmSchool.equals(ruleExtractedSchool)) {
-                    intentResult.getSlots().setSchool(ruleExtractedSchool);
-                    log.debug("Rule-based school extraction overrides LLM: query='{}', llm='{}', rule='{}'",
-                            userMessage, intentResult.getSlots().getSchool(), ruleExtractedSchool);
+            // ①.5 学校名称规则预提取 + 别名规范化（不依赖 LLM，确保学校过滤一定生效）
+            // LLM 可能输出"北大"等简称导致 ILIKE 过滤失败，此处用正则从原始 query 中直接提取
+            String ruleExtractedSchool = SchoolNameUtils.extractFromQuery(userMessage);
+            if (ruleExtractedSchool != null) {
+                if (intentResult.getSlots() == null) {
+                    intentResult.setSlots(IntentResult.SlotResult.builder()
+                            .school(ruleExtractedSchool)
+                            .build());
+                } else {
+                    String normalizedLlmSchool = SchoolNameUtils.normalize(intentResult.getSlots().getSchool());
+                    if (normalizedLlmSchool == null || !normalizedLlmSchool.equals(ruleExtractedSchool)) {
+                        intentResult.getSlots().setSchool(ruleExtractedSchool);
+                        log.debug("Rule-based school extraction overrides LLM: query='{}', llm='{}', rule='{}'",
+                                userMessage, intentResult.getSlots().getSchool(), ruleExtractedSchool);
+                    }
+                }
+            } else if (intentResult.getSlots() != null && intentResult.getSlots().getSchool() != null) {
+                String normalized = SchoolNameUtils.normalize(intentResult.getSlots().getSchool());
+                if (normalized != null) {
+                    intentResult.getSlots().setSchool(normalized);
                 }
             }
-        } else if (intentResult.getSlots() != null && intentResult.getSlots().getSchool() != null) {
-            String normalized = SchoolNameUtils.normalize(intentResult.getSlots().getSchool());
-            if (normalized != null) {
-                intentResult.getSlots().setSchool(normalized);
+
+            // ② 预生成注入检测（硬拦截 Prompt 泄露；软拦截其他注入仅 log + meter）
+            if (constitutionalAIValidator.shouldHardBlock(userMessage)) {
+                throw new BusinessException(ResultCode.USER_ACCOUNT_FORBIDDEN, "该请求包含不允许的内容");
             }
-        }
+            if (constitutionalAIValidator.detectInjection(userMessage)) {
+                injectionDetectedCounter.increment();
+            }
 
-        // ② 预生成注入检测（硬拦截 Prompt 泄露；软拦截其他注入仅 log + meter）
-        if (constitutionalAIValidator.shouldHardBlock(userMessage)) {
-            throw new BusinessException(ResultCode.USER_ACCOUNT_FORBIDDEN, "该请求包含不允许的内容");
-        }
-        if (constitutionalAIValidator.detectInjection(userMessage)) {
-            injectionDetectedCounter.increment();
-        }
+            // ③ 意图路由：尝试快路径
+            Optional<RouteDecision> shortCircuit = intentRouter.tryShortCircuit(intentResult);
+            if (shortCircuit.isPresent()) {
+                intentMetrics.recordRoute(true, intentResult.getIntent().name());
+                AgentTurn turn = createTurn(session, userMessage, intentResult);
+                return new ChatContext(session, null, turn, System.currentTimeMillis(),
+                        0, null, intentResult, shortCircuit.get(), null, null);
+            }
 
-        // ③ 意图路由：尝试快路径
-        Optional<RouteDecision> shortCircuit = intentRouter.tryShortCircuit(intentResult);
-        if (shortCircuit.isPresent()) {
-            intentMetrics.recordRoute(true, intentResult.getIntent().name());
+            // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索，意图驱动检索策略 ADR-024）
+            intentMetrics.recordRoute(false, intentResult.getIntent().name());
+            String retrieveQuery = intentResult.getRewrittenQuery() != null
+                    ? intentResult.getRewrittenQuery()
+                    : userMessage;
+
+            // CLARIFY 意图时加载上一轮检索结果，用于上下文合并（ADR-026）
+            List<RetrievalResult> previousResults = null;
+            if (intentResult.getIntent() == Intent.CLARIFY) {
+                previousResults = loadPreviousRetrieval(session.getId());
+            }
+
+            List<RetrievalResult> retrievalResults = retrievalService.retrieve(
+                    retrieveQuery, intentResult, previousResults).block();
+
+            Set<Long> usedMemoryIds = new HashSet<>();
+
+            List<RetrievalResult> profileMemories = memoryRetrievalService.loadProfileMemories(userId);
+            for (RetrievalResult m : profileMemories) {
+                try {
+                    usedMemoryIds.add(Long.parseLong(m.id()));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            String userProfile = memoryRetrievalService.formatProfileText(profileMemories);
+
+            List<RetrievalResult> relevantMemories = memoryRetrievalService.retrieveRelevantMemories(
+                    userId, retrieveQuery, intentResult).block();
+            List<RetrievalResult> allResults = new ArrayList<>();
+            if (relevantMemories != null && !relevantMemories.isEmpty()) {
+                allResults.addAll(relevantMemories);
+                for (RetrievalResult m : relevantMemories) {
+                    try {
+                        usedMemoryIds.add(Long.parseLong(m.id()));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+            if (retrievalResults != null && !retrievalResults.isEmpty()) {
+                allResults.addAll(retrievalResults);
+            }
+
+            String retrievalContextJson = formatRetrievalContextJson(allResults);
+
+            PromptVersion promptVersion = promptVersionManager.getCurrentVersion(userId);
+            String systemPrompt = promptAssembler.assemble(intentResult.getIntent(), allResults, promptVersion);
+
+            // L4 对话历史（优先从 Redis 短期记忆加载，含滚动摘要/槽位/Pin 前缀；Redis 为空时降级到 DB）
+            List<AgentTurn> history = loadHistoryWithMemory(session);
+
+            // 创建当前 turn（先创建以获取 turnNumber，供快照使用）
             AgentTurn turn = createTurn(session, userMessage, intentResult);
-            return new ChatContext(session, null, turn, System.currentTimeMillis(),
-                    0, null, intentResult, shortCircuit.get(), null, null);
-        }
 
-        // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索，意图驱动检索策略 ADR-024）
-        intentMetrics.recordRoute(false, intentResult.getIntent().name());
-        String retrieveQuery = intentResult.getRewrittenQuery() != null
-                ? intentResult.getRewrittenQuery() : userMessage;
+            // 上下文工程：L0-L5 分层装载 + Token 预算 + 降级链（ADR-070~072）
+            ContextAssembler.AssembledContext assembled = contextAssembler.assemble(
+                    session.getId(), turn.getTurnNumber(), userMessage,
+                    intentResult, systemPrompt, history, userProfile, null,
+                    usedMemoryIds.isEmpty() ? null : new ArrayList<>(usedMemoryIds));
 
-        // CLARIFY 意图时加载上一轮检索结果，用于上下文合并（ADR-026）
-        List<RetrievalResult> previousResults = null;
-        if (intentResult.getIntent() == Intent.CLARIFY) {
-            previousResults = loadPreviousRetrieval(session.getId());
-        }
+            // 异步写入上下文快照（ADR-076，fire-and-forget，失败不阻塞主流程）
+            contextSnapshotService.saveSnapshot(assembled.snapshot());
 
-        List<RetrievalResult> retrievalResults = retrievalService.retrieve(
-                retrieveQuery, intentResult, previousResults).block();
-
-        Set<Long> usedMemoryIds = new HashSet<>();
-
-        List<RetrievalResult> profileMemories = memoryRetrievalService.loadProfileMemories(userId);
-        for (RetrievalResult m : profileMemories) {
-            try { usedMemoryIds.add(Long.parseLong(m.id())); } catch (NumberFormatException ignored) {}
-        }
-        String userProfile = memoryRetrievalService.formatProfileText(profileMemories);
-
-        List<RetrievalResult> relevantMemories = memoryRetrievalService.retrieveRelevantMemories(
-                userId, retrieveQuery, intentResult).block();
-        List<RetrievalResult> allResults = new ArrayList<>();
-        if (relevantMemories != null && !relevantMemories.isEmpty()) {
-            allResults.addAll(relevantMemories);
-            for (RetrievalResult m : relevantMemories) {
-                try { usedMemoryIds.add(Long.parseLong(m.id())); } catch (NumberFormatException ignored) {}
-            }
-        }
-        if (retrievalResults != null && !retrievalResults.isEmpty()) {
-            allResults.addAll(retrievalResults);
-        }
-
-        String retrievalContextJson = formatRetrievalContextJson(allResults);
-
-        PromptVersion promptVersion = promptVersionManager.getCurrentVersion(userId);
-        String systemPrompt = promptAssembler.assemble(intentResult.getIntent(), allResults, promptVersion);
-
-        // L4 对话历史（优先从 Redis 短期记忆加载，含滚动摘要/槽位/Pin 前缀；Redis 为空时降级到 DB）
-        List<AgentTurn> history = loadHistoryWithMemory(session);
-
-        // 创建当前 turn（先创建以获取 turnNumber，供快照使用）
-        AgentTurn turn = createTurn(session, userMessage, intentResult);
-
-        // 上下文工程：L0-L5 分层装载 + Token 预算 + 降级链（ADR-070~072）
-        ContextAssembler.AssembledContext assembled = contextAssembler.assemble(
-                session.getId(), turn.getTurnNumber(), userMessage,
-                intentResult, systemPrompt, history, userProfile, null,
-                usedMemoryIds.isEmpty() ? null : new ArrayList<>(usedMemoryIds));
-
-        // 异步写入上下文快照（ADR-076，fire-and-forget，失败不阻塞主流程）
-        contextSnapshotService.saveSnapshot(assembled.snapshot());
-
-        String promptVersionStr = promptVersion != null ? promptVersion.getVersion() : null;
-        return new ChatContext(session, assembled.messages(), turn, System.currentTimeMillis(),
-                assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr,
-                allResults);
+            String promptVersionStr = promptVersion != null ? promptVersion.getVersion() : null;
+            return new ChatContext(session, assembled.messages(), turn, System.currentTimeMillis(),
+                    assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr,
+                    allResults);
         } finally {
             MDC.remove("traceId");
         }
@@ -468,10 +503,10 @@ public class AgentChatService {
      * 加载对话历史（Redis 短期记忆优先，DB 降级）。
      *
      * 装配顺序（ADR-054 读写时序）：
-     *   1. 滚动摘要 → 虚拟轮次（user="[历史对话摘要]", assistant=summary）
-     *   2. 槽位     → 虚拟轮次（user="[已确认约束]", assistant=slots JSON）
-     *   3. Pin 消息 → 虚拟轮次（user="[用户偏好]", assistant=pinned 内容）
-     *   4. 最近 N 轮原文消息（从 Redis 加载，Redis 为空时降级到 DB）
+     * 1. 滚动摘要 → 虚拟轮次（user="[历史对话摘要]", assistant=summary）
+     * 2. 槽位 → 虚拟轮次（user="[已确认约束]", assistant=slots JSON）
+     * 3. Pin 消息 → 虚拟轮次（user="[用户偏好]", assistant=pinned 内容）
+     * 4. 最近 N 轮原文消息（从 Redis 加载，Redis 为空时降级到 DB）
      *
      * 滚动摘要/槽位/Pin 作为虚拟 AgentTurn 注入 history 头部，
      * 由 ContextAssembler 自然纳入 L4 token 预算管理。
@@ -583,8 +618,10 @@ public class AgentChatService {
 
             session.setMessageCount(turn.getTurnNumber());
             session.setTotalTokens((session.getTotalTokens() != null ? session.getTotalTokens() : 0) + totalTokens);
-            session.setTotalInputTokens((session.getTotalInputTokens() != null ? session.getTotalInputTokens() : 0) + inputTokens);
-            session.setTotalOutputTokens((session.getTotalOutputTokens() != null ? session.getTotalOutputTokens() : 0) + completionTokens);
+            session.setTotalInputTokens(
+                    (session.getTotalInputTokens() != null ? session.getTotalInputTokens() : 0) + inputTokens);
+            session.setTotalOutputTokens(
+                    (session.getTotalOutputTokens() != null ? session.getTotalOutputTokens() : 0) + completionTokens);
             if (promptVersion != null && session.getPromptVersion() == null) {
                 session.setPromptVersion(promptVersion);
             }
@@ -654,9 +691,9 @@ public class AgentChatService {
      * 写入 Redis 短期记忆（ADR-054 读写时序：LLM 回答后写）。
      *
      * 写入内容：
-     *   - user 消息 + assistant 消息 → messages List
-     *   - turn_count + 1, last_active_at 更新, current_intent 更新 → meta Hash
-     *   - 5 Key TTL 续期 2 小时
+     * - user 消息 + assistant 消息 → messages List
+     * - turn_count + 1, last_active_at 更新, current_intent 更新 → meta Hash
+     * - 5 Key TTL 续期 2 小时
      */
     private void writeToMemory(String sessionId, int turnNumber, String userMessage, String assistantContent,
             IntentResult intentResult, int inputTokens, int outputTokens) {
@@ -702,11 +739,11 @@ public class AgentChatService {
      * 触发三级压缩（ADR-050~053）。
      *
      * 流程：
-     *   1. 加载旧摘要 + 已有槽位
-     *   2. 获取需要压缩的旧消息（保留最近 5 条）
-     *   3. 调用 ContextCompressionService 三合一 LLM 压缩
-     *   4. 更新 Redis summary/slots/pinned
-     *   5. LTRIM messages 保留最近 5 条
+     * 1. 加载旧摘要 + 已有槽位
+     * 2. 获取需要压缩的旧消息（保留最近 5 条）
+     * 3. 调用 ContextCompressionService 三合一 LLM 压缩
+     * 4. 更新 Redis summary/slots/pinned
+     * 5. LTRIM messages 保留最近 5 条
      *
      * 降级（ADR-053）：LLM 失败时截断保留最近 4 条（2 轮），不生成摘要。
      */
@@ -836,15 +873,13 @@ public class AgentChatService {
                             .eq(AgentTurn::getSessionId, sessionId)
                             .eq(AgentTurn::getStatus, "COMPLETED")
                             .orderByDesc(AgentTurn::getTurnNumber)
-                            .last("LIMIT 1")
-            );
+                            .last("LIMIT 1"));
             if (lastTurn == null || lastTurn.getRetrievalContext() == null) {
                 return Collections.emptyList();
             }
             List<RetrievalResult> previous = objectMapper.readValue(
                     lastTurn.getRetrievalContext(),
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, RetrievalResult.class)
-            );
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, RetrievalResult.class));
             log.debug("Loaded previous retrieval: {} results for sessionId={}", previous.size(), sessionId);
             return previous;
         } catch (Exception e) {
