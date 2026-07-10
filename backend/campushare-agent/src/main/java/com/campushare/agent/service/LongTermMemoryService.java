@@ -86,17 +86,27 @@ public class LongTermMemoryService {
     @Value("${app.long-term-memory.decay.enabled:true}")
     private boolean decayEnabled;
 
+    /** EXPLICIT 明确记忆周衰减率（很慢，用户明确说过的） */
+    private static final BigDecimal EXPLICIT_DECAY_RATE = BigDecimal.valueOf(0.02);
+
+    /** PREFERENCE/FACT 类型周衰减率（用户偏好/事实变化慢） */
+    private static final BigDecimal PREFERENCE_FACT_DECAY_RATE = BigDecimal.valueOf(0.03);
+
     /** INFERRED BEHAVIOR 类型周衰减率（0.1 = 每周乘以 0.9） */
     private static final BigDecimal BEHAVIOR_DECAY_RATE = BigDecimal.valueOf(0.1);
 
     /** TASK 类型周衰减率（0.3 = 每周乘以 0.7） */
     private static final BigDecimal TASK_DECAY_RATE = BigDecimal.valueOf(0.3);
 
-    /** 衰减后 confidence 低于此阈值则删除 */
-    private static final BigDecimal DECAY_DELETE_THRESHOLD = BigDecimal.valueOf(0.3);
+    /** 衰减后 confidence 低于此阈值则软删除 */
+    private static final BigDecimal DECAY_DELETE_THRESHOLD = BigDecimal.valueOf(0.2);
 
     /** TASK 类型多少周未更新则删除 */
     private static final int TASK_STALE_WEEKS = 4;
+
+    /** 高频访问增强阈值：近7天访问≥3次，衰减率减半 */
+    private static final int HIGH_ACCESS_THRESHOLD = 3;
+    private static final int RECENT_ACCESS_DAYS = 7;
 
     /**
      * 装载用户画像（L1 层，ADR-059 5.1 装载策略）。
@@ -266,11 +276,25 @@ public class LongTermMemoryService {
         for (UserMemory m : memories) {
             try {
                 m.setLastUsedAt(now);
+                m.setLastAccessedAt(now);
+                m.setAccessCount(m.getAccessCount() != null ? m.getAccessCount() + 1 : 1);
                 userMemoryMapper.updateById(m);
+                asyncRecordVectorAccess(m.getId());
             } catch (Exception e) {
                 log.debug("Failed to touch memory: id={}, error={}", m.getId(), e.getMessage());
             }
         }
+    }
+
+    private void asyncRecordVectorAccess(Long memoryId) {
+        if (memoryId == null) return;
+        Mono.fromRunnable(() -> {
+            try {
+                memoryVectorStore.recordAccess(memoryId);
+            } catch (Exception e) {
+                log.debug("Failed to record vector access: id={}", memoryId);
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
 
     /**
@@ -462,12 +486,17 @@ public class LongTermMemoryService {
     // ========== 记忆衰减（ADR-060） ==========
 
     /**
-     * 每周日 02:00 执行记忆衰减任务（ADR-060）。
+     * 每周日 02:00 执行记忆衰减任务（ADR-060/062）。
      *
-     * 衰减规则：
-     *   - EXPLICIT PREFERENCE/FACT：不衰减（用户明确声明不会过期）
-     *   - INFERRED BEHAVIOR：每周衰减 0.1（confidence *= 0.9），<0.3 软删除
+     * 衰减策略：
+     *   - EXPLICIT 明确记忆：周衰减 0.02（confidence *= 0.98），基本不遗忘
+     *   - PREFERENCE/FACT：周衰减 0.03（confidence *= 0.97），变化慢
+     *   - INFERRED BEHAVIOR：周衰减 0.1（confidence *= 0.9）
      *   - TASK：每周衰减 0.3（confidence *= 0.7），4 周未更新软删除
+     *
+     * 增强机制：
+     *   - 近7天访问次数 ≥3，衰减率减半（使用越多越不容易忘）
+     *   - confidence < 0.2 时软删除（不物理删除，30天回收站）
      */
     @Scheduled(cron = "0 0 2 ? * SUN")
     public void decayMemories() {
@@ -480,63 +509,82 @@ public class LongTermMemoryService {
 
         int decayed = 0;
         int deleted = 0;
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(RECENT_ACCESS_DAYS);
+        LocalDateTime fourWeeksAgo = LocalDateTime.now().minusWeeks(TASK_STALE_WEEKS);
 
         try {
-            // 1. 衰减 INFERRED BEHAVIOR
-            List<UserMemory> behaviorMemories = userMemoryMapper.selectList(
+            List<UserMemory> activeMemories = userMemoryMapper.selectList(
                     new LambdaQueryWrapper<UserMemory>()
-                            .eq(UserMemory::getSource, "INFERRED")
-                            .eq(UserMemory::getMemoryType, "BEHAVIOR")
+                            .isNull(UserMemory::getDeletedAt)
                             .gt(UserMemory::getConfidence, DECAY_DELETE_THRESHOLD)
             );
-            for (UserMemory m : behaviorMemories) {
-                BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ZERO;
-                BigDecimal newConf = oldConf.multiply(BigDecimal.ONE.subtract(BEHAVIOR_DECAY_RATE));
-                if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
-                    softDeleteMemory(m, "Decay below threshold (BEHAVIOR)");
-                    deleted++;
-                } else {
-                    m.setConfidence(newConf);
-                    userMemoryMapper.updateById(m);
-                    logHistory(m, "DECAY", "weekly BEHAVIOR decay");
-                    decayed++;
-                }
-            }
 
-            // 2. 衰减 + 清理 TASK（所有来源的 TASK 都衰减）
-            LocalDateTime fourWeeksAgo = LocalDateTime.now().minusWeeks(TASK_STALE_WEEKS);
-            List<UserMemory> taskMemories = userMemoryMapper.selectList(
-                    new LambdaQueryWrapper<UserMemory>()
-                            .eq(UserMemory::getMemoryType, "TASK")
-                            .gt(UserMemory::getConfidence, DECAY_DELETE_THRESHOLD)
-            );
-            for (UserMemory m : taskMemories) {
-                // 4 周未更新直接删除
-                if (m.getUpdatedAt() != null && m.getUpdatedAt().isBefore(fourWeeksAgo)) {
-                    softDeleteMemory(m, "Stale task (4 weeks no update)");
-                    deleted++;
-                    continue;
-                }
-                // 否则按 0.3/周衰减
-                BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ZERO;
-                BigDecimal newConf = oldConf.multiply(BigDecimal.ONE.subtract(TASK_DECAY_RATE));
-                if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
-                    softDeleteMemory(m, "Decay below threshold (TASK)");
-                    deleted++;
-                } else {
-                    m.setConfidence(newConf);
-                    userMemoryMapper.updateById(m);
-                    logHistory(m, "DECAY", "weekly TASK decay");
-                    decayed++;
+            for (UserMemory m : activeMemories) {
+                try {
+                    if ("TASK".equals(m.getMemoryType()) && m.getUpdatedAt() != null
+                            && m.getUpdatedAt().isBefore(fourWeeksAgo)) {
+                        softDeleteMemory(m, "Stale task (4 weeks no update)");
+                        deleted++;
+                        continue;
+                    }
+
+                    BigDecimal baseDecayRate = getBaseDecayRate(m);
+                    BigDecimal actualDecayRate = baseDecayRate;
+                    if (m.getAccessCount() != null && m.getAccessCount() >= HIGH_ACCESS_THRESHOLD
+                            && m.getLastAccessedAt() != null && m.getLastAccessedAt().isAfter(sevenDaysAgo)) {
+                        actualDecayRate = baseDecayRate.divide(BigDecimal.valueOf(2), 4, java.math.RoundingMode.HALF_UP);
+                    }
+
+                    BigDecimal oldConf = m.getConfidence() != null ? m.getConfidence() : BigDecimal.ONE;
+                    BigDecimal multiplier = BigDecimal.ONE.subtract(actualDecayRate);
+                    BigDecimal newConf = oldConf.multiply(multiplier).setScale(4, java.math.RoundingMode.HALF_UP);
+
+                    if (memoryVectorStore != null) {
+                        try {
+                            memoryVectorStore.updateDecayScore(m.getId(), newConf.doubleValue());
+                        } catch (Exception e) {
+                            log.warn("Failed to update vector decay score: memoryId={}", m.getId());
+                        }
+                    }
+
+                    if (newConf.compareTo(DECAY_DELETE_THRESHOLD) <= 0) {
+                        softDeleteMemory(m, "Decay below threshold (type=" + m.getMemoryType() + ")");
+                        deleted++;
+                    } else {
+                        m.setConfidence(newConf);
+                        userMemoryMapper.updateById(m);
+                        logHistory(m, "DECAY",
+                                String.format("weekly decay: rate=%.3f, oldConf=%.3f, newConf=%.3f",
+                                        actualDecayRate, oldConf, newConf));
+                        decayed++;
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to decay memory: id={}, error={}", m.getId(), e.getMessage());
                 }
             }
 
             long elapsed = System.currentTimeMillis() - startTime;
-            log.info("Weekly memory decay complete: decayed={}, deleted={}, elapsed={}ms",
-                    decayed, deleted, elapsed);
+            log.info("Weekly memory decay complete: activeMemories={}, decayed={}, deleted={}, elapsed={}ms",
+                    activeMemories.size(), decayed, deleted, elapsed);
         } catch (Exception e) {
             log.error("Weekly memory decay task failed", e);
         }
+    }
+
+    private BigDecimal getBaseDecayRate(UserMemory m) {
+        String type = m.getMemoryType();
+        String source = m.getSource();
+
+        if ("EXPLICIT".equals(source)) {
+            return EXPLICIT_DECAY_RATE;
+        }
+        if ("PREFERENCE".equals(type) || "FACT".equals(type)) {
+            return PREFERENCE_FACT_DECAY_RATE;
+        }
+        if ("TASK".equals(type)) {
+            return TASK_DECAY_RATE;
+        }
+        return BEHAVIOR_DECAY_RATE;
     }
 
     /**

@@ -23,12 +23,9 @@ import com.campushare.agent.prompt.PromptVersionManager;
 import com.campushare.common.exception.BusinessException;
 import com.campushare.common.result.ResultCode;
 import com.campushare.agent.util.SchoolNameUtils;
+import com.campushare.agent.util.TokenCounter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.knuddels.jtokkit.Encodings;
-import com.knuddels.jtokkit.api.Encoding;
-import com.knuddels.jtokkit.api.EncodingRegistry;
-import com.knuddels.jtokkit.api.ModelType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -79,9 +76,6 @@ public class AgentChatService {
     private final SessionStateMachine sessionStateMachine;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private static final EncodingRegistry ENCODING_REGISTRY = Encodings.newDefaultEncodingRegistry();
-    private static final Encoding ENCODING = ENCODING_REGISTRY.getEncodingForModel(ModelType.GPT_3_5_TURBO);
 
     private volatile Counter violationCounter;
     private volatile Counter injectionDetectedCounter;
@@ -561,9 +555,9 @@ public class AgentChatService {
                 totalTokens = usage.getTotalTokens();
                 completionTokens = usage.getCompletionTokens() != null
                         ? usage.getCompletionTokens()
-                        : ENCODING.countTokens(content);
+                        : TokenCounter.countTokens(content);
             } else {
-                completionTokens = ENCODING.countTokens(content);
+                completionTokens = TokenCounter.countTokens(content);
                 totalTokens = inputTokens + completionTokens;
             }
 
@@ -675,7 +669,7 @@ public class AgentChatService {
                         .turnId(turnNumber)
                         .role("user")
                         .content(userMessage)
-                        .tokens(ENCODING.countTokens(userMessage))
+                        .tokens(TokenCounter.countTokens(userMessage))
                         .ts(ts)
                         .build());
             }
@@ -686,7 +680,7 @@ public class AgentChatService {
                         .turnId(turnNumber)
                         .role("assistant")
                         .content(assistantContent)
-                        .tokens(ENCODING.countTokens(assistantContent))
+                        .tokens(TokenCounter.countTokens(assistantContent))
                         .ts(ts)
                         .build());
             }

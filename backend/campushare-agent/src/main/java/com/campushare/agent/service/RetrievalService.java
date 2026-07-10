@@ -10,11 +10,8 @@ import com.campushare.agent.enums.Intent;
 import com.campushare.agent.llm.EmbeddingClient;
 import com.campushare.agent.store.KnowledgeVectorStore;
 import com.campushare.agent.store.PostVectorStore;
+import com.campushare.agent.util.TokenCounter;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.knuddels.jtokkit.Encodings;
-import com.knuddels.jtokkit.api.Encoding;
-import com.knuddels.jtokkit.api.EncodingRegistry;
-import com.knuddels.jtokkit.api.ModelType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -83,9 +80,6 @@ public class RetrievalService {
 
     @Value("${app.retrieval.cache.ttl:5m}")
     private Duration cacheTtl;
-
-    private static final EncodingRegistry ENCODING_REGISTRY = Encodings.newDefaultEncodingRegistry();
-    private static final Encoding ENCODING = ENCODING_REGISTRY.getEncodingForModel(ModelType.GPT_3_5_TURBO);
 
     /**
      * 检索与查询相关的知识库文档和帖子（旧签名，不感知意图）。
@@ -492,7 +486,7 @@ public class RetrievalService {
         for (int i = 0; i < results.size(); i++) {
             RetrievalResult r = results.get(i);
             String text = (r.title() != null ? r.title() : "") + " " + (r.content() != null ? r.content() : "");
-            int tokens = ENCODING.countTokens(text) + 50;
+            int tokens = TokenCounter.countTokens(text) + 50;
             if (totalTokens + tokens > tokenBudget) {
                 break;
             }

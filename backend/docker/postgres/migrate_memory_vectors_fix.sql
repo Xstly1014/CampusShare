@@ -1,10 +1,12 @@
--- 记忆向量表（ADR-059~063）
--- 用于长期记忆的向量存储与检索
+-- P1阶段修复：重建memory_vectors表（修正字段名和结构）
+-- 之前的表结构有误（BIGSERIAL主键、memory_id冗余、content字段名等），需要重建
+
+DROP TABLE IF EXISTS memory_vectors CASCADE;
 
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
-CREATE TABLE IF NOT EXISTS memory_vectors (
+CREATE TABLE memory_vectors (
     id              VARCHAR(36) PRIMARY KEY,
     user_id         VARCHAR(64) NOT NULL,
     memory_type     VARCHAR(32) NOT NULL,
@@ -21,23 +23,19 @@ CREATE TABLE IF NOT EXISTS memory_vectors (
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 向量索引（HNSW，余弦距离）
-CREATE INDEX IF NOT EXISTS idx_memory_vectors_embedding
-    ON memory_vectors USING hnsw (embedding vector_cosine_ops);
+-- HNSW 向量索引（余弦距离）
+CREATE INDEX idx_memory_vectors_embedding ON memory_vectors
+  USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- 用户ID + is_active 索引
-CREATE INDEX IF NOT EXISTS idx_memory_vectors_user_id
-    ON memory_vectors (user_id, is_active);
+CREATE INDEX idx_memory_vectors_user_id ON memory_vectors(user_id, is_active);
 
 -- 记忆类型索引
-CREATE INDEX IF NOT EXISTS idx_memory_vectors_memory_type
-    ON memory_vectors (memory_type);
+CREATE INDEX idx_memory_vectors_memory_type ON memory_vectors(memory_type);
 
 -- pg_trgm 关键词索引
-CREATE INDEX IF NOT EXISTS idx_memory_vectors_value_trgm
-    ON memory_vectors USING gin (memory_value gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_memory_vectors_key_trgm
-    ON memory_vectors USING gin (memory_key gin_trgm_ops);
+CREATE INDEX idx_memory_vectors_value_trgm ON memory_vectors USING gin (memory_value gin_trgm_ops);
+CREATE INDEX idx_memory_vectors_key_trgm ON memory_vectors USING gin (memory_key gin_trgm_ops);
 
 -- 更新时间触发器
 CREATE OR REPLACE FUNCTION update_memory_vectors_updated_at()

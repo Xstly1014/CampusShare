@@ -7,6 +7,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,33 +24,38 @@ public class MemoryVectorStore {
     }
 
     public void upsert(Long memoryId, String userId, String memoryType, String memoryKey,
-                       String content, BigDecimal confidence, String source, float[] embedding) {
+                       String memoryValue, BigDecimal confidence, String source, float[] embedding) {
         String vectorStr = toVectorString(embedding);
         String sql = """
-                INSERT INTO memory_vectors (memory_id, user_id, memory_type, memory_key, content,
-                    confidence, source, embedding, embedding_model, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?::vector, 'bge-m3', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ON CONFLICT (memory_id) DO UPDATE SET
+                INSERT INTO memory_vectors (id, user_id, memory_type, memory_key, memory_value,
+                    confidence, source, embedding, access_count, is_active, decay_score,
+                    created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?::vector, 0, TRUE, ?,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (id) DO UPDATE SET
                     user_id = EXCLUDED.user_id,
                     memory_type = EXCLUDED.memory_type,
                     memory_key = EXCLUDED.memory_key,
-                    content = EXCLUDED.content,
+                    memory_value = EXCLUDED.memory_value,
                     confidence = EXCLUDED.confidence,
                     source = EXCLUDED.source,
                     embedding = EXCLUDED.embedding,
+                    decay_score = EXCLUDED.decay_score,
                     updated_at = CURRENT_TIMESTAMP
                 """;
-        jdbcTemplate.update(sql, memoryId, userId, memoryType, memoryKey, content,
-                confidence, source, vectorStr);
+        double decayScore = confidence != null ? confidence.doubleValue() : 1.0;
+        jdbcTemplate.update(sql, String.valueOf(memoryId), userId, memoryType, memoryKey,
+                memoryValue, confidence, source, vectorStr, decayScore);
     }
 
     public List<RetrievalResult> search(String userId, float[] queryVec, int topK) {
         String vectorStr = toVectorString(queryVec);
         String sql = """
-                SELECT memory_id, memory_type, memory_key, content, confidence, source,
+                SELECT id, memory_type, memory_key, memory_value, confidence, source,
+                       access_count, decay_score,
                        1 - (embedding <=> ?::vector) AS similarity
                 FROM memory_vectors
-                WHERE user_id = ?
+                WHERE user_id = ? AND is_active = TRUE
                 ORDER BY embedding <=> ?::vector
                 LIMIT ?
                 """;
@@ -59,12 +66,15 @@ public class MemoryVectorStore {
                     meta.put("memoryKey", rs.getString("memory_key"));
                     meta.put("confidence", rs.getBigDecimal("confidence"));
                     meta.put("source", rs.getString("source"));
+                    meta.put("accessCount", rs.getInt("access_count"));
                     String title = formatMemoryTitle(rs.getString("memory_type"), rs.getString("memory_key"));
+                    double decayScore = rs.getDouble("decay_score");
+                    double rawSim = rs.getDouble("similarity");
                     return RetrievalResult.memory(
-                            String.valueOf(rs.getLong("memory_id")),
+                            rs.getString("id"),
                             title,
-                            rs.getString("content"),
-                            rs.getDouble("similarity") * rs.getBigDecimal("confidence").doubleValue(),
+                            rs.getString("memory_value"),
+                            rawSim * decayScore,
                             meta
                     );
                 },
@@ -74,11 +84,12 @@ public class MemoryVectorStore {
 
     public List<RetrievalResult> keywordSearch(String userId, String query, int topK) {
         String sql = """
-                SELECT memory_id, memory_type, memory_key, content, confidence, source,
-                       GREATEST(similarity(memory_key, ?), similarity(content, ?)) AS sim
+                SELECT id, memory_type, memory_key, memory_value, confidence, source,
+                       access_count, decay_score,
+                       GREATEST(similarity(memory_key, ?), similarity(memory_value, ?)) AS sim
                 FROM memory_vectors
-                WHERE user_id = ?
-                  AND (memory_key % ? OR content % ?)
+                WHERE user_id = ? AND is_active = TRUE
+                  AND (memory_key % ? OR memory_value % ?)
                 ORDER BY sim DESC
                 LIMIT ?
                 """;
@@ -89,12 +100,15 @@ public class MemoryVectorStore {
                     meta.put("memoryKey", rs.getString("memory_key"));
                     meta.put("confidence", rs.getBigDecimal("confidence"));
                     meta.put("source", rs.getString("source"));
+                    meta.put("accessCount", rs.getInt("access_count"));
                     String title = formatMemoryTitle(rs.getString("memory_type"), rs.getString("memory_key"));
+                    double decayScore = rs.getDouble("decay_score");
+                    double rawSim = rs.getDouble("sim");
                     return RetrievalResult.memory(
-                            String.valueOf(rs.getLong("memory_id")),
+                            rs.getString("id"),
                             title,
-                            rs.getString("content"),
-                            rs.getDouble("sim") * rs.getBigDecimal("confidence").doubleValue(),
+                            rs.getString("memory_value"),
+                            rawSim * decayScore,
                             meta
                     );
                 },
@@ -103,32 +117,54 @@ public class MemoryVectorStore {
     }
 
     public void delete(Long memoryId) {
-        jdbcTemplate.update("DELETE FROM memory_vectors WHERE memory_id = ?", memoryId);
+        String sql = "UPDATE memory_vectors SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+        jdbcTemplate.update(sql, String.valueOf(memoryId));
+    }
+
+    public void hardDelete(Long memoryId) {
+        jdbcTemplate.update("DELETE FROM memory_vectors WHERE id = ?", String.valueOf(memoryId));
     }
 
     public void deleteByUserId(String userId) {
-        jdbcTemplate.update("DELETE FROM memory_vectors WHERE user_id = ?", userId);
+        jdbcTemplate.update("UPDATE memory_vectors SET is_active = FALSE WHERE user_id = ?", userId);
     }
 
     public int count() {
         Integer count = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM memory_vectors", Integer.class
+                "SELECT count(*) FROM memory_vectors WHERE is_active = TRUE", Integer.class
         );
         return count != null ? count : 0;
     }
 
     public int countByUser(String userId) {
         Integer count = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM memory_vectors WHERE user_id = ?", Integer.class, userId
+                "SELECT count(*) FROM memory_vectors WHERE user_id = ? AND is_active = TRUE",
+                Integer.class, userId
         );
         return count != null ? count : 0;
     }
 
+    public void updateDecayScore(Long memoryId, double decayScore) {
+        String sql = "UPDATE memory_vectors SET decay_score = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+        jdbcTemplate.update(sql, decayScore, String.valueOf(memoryId));
+    }
+
+    public void recordAccess(Long memoryId) {
+        String sql = """
+                UPDATE memory_vectors
+                SET access_count = COALESCE(access_count, 0) + 1,
+                    last_accessed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """;
+        jdbcTemplate.update(sql, String.valueOf(memoryId));
+    }
+
     public List<RetrievalResult> loadProfileMemories(String userId) {
         String sql = """
-                SELECT memory_id, memory_type, memory_key, content, confidence, source
+                SELECT id, memory_type, memory_key, memory_value, confidence, source, decay_score
                 FROM memory_vectors
-                WHERE user_id = ?
+                WHERE user_id = ? AND is_active = TRUE
                   AND memory_type IN ('PREFERENCE', 'FACT')
                 ORDER BY confidence DESC, updated_at DESC
                 LIMIT 10
@@ -141,11 +177,13 @@ public class MemoryVectorStore {
                     meta.put("confidence", rs.getBigDecimal("confidence"));
                     meta.put("source", rs.getString("source"));
                     String title = formatMemoryTitle(rs.getString("memory_type"), rs.getString("memory_key"));
+                    double decayScore = rs.getDouble("decay_score");
+                    BigDecimal conf = rs.getBigDecimal("confidence");
                     return RetrievalResult.memory(
-                            String.valueOf(rs.getLong("memory_id")),
+                            rs.getString("id"),
                             title,
-                            rs.getString("content"),
-                            rs.getBigDecimal("confidence").doubleValue(),
+                            rs.getString("memory_value"),
+                            conf != null ? conf.doubleValue() * decayScore : decayScore,
                             meta
                     );
                 },
