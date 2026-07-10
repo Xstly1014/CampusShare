@@ -2,25 +2,28 @@ package com.campushare.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.agent.dto.IntentResult;
+import com.campushare.agent.dto.RetrievalResult;
 import com.campushare.agent.entity.UserMemory;
+import com.campushare.agent.entity.UserMemoryHistory;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
+import com.campushare.agent.llm.EmbeddingClient;
+import com.campushare.agent.mapper.UserMemoryHistoryMapper;
 import com.campushare.agent.mapper.UserMemoryMapper;
+import com.campushare.agent.store.MemoryVectorStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -44,7 +47,11 @@ import java.util.stream.Collectors;
 public class LongTermMemoryService {
 
     private final UserMemoryMapper userMemoryMapper;
+    private final UserMemoryHistoryMapper historyMapper;
     private final DeepSeekClient deepSeekClient;
+    private final EmbeddingClient embeddingClient;
+    private final MemoryVectorStore memoryVectorStore;
+    private final ConflictResolver conflictResolver;
     private final ObjectMapper objectMapper;
 
     /** 装载 Top-K 条记忆 */
@@ -331,8 +338,9 @@ public class LongTermMemoryService {
                             .eq(UserMemory::getMemoryKey, key)
             );
 
+            UserMemory saved;
+            String action;
             if (existing != null) {
-                // 已存在：累加置信度
                 BigDecimal newConfidence = existing.getConfidence() != null
                         ? existing.getConfidence().add(BigDecimal.valueOf(0.1))
                         : confidence;
@@ -344,9 +352,10 @@ public class LongTermMemoryService {
                 existing.setEvidenceCount((existing.getEvidenceCount() != null
                         ? existing.getEvidenceCount() : 0) + 1);
                 userMemoryMapper.updateById(existing);
-                return existing;
+                saved = existing;
+                action = "UPDATE";
+                logHistory(existing, action, "confidence updated");
             } else {
-                // 新增
                 UserMemory memory = UserMemory.builder()
                         .userId(userId)
                         .memoryType(type)
@@ -359,8 +368,15 @@ public class LongTermMemoryService {
                         .volatileFlag(0)
                         .build();
                 userMemoryMapper.insert(memory);
-                return memory;
+                saved = memory;
+                action = "INSERT";
+                logHistory(memory, action, "new memory created");
             }
+
+            conflictResolver.resolveOnInsert(saved);
+            asyncUpsertVector(saved);
+
+            return saved;
         } catch (Exception e) {
             log.warn("Failed to upsert memory: userId={}, key={}, error={}", userId, key, e.getMessage());
             return null;
@@ -482,6 +498,7 @@ public class LongTermMemoryService {
                 } else {
                     m.setConfidence(newConf);
                     userMemoryMapper.updateById(m);
+                    logHistory(m, "DECAY", "weekly BEHAVIOR decay");
                     decayed++;
                 }
             }
@@ -509,6 +526,7 @@ public class LongTermMemoryService {
                 } else {
                     m.setConfidence(newConf);
                     userMemoryMapper.updateById(m);
+                    logHistory(m, "DECAY", "weekly TASK decay");
                     decayed++;
                 }
             }
@@ -526,12 +544,97 @@ public class LongTermMemoryService {
      */
     private void softDeleteMemory(UserMemory memory, String reason) {
         try {
+            logHistory(memory, "DELETE", reason);
             memory.setDeletedAt(LocalDateTime.now());
             userMemoryMapper.updateById(memory);
+            asyncDeleteVector(memory.getId());
             log.debug("Soft deleted memory: id={}, userId={}, key={}, reason={}",
                     memory.getId(), memory.getUserId(), memory.getMemoryKey(), reason);
         } catch (Exception e) {
             log.warn("Failed to soft delete memory: id={}, error={}", memory.getId(), e.getMessage());
         }
+    }
+
+    private void asyncUpsertVector(UserMemory memory) {
+        if (memory == null || memory.getId() == null) return;
+        String content = buildMemoryContent(memory);
+        Mono.fromCallable(() -> embeddingClient.embed(content).block())
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        embedding -> {
+                            if (embedding != null && embedding.length > 0) {
+                                try {
+                                    memoryVectorStore.upsert(
+                                            memory.getId(),
+                                            memory.getUserId(),
+                                            memory.getMemoryType(),
+                                            memory.getMemoryKey(),
+                                            content,
+                                            memory.getConfidence() != null ? memory.getConfidence() : BigDecimal.ONE,
+                                            memory.getSource(),
+                                            embedding
+                                    );
+                                    log.debug("Upserted memory vector: id={}, key={}", memory.getId(), memory.getMemoryKey());
+                                } catch (Exception e) {
+                                    log.warn("Failed to upsert memory vector: id={}, error={}", memory.getId(), e.getMessage());
+                                }
+                            }
+                        },
+                        e -> log.warn("Failed to embed memory for vector upsert: id={}, error={}", memory.getId(), e.getMessage())
+                );
+    }
+
+    private void asyncDeleteVector(Long memoryId) {
+        if (memoryId == null) return;
+        Mono.fromRunnable(() -> {
+            try {
+                memoryVectorStore.delete(memoryId);
+            } catch (Exception e) {
+                log.warn("Failed to delete memory vector: id={}, error={}", memoryId, e.getMessage());
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
+    }
+
+    private String buildMemoryContent(UserMemory memory) {
+        String typeLabel = switch (memory.getMemoryType()) {
+            case "PREFERENCE" -> "用户偏好";
+            case "FACT" -> "用户事实";
+            case "BEHAVIOR" -> "行为模式";
+            case "TASK" -> "当前任务";
+            case "SKILL" -> "用户技能";
+            case "EVENT" -> "相关事件";
+            default -> memory.getMemoryType();
+        };
+        return typeLabel + ": " + memory.getMemoryKey() + " = " + memory.getMemoryValue();
+    }
+
+    /**
+     * 异步写入记忆变更审计历史（fire-and-forget，不阻塞主流程）。
+     *
+     * @param memory 变更后的记忆（写入的是变更前快照的value/confidence）
+     * @param action 操作类型：INSERT/UPDATE/DELETE/DECAY/CONFLICT_RESOLVED
+     * @param reason 操作原因
+     */
+    public void logHistory(UserMemory memory, String action, String reason) {
+        if (memory == null) return;
+        Mono.fromRunnable(() -> {
+            try {
+                UserMemoryHistory h = UserMemoryHistory.builder()
+                        .userId(memory.getUserId())
+                        .memoryType(memory.getMemoryType())
+                        .memoryKey(memory.getMemoryKey())
+                        .memoryValue(memory.getMemoryValue())
+                        .confidence(memory.getConfidence())
+                        .source(memory.getSource())
+                        .action(action)
+                        .reason(reason)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                historyMapper.insert(h);
+            } catch (Exception e) {
+                log.warn("Failed to write memory history: userId={}, key={}, action={}, error={}",
+                        memory.getUserId(), memory.getMemoryKey(), action, e.getMessage());
+            }
+        }).subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
 }
