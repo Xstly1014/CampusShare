@@ -1,11 +1,15 @@
 # CampusShare 数据库设计文档
 
-> **文档版本**: v2.0
+> **文档版本**: v2.1
 > **创建日期**: 2026-06-27
-> **更新日期**: 2026-06-30
-> **数据库类型**: MySQL 8.0
-> **字符集**: utf8mb4_unicode_ci
-> **存储引擎**: InnoDB
+> **更新日期**: 2026-07-10
+> **数据库类型**: MySQL 8.0 + PostgreSQL 16 (pgvector)
+> **字符集**: utf8mb4_unicode_ci (MySQL)
+> **存储引擎**: InnoDB (MySQL)
+>
+> **说明**: 本系统采用双数据库架构
+> - MySQL: 存储业务数据（user-service/post-service/agent-service结构化数据）
+> - PostgreSQL + pgvector: 存储向量embedding（agent-service专用库 `agent_vectors`）
 
 ---
 
@@ -57,6 +61,22 @@ schools ─── posts (school_id)
 | `view_history` | 浏览历史表 | post-service | 亿级 |
 | `post_downloads` | 下载历史表 | post-service | 亿级 |
 | `resources` | 资源表(legacy) | post-service | 百万级 |
+| `agent_sessions` | AI会话表 | agent-service (MySQL) | 十万级 |
+| `agent_turns` | AI对话轮次表 | agent-service (MySQL) | 千万级 |
+| `knowledge_articles` | 知识库文章表 | agent-service (MySQL) | 万级 |
+| `user_memory` | 用户长期记忆表 | agent-service (MySQL) | 百万级 |
+| `user_memory_evidence` | 记忆证据表 | agent-service (MySQL) | 千万级 |
+| `user_memory_history` | 记忆变更审计表 | agent-service (MySQL) | 百万级 |
+| `context_summaries` | 上下文压缩摘要表 | agent-service (MySQL) | 十万级 |
+| `context_slots` | 上下文冻结槽位表 | agent-service (MySQL) | 十万级 |
+| `pin_messages` | Pin消息表 | agent-service (MySQL) | 十万级 |
+
+> **PostgreSQL 向量表** (agent_vectors 库, pgvector扩展):
+>
+> | 表名 | 说明 | 所属服务 | 记录数预估 |
+> |------|------|---------|-----------|
+> | `post_vectors` | 帖子向量表 | agent-service (PostgreSQL/pgvector) | 千万级 |
+> | `memory_vectors` | 记忆向量表 | agent-service (PostgreSQL/pgvector) | 百万级 |
 
 ---
 
@@ -477,6 +497,147 @@ INDEX idx_sort (sort_order)
 
 ---
 
+### 2.17 Agent服务相关表
+
+#### 2.17.1 用户长期记忆表 `user_memory`
+
+**说明**：跨会话存储用户偏好、事实、行为模式等长期记忆
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | VARCHAR(36) | PRIMARY KEY | - | 记忆ID（UUID） |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 用户ID |
+| `memory_type` | VARCHAR(32) | NOT NULL | - | 类型：PREFERENCE/FACT/BEHAVIOR/TASK/SKILL/EVENT |
+| `memory_key` | VARCHAR(64) | NOT NULL | - | 记忆键（如preferred_format/major） |
+| `memory_value` | TEXT | NOT NULL | - | 记忆值（JSON或文本） |
+| `confidence` | DECIMAL(3,2) | DEFAULT 1.00 | - | 置信度0-1（衰减后降低） |
+| `source` | VARCHAR(16) | NOT NULL | - | 来源：EXPLICIT/IMPLICIT/INFERRED |
+| `evidence_count` | INT | DEFAULT 1 | - | 证据数（隐式累积） |
+| `importance` | DECIMAL(3,2) | DEFAULT 0.50 | - | 重要性评分0-1 |
+| `access_count` | INT | DEFAULT 0 | - | 被访问/使用次数 |
+| `last_accessed_at` | DATETIME | NULL | - | 最近一次被访问时间 |
+| `conflict_flag` | TINYINT | DEFAULT 0 | - | 冲突标记：0-正常，1-存在冲突 |
+| `is_active` | TINYINT | DEFAULT 1 | - | 是否有效：1-有效，0-已软删除 |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | - | 创建时间 |
+| `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | - | 更新时间 |
+
+**索引**：
+```sql
+UNIQUE KEY uk_user_type_key (user_id, memory_type, memory_key)
+INDEX idx_user_updated (user_id, updated_at)
+INDEX idx_user_type (user_id, memory_type)
+```
+
+---
+
+#### 2.17.2 记忆变更审计表 `user_memory_history`
+
+**说明**：记录所有记忆变更操作（INSERT/UPDATE/DELETE/DECAY/CONFLICT_RESOLVED/ACCESSED），支持回溯
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | BIGINT | PRIMARY KEY AUTO_INCREMENT | - | 主键 |
+| `memory_id` | VARCHAR(36) | NOT NULL | - | 记忆ID |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 用户ID |
+| `action` | VARCHAR(32) | NOT NULL | - | 操作类型 |
+| `before_value` | TEXT | NULL | - | 变更前值 |
+| `after_value` | TEXT | NULL | - | 变更后值 |
+| `reason` | VARCHAR(256) | NULL | - | 变更原因 |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | - | 记录时间 |
+
+**索引**：
+```sql
+INDEX idx_memory (memory_id, created_at)
+INDEX idx_user (user_id, created_at)
+```
+
+---
+
+#### 2.17.3 上下文压缩摘要表 `context_summaries`
+
+**说明**：存储对话历史的滚动摘要，Redis作为热缓存，MySQL持久化
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | VARCHAR(36) | PRIMARY KEY | - | 摘要ID |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 用户ID |
+| `session_id` | VARCHAR(36) | NOT NULL | - | 会话ID |
+| `summary_text` | TEXT | NOT NULL | - | 摘要文本 |
+| `token_count` | INT | NOT NULL | - | 摘要Token数 |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | - | 创建时间 |
+| `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | - | 更新时间 |
+
+**索引**：
+```sql
+INDEX idx_session (session_id)
+INDEX idx_user_created (user_id, created_at)
+```
+
+---
+
+#### 2.17.4 上下文冻结槽位表 `context_slots`
+
+**说明**：存储从对话中提取的关键信息槽位（实体/任务/约束），不可覆盖只能追加
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | VARCHAR(36) | PRIMARY KEY | - | 槽位ID |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 用户ID |
+| `session_id` | VARCHAR(36) | NOT NULL | - | 会话ID |
+| `slot_key` | VARCHAR(64) | NOT NULL | - | 槽位键 |
+| `slot_value` | VARCHAR(512) | NOT NULL | - | 槽位值 |
+| `is_frozen` | TINYINT | DEFAULT 1 | - | 是否冻结 |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | - | 创建时间 |
+| `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | - | 更新时间 |
+
+**索引**：
+```sql
+UNIQUE KEY uk_session_slot (session_id, slot_key)
+INDEX idx_user (user_id)
+```
+
+---
+
+#### 2.17.5 Pin消息表 `pin_messages`
+
+**说明**：用户标记或系统识别的重要消息，永久保留在上下文顶部
+
+| 字段名 | 类型 | 约束 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| `id` | VARCHAR(36) | PRIMARY KEY | - | Pin消息ID |
+| `user_id` | VARCHAR(36) | NOT NULL | - | 用户ID |
+| `session_id` | VARCHAR(36) | NOT NULL | - | 会话ID |
+| `turn_id` | VARCHAR(36) | NULL | - | 关联轮次ID |
+| `message_role` | VARCHAR(16) | NOT NULL | - | 角色：user/assistant |
+| `content` | TEXT | NOT NULL | - | 消息内容 |
+| `pinned_reason` | VARCHAR(256) | NULL | - | Pin原因 |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | - | 创建时间 |
+
+**索引**：
+```sql
+UNIQUE KEY uk_session_turn (session_id, turn_id)
+INDEX idx_user (user_id)
+```
+
+---
+
+#### 2.17.6 PostgreSQL向量表说明
+
+agent-service使用独立的PostgreSQL数据库（`agent_vectors`）存储向量embedding，使用pgvector扩展：
+
+**帖子向量表 `post_vectors`**：
+- 存储帖子的向量embedding和元数据（school_name/category_name中文字段）
+- 主键 `post_id` VARCHAR(36)，`embedding` vector(1536)
+- 支持按school_name/category_name进行ILIKE过滤 + 向量余弦相似度检索
+
+**记忆向量表 `memory_vectors`**：
+- 存储用户长期记忆的向量embedding，用于语义检索
+- 字段：id(VARCHAR(36) PK), user_id, memory_type, memory_key, memory_value, source, confidence, importance, access_count, last_accessed_at, is_active, decay_score(0-1), embedding(vector(1536)), created_at, updated_at
+- 双路召回：HNSW向量索引（余弦距离）+ pg_trgm GIN关键词索引，RRF算法融合重排
+- decay_score随时间衰减，检索时自动降权/过滤低分数记忆
+
+---
+
 ## 三、Redis 数据设计
 
 ### 3.1 验证码缓存
@@ -530,6 +691,28 @@ Value: 1
 TTL: Token 剩余有效期
 ```
 
+### 3.6 Agent会话上下文
+
+```
+Key pattern: agent:conv:{sessionId}:*
+  - meta: 会话元数据（title/userId/createdAt）
+  - messages: 最近N轮对话（List）
+  - summary: 滚动摘要（String）
+  - slots: 冻结槽位（Hash）
+  - pinned: Pin消息（List）
+TTL: 7天（每次对话续期）
+策略: Redis为热缓存，summary/slots/pinned同时持久化到MySQL
+      Redis miss时从MySQL加载恢复
+```
+
+### 3.7 Agent记忆检索缓存
+
+```
+Key: agent:memory:profile:{userId}
+Value: 格式化的用户画像文本
+TTL: 1小时（记忆更新时失效）
+```
+
 ---
 
 ## 四、命名规范
@@ -556,8 +739,11 @@ TTL: Token 剩余有效期
 ## 五、数据迁移与变更
 
 ### 5.1 版本管理
-- 所有 SQL 变更脚本按版本号命名：`V1.0.0__init.sql`, `V1.1.0__add_posts.sql`
-- 使用 Flyway 管理数据库版本迁移（待接入）
+- MySQL迁移脚本存放路径：`backend/docker/mysql/migrate_*.sql`
+- PostgreSQL迁移脚本存放路径：`backend/docker/postgres/migrate_*.sql`
+- 脚本命名格式：`migrate_{YYYYMMDD}_{描述}.sql`（如 `migrate_20260710_add_agent_tables.sql`）
+- 执行方式：通过 `docker exec` 手动在对应数据库容器中执行
+- Flyway自动化迁移待接入，当前采用手动执行版本化脚本方式
 
 ### 5.2 回滚策略
 - 每个变更脚本配套对应的回滚脚本
