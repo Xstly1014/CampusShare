@@ -5,7 +5,10 @@ import com.campushare.agent.entity.UserMemory;
 import com.campushare.agent.enums.Intent;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekResponse;
+import com.campushare.agent.llm.EmbeddingClient;
+import com.campushare.agent.mapper.UserMemoryHistoryMapper;
 import com.campushare.agent.mapper.UserMemoryMapper;
+import com.campushare.agent.store.MemoryVectorStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -51,7 +54,15 @@ class LongTermMemoryServiceTest {
     @Mock
     private UserMemoryMapper userMemoryMapper;
     @Mock
+    private UserMemoryHistoryMapper historyMapper;
+    @Mock
     private DeepSeekClient deepSeekClient;
+    @Mock
+    private EmbeddingClient embeddingClient;
+    @Mock
+    private MemoryVectorStore memoryVectorStore;
+    @Mock
+    private ConflictResolver conflictResolver;
 
     private LongTermMemoryService service;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -61,7 +72,8 @@ class LongTermMemoryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LongTermMemoryService(userMemoryMapper, deepSeekClient, objectMapper);
+        service = new LongTermMemoryService(userMemoryMapper, historyMapper, deepSeekClient,
+                embeddingClient, memoryVectorStore, conflictResolver, objectMapper);
     }
 
     // ========== 1. loadUserProfile ==========

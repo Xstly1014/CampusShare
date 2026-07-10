@@ -2,6 +2,8 @@ package com.campushare.agent.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.agent.entity.UserMemory;
+import com.campushare.agent.entity.UserMemoryHistory;
+import com.campushare.agent.mapper.UserMemoryHistoryMapper;
 import com.campushare.agent.mapper.UserMemoryMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +19,7 @@ import java.util.List;
 public class ConflictResolver {
 
     private final UserMemoryMapper userMemoryMapper;
-    private final LongTermMemoryService longTermMemoryService;
+    private final UserMemoryHistoryMapper historyMapper;
 
     private static final double CONFLICT_SIMILARITY_THRESHOLD = 0.3;
 
@@ -95,7 +97,7 @@ public class ConflictResolver {
                     ? memory.getConfidence().multiply(BigDecimal.valueOf(0.5))
                     : BigDecimal.valueOf(0.5));
             userMemoryMapper.updateById(memory);
-            longTermMemoryService.logHistory(memory, "CONFLICT_RESOLVED", reason);
+            logHistory(memory, "CONFLICT_RESOLVED", reason);
             log.info("Memory conflict resolved: id={}, key={}, reason={}",
                     memory.getId(), memory.getMemoryKey(), reason);
         } catch (Exception e) {
@@ -121,8 +123,28 @@ public class ConflictResolver {
         if (incomingConf.compareTo(existingConf) > 0) {
             existing.setConfidence(existingConf.multiply(BigDecimal.valueOf(0.8)));
             userMemoryMapper.updateById(existing);
-            longTermMemoryService.logHistory(existing, "CONFLICT_RESOLVED",
+            logHistory(existing, "CONFLICT_RESOLVED",
                     "Downweighted by higher-confidence INFERRED memory id=" + incoming.getId());
+        }
+    }
+
+    private void logHistory(UserMemory memory, String action, String reason) {
+        try {
+            UserMemoryHistory h = UserMemoryHistory.builder()
+                    .userId(memory.getUserId())
+                    .memoryType(memory.getMemoryType())
+                    .memoryKey(memory.getMemoryKey())
+                    .memoryValue(memory.getMemoryValue())
+                    .confidence(memory.getConfidence())
+                    .source(memory.getSource())
+                    .action(action)
+                    .reason(reason)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            historyMapper.insert(h);
+        } catch (Exception e) {
+            log.warn("Failed to write conflict history: userId={}, key={}, error={}",
+                    memory.getUserId(), memory.getMemoryKey(), e.getMessage());
         }
     }
 }

@@ -22,6 +22,7 @@ import com.campushare.agent.service.ConversationMemoryService;
 import com.campushare.agent.service.IntentClassifier;
 import com.campushare.agent.service.IntentRouter;
 import com.campushare.agent.service.LongTermMemoryService;
+import com.campushare.agent.service.MemoryRetrievalService;
 import com.campushare.agent.service.RetrievalService;
 import com.campushare.agent.service.RuleShortCircuitFilter;
 import com.campushare.agent.service.SessionStateMachine;
@@ -161,6 +162,7 @@ class AgentChatServicePromptIntegrationTest {
                 mock(ConversationMemoryService.class),
                 mock(ContextCompressionService.class),
                 mock(LongTermMemoryService.class),
+                mock(MemoryRetrievalService.class),
                 mock(SessionStateMachine.class),
                 meterRegistry
         );
