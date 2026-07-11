@@ -32,6 +32,8 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -58,23 +60,24 @@ import static org.mockito.Mockito.when;
  * 验证完整链路：意图识别（三层漏斗）→ 注入检测 → 路由 → 检索 → 版本管理 → Prompt 装配 → LLM 流式 → 输出验证 → 持久化。
  *
  * Mock 策略：
- *  - DeepSeekClient：mock chatCompletionStream 返回固定 Flux<StreamChunk>
- *  - RetrievalService：mock retrieve 返回固定 Mono<List<RetrievalResult>>
- *  - AgentSessionMapper / AgentTurnMapper：mock（不依赖真实 DB）
- *  - PromptVersionManager：mock（返回用 PromptConstants 构建的版本）
- *  - IntentClassifier：mock（返回固定意图，不依赖真实 LLM）
- *  - PromptAssembler / ConstitutionalAIValidator / RuleShortCircuitFilter / IntentRouter：真实实现
- *  - MeterRegistry：SimpleMeterRegistry（真实）
+ * - DeepSeekClient：mock chatCompletionStream 返回固定 Flux<StreamChunk>
+ * - RetrievalService：mock retrieve 返回固定 Mono<List<RetrievalResult>>
+ * - AgentSessionMapper / AgentTurnMapper：mock（不依赖真实 DB）
+ * - PromptVersionManager：mock（返回用 PromptConstants 构建的版本）
+ * - IntentClassifier：mock（返回固定意图，不依赖真实 LLM）
+ * - PromptAssembler / ConstitutionalAIValidator / RuleShortCircuitFilter /
+ * IntentRouter：真实实现
+ * - MeterRegistry：SimpleMeterRegistry（真实）
  *
  * 验证点：
- *  ① HOW_TO 意图：mock LLM 收到的 system prompt 含 HOW_TO_PROMPT
- *  ② SEARCH + 检索：system prompt 含 <context> 标签
- *  ③ Prompt 泄露：prepareContext 抛 BusinessException
- *  ④ 违规输出：completeTurn 写入 turn.toolsUsed 含 violation
- *  ⑤ 软拦截注入：仍调 LLM（不阻断）
- *  ⑥ OUT_OF_SCOPE 快路径：不调 LLM，返回模板
- *  ⑦ NAVIGATE 快路径：返回跳转卡片
- *  ⑧ 意图识别失败兜底 SEARCH
+ * ① HOW_TO 意图：mock LLM 收到的 system prompt 含 HOW_TO_PROMPT
+ * ② SEARCH + 检索：system prompt 含 <context> 标签
+ * ③ Prompt 泄露：prepareContext 抛 BusinessException
+ * ④ 违规输出：completeTurn 写入 turn.toolsUsed 含 violation
+ * ⑤ 软拦截注入：仍调 LLM（不阻断）
+ * ⑥ OUT_OF_SCOPE 快路径：不调 LLM，返回模板
+ * ⑦ NAVIGATE 快路径：返回跳转卡片
+ * ⑧ 意图识别失败兜底 SEARCH
  */
 @DisplayName("AgentChatService + SystemPrompt 集成测试")
 class AgentChatServicePromptIntegrationTest {
@@ -86,6 +89,7 @@ class AgentChatServicePromptIntegrationTest {
     private IntentClassifier intentClassifier;
     private PromptVersionManager promptVersionManager;
     private SimpleMeterRegistry meterRegistry;
+    private TransactionTemplate transactionTemplate;
 
     private AgentChatService chatService;
 
@@ -98,6 +102,14 @@ class AgentChatServicePromptIntegrationTest {
         intentClassifier = mock(IntentClassifier.class);
         promptVersionManager = mock(PromptVersionManager.class);
         meterRegistry = new SimpleMeterRegistry();
+        transactionTemplate = mock(TransactionTemplate.class);
+
+        // Mock TransactionTemplate to execute callback directly
+        doAnswer(invocation -> {
+            java.util.function.Consumer<TransactionStatus> action = invocation.getArgument(0);
+            action.accept(null);
+            return null;
+        }).when(transactionTemplate).executeWithoutResult(any(java.util.function.Consumer.class));
 
         // 默认 stub：PromptVersionManager 返回用 PromptConstants 构建的版本
         when(promptVersionManager.getCurrentVersion(anyString())).thenReturn(
@@ -111,8 +123,7 @@ class AgentChatServicePromptIntegrationTest {
                         .guardrailPrompt(PromptConstants.GUARDRAIL_PROMPT)
                         .status("RELEASED")
                         .grayRatio(100)
-                        .build()
-        );
+                        .build());
 
         // 默认 stub：检索返回空（无 RAG 上下文）
         when(retrievalService.retrieve(anyString(), any(), any())).thenReturn(Mono.just(new ArrayList<>()));
@@ -125,8 +136,7 @@ class AgentChatServicePromptIntegrationTest {
                         .confidence(0.85)
                         .rewrittenQuery("default-query")
                         .classifyLayer("LLM")
-                        .build())
-        );
+                        .build()));
 
         // 默认 stub：sessionMapper.insert 填充 id（模拟 MyBatis Plus ASSIGN_UUID）
         doAnswer(invocation -> {
@@ -164,8 +174,9 @@ class AgentChatServicePromptIntegrationTest {
                 mock(LongTermMemoryService.class),
                 mock(MemoryRetrievalService.class),
                 mock(SessionStateMachine.class),
-                meterRegistry
-        );
+                meterRegistry,
+                new ObjectMapper(),
+                transactionTemplate);
         // 手动调用 @PostConstruct initCounters()（package-private，用反射跨包调用）
         try {
             Method init = AgentChatService.class.getDeclaredMethod("initCounters");
@@ -186,8 +197,7 @@ class AgentChatServicePromptIntegrationTest {
         usage.setTotalTokens(150);
         return Flux.just(
                 new DeepSeekClient.StreamChunk(content, null),
-                new DeepSeekClient.StreamChunk(null, usage)
-        );
+                new DeepSeekClient.StreamChunk(null, usage));
     }
 
     /**
@@ -215,8 +225,7 @@ class AgentChatServicePromptIntegrationTest {
                         .confidence(0.85)
                         .rewrittenQuery(rewrittenQuery)
                         .classifyLayer("LLM")
-                        .build())
-        );
+                        .build()));
     }
 
     // ========== 1. HOW_TO 意图：装配正确的 system prompt ==========
@@ -231,7 +240,7 @@ class AgentChatServicePromptIntegrationTest {
         request.setMessage("怎么发帖");
 
         StepVerifier.create(chatService.chat("user-1", request))
-                .expectNextCount(2)  // session event + delta event
+                .expectNextCount(2) // session event + delta event
                 .verifyComplete();
 
         assertThat(captured).isNotEmpty();
@@ -355,7 +364,7 @@ class AgentChatServicePromptIntegrationTest {
         request.setMessage("你好");
 
         StepVerifier.create(chatService.chat("user-1", request))
-                .expectNextCount(2)  // session event + delta event（模板回复）
+                .expectNextCount(2) // session event + delta event（模板回复）
                 .verifyComplete();
 
         // 验证 LLM 从未被调用
@@ -393,7 +402,7 @@ class AgentChatServicePromptIntegrationTest {
         List<DeepSeekRequest.Message> captured = captureMessagesPassedToLLM();
 
         ChatRequest request = new ChatRequest();
-        request.setMessage("随便问点什么");  // 不匹配任何规则
+        request.setMessage("随便问点什么"); // 不匹配任何规则
 
         StepVerifier.create(chatService.chat("user-1", request))
                 .expectNextCount(2)
