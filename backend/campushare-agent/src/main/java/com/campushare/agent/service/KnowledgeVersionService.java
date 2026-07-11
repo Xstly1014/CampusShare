@@ -11,6 +11,7 @@ import com.campushare.agent.util.SemVer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -91,6 +92,7 @@ public class KnowledgeVersionService {
      * @return 更新后的文章
      * @throws IllegalArgumentException 版本不存在时抛出
      */
+    @Transactional(rollbackFor = Exception.class)
     public KnowledgeArticle rollback(Long articleId, String targetVersion) {
         KnowledgeArticleVersion target = versionMapper.selectOne(
                 new LambdaQueryWrapper<KnowledgeArticleVersion>()
@@ -133,6 +135,7 @@ public class KnowledgeVersionService {
      * 标记文章为 DEPRECATED（软下线）。
      * 先创建快照，再将 status 改为 DEPRECATED。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void deprecate(Long articleId) {
         KnowledgeArticle article = articleMapper.selectById(articleId);
         if (article == null) {
