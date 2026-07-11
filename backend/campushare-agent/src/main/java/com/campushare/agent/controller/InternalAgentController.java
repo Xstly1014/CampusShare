@@ -8,6 +8,7 @@ import com.campushare.agent.service.PostVectorService;
 import com.campushare.agent.store.KnowledgeVectorStore;
 import com.campushare.agent.store.PostVectorStore;
 import com.campushare.common.result.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,21 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Agent 内部 API 控制器（绕过网关，无 /api 前缀）。
- *
- * 路径约定：/internal/agent/...
- *
- * 暴露：
- * - POST /internal/agent/knowledge/reindex：手动触发知识库重建索引
- * - GET  /internal/agent/knowledge/status：查看知识库索引状态
- * - GET  /internal/agent/knowledge/{id}/versions：查询文章版本历史
- * - POST /internal/agent/knowledge/{id}/rollback：回滚到指定版本
- * - POST /internal/agent/knowledge/{id}/feedback：用户反馈（点赞/点踩）
- * - GET  /internal/agent/vector/status：查看向量库总体状态
- * - POST /internal/agent/posts/sync：接收 post-service 帖子变更通知
- * - POST /internal/agent/posts/reindex：手动触发帖子全量同步
- */
 @Slf4j
 @RestController
 @RequestMapping("/internal/agent")
@@ -131,16 +117,24 @@ public class InternalAgentController {
     }
 
     @PostMapping("/posts/sync")
-    public Mono<Result<Void>> notifyPostChanged(@RequestBody PostVectorNotifyRequest request) {
+    public Mono<Result<Void>> notifyPostChanged(@Valid @RequestBody PostVectorNotifyRequest request) {
         log.info("Received post change notification: postId={}, action={}", request.getPostId(), request.getAction());
         return postVectorService.syncPost(request.getPostId(), request.getAction())
+                .subscribeOn(Schedulers.boundedElastic())
                 .thenReturn(Result.success(null));
     }
 
     @PostMapping("/posts/reindex")
     public Mono<Result<Map<String, Object>>> reindexPosts() {
         log.info("Manual post reindex triggered");
-        return postVectorService.syncAll().map(Result::success);
+        return postVectorService.syncAll()
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(result -> {
+                    Map<String, Object> data = new HashMap<>();
+                    data.put("synced", true);
+                    return data;
+                })
+                .map(Result::success);
     }
 
     private Map<String, Object> toVersionSummary(KnowledgeArticleVersion v) {

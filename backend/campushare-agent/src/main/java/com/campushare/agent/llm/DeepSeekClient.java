@@ -44,20 +44,16 @@ public class DeepSeekClient {
     @Value("${app.llm.deepseek.retry.backoff:1000}")
     private long retryBackoffMs;
 
+    @Value("${app.llm.deepseek.timeout:60000}")
+    private long responseTimeoutMs;
+
+    @Value("${app.llm.deepseek.stream-timeout-seconds:120}")
+    private long streamTimeoutSeconds;
+
     public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages) {
         return chatCompletion(messages, defaultTemperature, defaultMaxTokens);
     }
 
-    /**
-     * 非流式 LLM 调用（支持自定义 temperature/maxTokens）。
-     *
-     * 用于意图分类等需要低温度（temperature=0）和短输出（max_tokens=200）的场景。
-     *
-     * @param messages     消息列表
-     * @param temperature  温度参数（null 用默认值）
-     * @param maxTokens    最大输出 token（null 用默认值）
-     * @return DeepSeekResponse
-     */
     public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages,
                                                   Double temperature, Integer maxTokens) {
         DeepSeekRequest request = DeepSeekRequest.builder()
@@ -73,6 +69,7 @@ public class DeepSeekClient {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(DeepSeekResponse.class)
+                .timeout(Duration.ofMillis(responseTimeoutMs))
                 .transform(CircuitBreakerOperator.of(deepSeekCircuitBreaker))
                 .retryWhen(Retry.backoff(maxRetryAttempts, Duration.ofMillis(retryBackoffMs))
                         .filter(this::isRetryable)
@@ -99,17 +96,24 @@ public class DeepSeekClient {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
+                .timeout(Duration.ofSeconds(30))
                 .filter(sse -> sse.data() != null)
                 .mapNotNull(this::parseStreamChunk)
                 .takeUntil(chunk -> "[DONE]".equals(chunk.content()))
                 .filter(chunk -> !"[DONE]".equals(chunk.content()))
+                .timeout(Duration.ofSeconds(streamTimeoutSeconds))
                 .transform(CircuitBreakerOperator.of(deepSeekCircuitBreaker))
                 .retryWhen(Retry.backoff(maxRetryAttempts, Duration.ofMillis(retryBackoffMs))
                         .filter(this::isRetryable)
                         .doBeforeRetry(retrySignal ->
                                 log.warn("Retrying DeepSeek stream, attempt {}", retrySignal.totalRetries() + 1))
                 )
-                .doOnError(e -> log.error("DeepSeek stream error after retries", e));
+                .onErrorResume(TimeoutException.class, e -> {
+                    log.warn("DeepSeek stream timed out after {}s", streamTimeoutSeconds);
+                    return Flux.just(new StreamChunk("[响应超时，请重试]", null));
+                })
+                .doOnError(e -> !(e instanceof TimeoutException),
+                        e -> log.error("DeepSeek stream error after retries", e));
     }
 
     private StreamChunk parseStreamChunk(ServerSentEvent<String> sse) {
@@ -140,7 +144,7 @@ public class DeepSeekClient {
 
     private boolean isRetryable(Throwable throwable) {
         if (throwable instanceof WebClientResponseException ex) {
-            return ex.getStatusCode().is5xxServerError();
+            return ex.getStatusCode().is5xxServerError() || ex.getStatusCode().value() == 429;
         }
         return throwable instanceof TimeoutException
                 || throwable instanceof IOException;
