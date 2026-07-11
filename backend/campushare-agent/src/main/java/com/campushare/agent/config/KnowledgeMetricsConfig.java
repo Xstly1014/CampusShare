@@ -27,6 +27,7 @@ public class KnowledgeMetricsConfig {
     private Timer ingestTotalTimer;
     private DistributionSummary chunksPerDocSummary;
     private Counter recallCounter;
+    private final ConcurrentHashMap<String, Timer> phaseTimers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Counter> duplicateCounters = new ConcurrentHashMap<>();
 
     @PostConstruct
@@ -93,10 +94,14 @@ public class KnowledgeMetricsConfig {
         if ("TOTAL".equals(phase)) {
             sample.stop(ingestTotalTimer);
         } else {
-            Timer timer = Timer.builder("agent.knowledge.ingest.duration")
-                    .tag("phase", phase != null ? phase : "unknown")
-                    .publishPercentiles(0.5, 0.95, 0.99)
-                    .register(registry);
+            String phaseName = phase != null ? phase : "unknown";
+            Timer timer = phaseTimers.computeIfAbsent(phaseName, k ->
+                    Timer.builder("agent.knowledge.ingest.duration")
+                            .tag("phase", k)
+                            .publishPercentiles(0.5, 0.95, 0.99)
+                            .publishPercentileHistogram()
+                            .register(registry)
+            );
             sample.stop(timer);
         }
     }

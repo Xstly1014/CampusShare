@@ -26,6 +26,7 @@ import com.campushare.agent.util.SchoolNameUtils;
 import com.campushare.agent.util.TokenCounter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SignalType;
@@ -76,7 +78,8 @@ public class AgentChatService {
     private final MemoryRetrievalService memoryRetrievalService;
     private final SessionStateMachine sessionStateMachine;
     private final MeterRegistry meterRegistry;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
     private volatile Counter violationCounter;
     private volatile Counter injectionDetectedCounter;
@@ -596,17 +599,13 @@ public class AgentChatService {
                 totalTokens = inputTokens + completionTokens;
             }
 
-            // 输出后 Constitutional AI 验证（ADR-SP-03）
-            // 流式场景用户已看到内容，不替换；仅 log + meter + 写入 tools_used 字段记录违规
             String violation = constitutionalAIValidator.validate(content);
             if (violation != null) {
                 violationCounter.increment();
                 log.warn("Constitutional AI violation detected: turnId={}, violation={}", turn.getId(), violation);
             }
 
-            // 合并 violation + intent 到 tools_used（复用字段，不新增 DB 列）
             turn.setToolsUsed(buildToolsUsedJson(violation, intentResult));
-
             turn.setAssistantMessage(content);
             turn.setStatus("COMPLETED");
             turn.setResponseTimeMs((int) elapsedMs);
@@ -614,7 +613,6 @@ public class AgentChatService {
             turn.setRetrievalContext(retrievalContextJson);
             turn.setInputTokens(inputTokens);
             turn.setOutputTokens(completionTokens);
-            turnMapper.updateById(turn);
 
             session.setMessageCount(turn.getTurnNumber());
             session.setTotalTokens((session.getTotalTokens() != null ? session.getTotalTokens() : 0) + totalTokens);
@@ -629,14 +627,16 @@ public class AgentChatService {
                 session.setLlmModel(modelName);
             }
             session.setLastMessageAt(LocalDateTime.now());
-            sessionMapper.updateById(session);
 
-            // 写入 Redis 短期记忆（ADR-054 读写时序：LLM 回答后写）
+            transactionTemplate.executeWithoutResult(status -> {
+                turnMapper.updateById(turn);
+                sessionMapper.updateById(session);
+            });
+
             String userMessage = turn.getUserMessage();
             writeToMemory(session.getId(), turn.getTurnNumber(), userMessage, content,
                     intentResult, inputTokens, completionTokens);
 
-            // 检查是否需要压缩（messages 长度 > 10 时触发三级压缩 ADR-050）
             if (conversationMemoryService.needsCompression(session.getId())) {
                 triggerCompression(session.getId());
             }
@@ -666,16 +666,18 @@ public class AgentChatService {
             turn.setToolsUsed(intentJson);
             turn.setInputTokens(0);
             turn.setOutputTokens(0);
-            turnMapper.updateById(turn);
 
             session.setMessageCount(turn.getTurnNumber());
             session.setLastMessageAt(LocalDateTime.now());
             if (session.getLlmModel() == null) {
                 session.setLlmModel(modelName);
             }
-            sessionMapper.updateById(session);
 
-            // 写入 Redis 短期记忆（模板回复也记录，保持上下文连贯；不触发压缩）
+            transactionTemplate.executeWithoutResult(status -> {
+                turnMapper.updateById(turn);
+                sessionMapper.updateById(session);
+            });
+
             writeToMemory(session.getId(), turn.getTurnNumber(), turn.getUserMessage(), templateReply,
                     ctx.intentResult(), 0, 0);
 
