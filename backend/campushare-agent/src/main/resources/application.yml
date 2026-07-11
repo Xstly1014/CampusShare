@@ -70,7 +70,7 @@ app:
   datasource:
     pgvector:
       driver-class-name: org.postgresql.Driver
-      jdbc-url: jdbc:postgresql://localhost:5432/agent_vectors
+      url: jdbc:postgresql://localhost:5432/agent_vectors
       username: agent
       password: ${AGENT_PG_PASSWORD:agent123456}
       hikari:
