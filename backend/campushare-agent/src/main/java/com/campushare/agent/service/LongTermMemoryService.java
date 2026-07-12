@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -352,6 +353,7 @@ public class LongTermMemoryService {
      *
      * @return 保存后的 UserMemory
      */
+    @Transactional(rollbackFor = Exception.class)
     public UserMemory upsertMemory(String userId, String type, String key, String value,
             String source, BigDecimal confidence, String evidenceQuote) {
         try {

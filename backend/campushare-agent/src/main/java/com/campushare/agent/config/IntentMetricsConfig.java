@@ -4,86 +4,93 @@ import com.campushare.agent.enums.Intent;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/**
- * 意图识别监控指标。
- *
- * 4 个指标：
- *  1. agent.intent.classification.total{intent, sub_intent, layer, result} — 分类计数
- *  2. agent.intent.classification.duration{layer} — 分类耗时
- *  3. agent.intent.cache.total{result=HIT|MISS} — 缓存命中率
- *  4. agent.intent.route.total{path=SHORT_CIRCUIT|RAG, intent} — 路由决策计数
- */
+import java.util.concurrent.ConcurrentHashMap;
+
 @Component
 @RequiredArgsConstructor
 public class IntentMetricsConfig {
 
     private final MeterRegistry registry;
 
-    /**
-     * 记录意图分类结果。
-     *
-     * @param intent    L1 意图
-     * @param subIntent L2 子意图
-     * @param layer     分类层级：RULE / LLM / EMBEDDING / DEFAULT
-     * @param result    结果：SUCCESS / FALLBACK / ERROR
-     */
-    public void recordClassification(Intent intent, String subIntent,
-                                      String layer, String result) {
-        Counter.builder("agent.intent.classification.total")
-                .tag("intent", intent != null ? intent.name() : "unknown")
-                .tag("sub_intent", subIntent != null ? subIntent : "unknown")
-                .tag("layer", layer != null ? layer : "unknown")
-                .tag("result", result != null ? result : "unknown")
-                .register(registry)
-                .increment();
+    private Counter cacheHitCounter;
+    private Counter cacheMissCounter;
+    private final ConcurrentHashMap<String, Counter> classificationCounters = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Timer> classificationTimers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Counter> routeCounters = new ConcurrentHashMap<>();
+
+    @PostConstruct
+    public void init() {
+        cacheHitCounter = Counter.builder("agent.intent.cache.total")
+                .tag("result", "HIT")
+                .description("Intent cache hit count")
+                .register(registry);
+        cacheMissCounter = Counter.builder("agent.intent.cache.total")
+                .tag("result", "MISS")
+                .description("Intent cache miss count")
+                .register(registry);
     }
 
-    /**
-     * 开始计时。
-     */
+    public void recordClassification(Intent intent, String subIntent,
+                                      String layer, String result) {
+        String intentName = intent != null ? intent.name() : "unknown";
+        String sub = subIntent != null ? subIntent : "unknown";
+        String layerName = layer != null ? layer : "unknown";
+        String resultName = result != null ? result : "unknown";
+
+        String key = String.format("%s|%s|%s|%s", intentName, sub, layerName, resultName);
+        classificationCounters.computeIfAbsent(key, k ->
+                Counter.builder("agent.intent.classification.total")
+                        .tag("intent", intentName)
+                        .tag("sub_intent", sub)
+                        .tag("layer", layerName)
+                        .tag("result", resultName)
+                        .description("Intent classification count")
+                        .register(registry)
+        ).increment();
+    }
+
     public Timer.Sample startTimer() {
         return Timer.start(registry);
     }
 
-    /**
-     * 记录分类耗时。
-     *
-     * @param sample startTimer() 返回的样本
-     * @param layer  分类层级
-     */
     public void recordDuration(Timer.Sample sample, String layer) {
         if (sample == null) {
             return;
         }
-        sample.stop(Timer.builder("agent.intent.classification.duration")
-                .tag("layer", layer != null ? layer : "unknown")
-                .register(registry));
+        String layerName = layer != null ? layer : "unknown";
+        Timer timer = classificationTimers.computeIfAbsent(layerName, k ->
+                Timer.builder("agent.intent.classification.duration")
+                        .tag("layer", layerName)
+                        .description("Intent classification duration")
+                        .publishPercentiles(0.5, 0.95, 0.99)
+                        .publishPercentileHistogram()
+                        .register(registry)
+        );
+        sample.stop(timer);
     }
 
-    /**
-     * 记录缓存命中/未命中。
-     */
     public void recordCacheHit(boolean hit) {
-        Counter.builder("agent.intent.cache.total")
-                .tag("result", hit ? "HIT" : "MISS")
-                .register(registry)
-                .increment();
+        if (hit) {
+            cacheHitCounter.increment();
+        } else {
+            cacheMissCounter.increment();
+        }
     }
 
-    /**
-     * 记录路由决策。
-     *
-     * @param shortCircuit true=快路径（模板回复），false=慢路径（RAG）
-     * @param intent       意图名称
-     */
     public void recordRoute(boolean shortCircuit, String intent) {
-        Counter.builder("agent.intent.route.total")
-                .tag("path", shortCircuit ? "SHORT_CIRCUIT" : "RAG")
-                .tag("intent", intent != null ? intent : "unknown")
-                .register(registry)
-                .increment();
+        String path = shortCircuit ? "SHORT_CIRCUIT" : "RAG";
+        String intentName = intent != null ? intent : "unknown";
+        String key = path + "|" + intentName;
+        routeCounters.computeIfAbsent(key, k ->
+                Counter.builder("agent.intent.route.total")
+                        .tag("path", path)
+                        .tag("intent", intentName)
+                        .description("Intent route decision count")
+                        .register(registry)
+        ).increment();
     }
 }
