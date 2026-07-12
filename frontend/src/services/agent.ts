@@ -35,6 +35,7 @@ export interface AgentTurn {
   errorMessage?: string
   createdAt: string
   refs?: ChatRef[]
+  navigate?: ChatNavigate
 }
 
 export interface ChatRef {
