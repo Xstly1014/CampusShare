@@ -174,6 +174,8 @@ class AgentChatServicePromptIntegrationTest {
                 mock(LongTermMemoryService.class),
                 mock(MemoryRetrievalService.class),
                 mock(SessionStateMachine.class),
+                mock(com.campushare.agent.tool.ToolRegistry.class),
+                mock(com.campushare.agent.tool.ToolExecutor.class),
                 meterRegistry,
                 new ObjectMapper(),
                 transactionTemplate);

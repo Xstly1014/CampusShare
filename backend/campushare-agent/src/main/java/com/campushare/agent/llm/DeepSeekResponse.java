@@ -27,6 +27,22 @@ public class DeepSeekResponse {
     public static class Message {
         private String role;
         private String content;
+
+        @JsonProperty("tool_calls")
+        private List<ToolCall> toolCalls;
+    }
+
+    @Data
+    public static class ToolCall {
+        private String id;
+        private String type;
+        private FunctionCall function;
+    }
+
+    @Data
+    public static class FunctionCall {
+        private String name;
+        private String arguments;
     }
 
     @Data
@@ -39,5 +55,22 @@ public class DeepSeekResponse {
 
         @JsonProperty("total_tokens")
         private Integer totalTokens;
+    }
+
+    public boolean hasToolCalls() {
+        if (choices == null || choices.isEmpty()) return false;
+        Message msg = choices.get(0).getMessage();
+        return msg != null && msg.getToolCalls() != null && !msg.getToolCalls().isEmpty();
+    }
+
+    public List<ToolCall> getToolCalls() {
+        if (!hasToolCalls()) return List.of();
+        return choices.get(0).getMessage().getToolCalls();
+    }
+
+    public String getContent() {
+        if (choices == null || choices.isEmpty()) return null;
+        Message msg = choices.get(0).getMessage();
+        return msg != null ? msg.getContent() : null;
     }
 }

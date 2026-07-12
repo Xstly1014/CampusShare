@@ -15,6 +15,9 @@ import com.campushare.agent.enums.SessionStatus;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
+import com.campushare.agent.tool.ToolExecutor;
+import com.campushare.agent.tool.ToolRegistry;
+import com.campushare.agent.tool.ToolResult;
 import com.campushare.agent.mapper.AgentSessionMapper;
 import com.campushare.agent.mapper.AgentTurnMapper;
 import com.campushare.agent.prompt.ConstitutionalAIValidator;
@@ -77,6 +80,8 @@ public class AgentChatService {
     private final LongTermMemoryService longTermMemoryService;
     private final MemoryRetrievalService memoryRetrievalService;
     private final SessionStateMachine sessionStateMachine;
+    private final ToolRegistry toolRegistry;
+    private final ToolExecutor toolExecutor;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
@@ -89,6 +94,9 @@ public class AgentChatService {
 
     @Value("${app.llm.deepseek.model:deepseek-v4-flash}")
     private String modelName;
+
+    @Value("${app.agent.max-tool-rounds:5}")
+    private int maxToolRounds;
 
     @jakarta.annotation.PostConstruct
     void initCounters() {
@@ -138,43 +146,53 @@ public class AgentChatService {
                         return Flux.concat(sessionEvent, finalDeltaFlux);
                     }
 
-                    // 慢路径：RAG + LLM 流式
-                    StringBuilder assistantContent = new StringBuilder();
-                    AtomicReference<DeepSeekResponse.Usage> usageRef = new AtomicReference<>();
+                    // 慢路径：工具调用循环 + 最终流式回答
+                    List<DeepSeekRequest.Message> messages = new ArrayList<>(ctx.messages());
+                    List<ToolResult.Ref> allRefs = new ArrayList<>();
+                    List<String> toolCallRecords = new ArrayList<>();
+                    AtomicReference<DeepSeekResponse.Usage> totalUsageRef = new AtomicReference<>();
 
-                    // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
-                    Flux<ChatEvent> refsEvent = Flux.empty();
-                    if (ctx.retrievalResults() != null && !ctx.retrievalResults().isEmpty()) {
-                        String refsJson = buildRefsJson(ctx.retrievalResults());
-                        refsEvent = Flux.just(new ChatEvent("refs", refsJson));
-                    }
+                    // 获取当前意图可用的工具 Schema
+                    List<Map<String, Object>> toolSchemas = toolRegistry.getToolSchemas(ctx.intentResult().getIntent());
 
-                    Flux<ChatEvent> deltaStream = deepSeekClient.chatCompletionStream(ctx.messages())
-                            .doOnNext(chunk -> {
-                                if (chunk.content() != null) {
-                                    assistantContent.append(chunk.content());
+                    return runToolCallLoop(messages, toolSchemas, allRefs, toolCallRecords, totalUsageRef, userId, 0)
+                            .flatMapMany(finalMessages -> {
+                                // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
+                                Flux<ChatEvent> refsEvent = Flux.empty();
+                                if (!allRefs.isEmpty()) {
+                                    String refsJson = buildToolRefsJson(allRefs);
+                                    refsEvent = Flux.just(new ChatEvent("refs", refsJson));
                                 }
-                                if (chunk.usage() != null) {
-                                    usageRef.set(chunk.usage());
-                                }
-                            })
-                            .filter(chunk -> chunk.content() != null)
-                            .map(chunk -> new ChatEvent("delta", chunk.content()))
-                            .doFinally(signalType -> {
-                                long elapsed = System.currentTimeMillis() - ctx.startTime();
-                                String content = assistantContent.toString();
-                                Mono.fromRunnable(() -> {
-                                    if (signalType == SignalType.ON_COMPLETE) {
-                                        completeTurn(ctx.turn(), ctx.session(), content, elapsed,
-                                                usageRef.get(), ctx.inputTokens(), ctx.retrievalContext(),
-                                                ctx.intentResult(), ctx.promptVersion());
-                                    } else if (signalType == SignalType.ON_ERROR) {
-                                        errorTurn(ctx.turn(), "Stream terminated with error");
-                                    }
-                                }).subscribeOn(Schedulers.boundedElastic()).subscribe();
+
+                                // 最终流式回答（不带 tools）
+                                StringBuilder assistantContent = new StringBuilder();
+                                Flux<ChatEvent> deltaStream = deepSeekClient.chatCompletionStream(finalMessages)
+                                        .doOnNext(chunk -> {
+                                            if (chunk.content() != null) {
+                                                assistantContent.append(chunk.content());
+                                            }
+                                            if (chunk.usage() != null) {
+                                                totalUsageRef.set(chunk.usage());
+                                            }
+                                        })
+                                        .filter(chunk -> chunk.content() != null)
+                                        .map(chunk -> new ChatEvent("delta", chunk.content()))
+                                        .doFinally(signalType -> {
+                                            long elapsed = System.currentTimeMillis() - ctx.startTime();
+                                            String content = assistantContent.toString();
+                                            Mono.fromRunnable(() -> {
+                                                if (signalType == SignalType.ON_COMPLETE) {
+                                                    completeTurn(ctx.turn(), ctx.session(), content, elapsed,
+                                                            totalUsageRef.get(), ctx.inputTokens(), ctx.retrievalContext(),
+                                                            ctx.intentResult(), ctx.promptVersion());
+                                                } else if (signalType == SignalType.ON_ERROR) {
+                                                    errorTurn(ctx.turn(), "Stream terminated with error");
+                                                }
+                                            }).subscribeOn(Schedulers.boundedElastic()).subscribe();
+                                        });
+
+                                return Flux.concat(sessionEvent, deltaStream, refsEvent);
                             });
-
-                    return Flux.concat(sessionEvent, deltaStream, refsEvent);
                 });
     }
 
@@ -230,6 +248,164 @@ public class AgentChatService {
             return "[]";
         }
     }
+
+    private String buildToolRefsJson(List<ToolResult.Ref> refs) {
+        try {
+            List<Map<String, Object>> refsList = new ArrayList<>();
+            int index = 1;
+            Set<String> seenIds = new HashSet<>();
+            for (ToolResult.Ref ref : refs) {
+                String uniqueId = ref.getType() + ":" + ref.getId();
+                if (seenIds.contains(uniqueId)) continue;
+                seenIds.add(uniqueId);
+                Map<String, Object> refMap = new HashMap<>();
+                refMap.put("index", index);
+                refMap.put("id", ref.getId());
+                refMap.put("type", ref.getType().toUpperCase());
+                refMap.put("title", ref.getTitle());
+                refMap.put("url", ref.getUrl());
+                refsList.add(refMap);
+                index++;
+                if (index > 15) break;
+            }
+            return objectMapper.writeValueAsString(refsList);
+        } catch (Exception e) {
+            log.warn("Failed to build tool refs JSON: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
+    private Mono<List<DeepSeekRequest.Message>> runToolCallLoop(
+            List<DeepSeekRequest.Message> messages,
+            List<Map<String, Object>> toolSchemas,
+            List<ToolResult.Ref> allRefs,
+            List<String> toolCallRecords,
+            AtomicReference<DeepSeekResponse.Usage> totalUsageRef,
+            String userId,
+            int round) {
+
+        if (round >= maxToolRounds) {
+            log.warn("Tool call round limit reached: {}", maxToolRounds);
+            return Mono.just(messages);
+        }
+
+        if (toolSchemas == null || toolSchemas.isEmpty()) {
+            return Mono.just(messages);
+        }
+
+        return deepSeekClient.chatCompletion(messages, toolSchemas)
+                .flatMap(response -> {
+                    if (response.getUsage() != null) {
+                        DeepSeekResponse.Usage prev = totalUsageRef.get();
+                        if (prev == null) {
+                            totalUsageRef.set(response.getUsage());
+                        } else {
+                            int promptTokens = (prev.getPromptTokens() != null ? prev.getPromptTokens() : 0)
+                                    + (response.getUsage().getPromptTokens() != null ? response.getUsage().getPromptTokens() : 0);
+                            int completionTokens = (prev.getCompletionTokens() != null ? prev.getCompletionTokens() : 0)
+                                    + (response.getUsage().getCompletionTokens() != null ? response.getUsage().getCompletionTokens() : 0);
+                            int totalTokens = promptTokens + completionTokens;
+                            DeepSeekResponse.Usage merged = new DeepSeekResponse.Usage();
+                            merged.setPromptTokens(promptTokens);
+                            merged.setCompletionTokens(completionTokens);
+                            merged.setTotalTokens(totalTokens);
+                            totalUsageRef.set(merged);
+                        }
+                    }
+
+                    if (!response.hasToolCalls()) {
+                        return Mono.just(messages);
+                    }
+
+                    List<DeepSeekResponse.ToolCall> toolCalls = response.getToolCalls();
+
+                    DeepSeekRequest.Message assistantMsg = DeepSeekRequest.Message.builder()
+                            .role("assistant")
+                            .content(response.getContent())
+                            .toolCalls(convertToRequestToolCalls(toolCalls))
+                            .build();
+                    messages.add(assistantMsg);
+
+                    return executeToolCalls(toolCalls, userId, allRefs, toolCallRecords)
+                            .flatMap(results -> {
+                                for (ToolCallResult result : results) {
+                                    DeepSeekRequest.Message toolMsg = DeepSeekRequest.Message.builder()
+                                            .role("tool")
+                                            .toolCallId(result.toolCallId())
+                                            .name(result.toolName())
+                                            .content(result.resultJson())
+                                            .build();
+                                    messages.add(toolMsg);
+                                }
+                                return runToolCallLoop(messages, toolSchemas, allRefs, toolCallRecords,
+                                        totalUsageRef, userId, round + 1);
+                            });
+                })
+                .onErrorResume(e -> {
+                    log.error("Tool call loop error at round {}", round, e);
+                    return Mono.just(messages);
+                });
+    }
+
+    private List<DeepSeekRequest.ToolCall> convertToRequestToolCalls(List<DeepSeekResponse.ToolCall> respCalls) {
+        return respCalls.stream()
+                .map(rc -> DeepSeekRequest.ToolCall.builder()
+                        .id(rc.getId())
+                        .type(rc.getType())
+                        .function(DeepSeekRequest.FunctionCall.builder()
+                                .name(rc.getFunction().getName())
+                                .arguments(rc.getFunction().getArguments())
+                                .build())
+                        .build())
+                .toList();
+    }
+
+    private Mono<List<ToolCallResult>> executeToolCalls(
+            List<DeepSeekResponse.ToolCall> toolCalls,
+            String userId,
+            List<ToolResult.Ref> allRefs,
+            List<String> toolCallRecords) {
+
+        List<Mono<ToolCallResult>> resultMonos = new ArrayList<>();
+
+        for (DeepSeekResponse.ToolCall toolCall : toolCalls) {
+            String toolName = toolCall.getFunction().getName();
+            String argumentsStr = toolCall.getFunction().getArguments();
+
+            Mono<ToolCallResult> resultMono = Mono.fromCallable(() -> {
+                        Map<String, Object> arguments = new HashMap<>();
+                        try {
+                            if (argumentsStr != null && !argumentsStr.isBlank()) {
+                                arguments = objectMapper.readValue(argumentsStr,
+                                        objectMapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class));
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to parse tool arguments: {}", argumentsStr, e);
+                        }
+                        return arguments;
+                    })
+                    .flatMap(arguments -> toolExecutor.execute(toolName, arguments, userId))
+                    .map(result -> {
+                        if (result.getRefs() != null) {
+                            allRefs.addAll(result.getRefs());
+                        }
+                        String resultJson = toolExecutor.resultToJson(result);
+                        toolCallRecords.add(toolName + ":" + result.getStatus());
+                        return new ToolCallResult(toolCall.getId(), toolName, resultJson);
+                    })
+                    .onErrorResume(e -> {
+                        log.error("Tool execution failed: {}", toolName, e);
+                        String errorJson = "{\"status\":\"ERROR\",\"error_code\":\"TOOL_ERROR\",\"error_message\":\"" + e.getMessage() + "\"}";
+                        return Mono.just(new ToolCallResult(toolCall.getId(), toolName, errorJson));
+                    });
+
+            resultMonos.add(resultMono);
+        }
+
+        return Flux.concat(resultMonos).collectList();
+    }
+
+    private record ToolCallResult(String toolCallId, String toolName, String resultJson) {}
 
     /**
      * 将文本拆分为小片段并以打字机效果逐段输出（快路径流式化）。

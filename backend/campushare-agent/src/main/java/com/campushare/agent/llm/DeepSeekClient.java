@@ -51,18 +51,35 @@ public class DeepSeekClient {
     private long streamTimeoutSeconds;
 
     public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages) {
-        return chatCompletion(messages, defaultTemperature, defaultMaxTokens);
+        return chatCompletion(messages, defaultTemperature, defaultMaxTokens, null);
     }
 
     public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages,
                                                   Double temperature, Integer maxTokens) {
-        DeepSeekRequest request = DeepSeekRequest.builder()
+        return chatCompletion(messages, temperature, maxTokens, null);
+    }
+
+    public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages,
+                                                  List<java.util.Map<String, Object>> tools) {
+        return chatCompletion(messages, defaultTemperature, defaultMaxTokens, tools);
+    }
+
+    public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages,
+                                                  Double temperature, Integer maxTokens,
+                                                  List<java.util.Map<String, Object>> tools) {
+        DeepSeekRequest.DeepSeekRequestBuilder requestBuilder = DeepSeekRequest.builder()
                 .model(defaultModel)
                 .messages(messages)
                 .stream(false)
                 .temperature(temperature)
-                .maxTokens(maxTokens)
-                .build();
+                .maxTokens(maxTokens);
+
+        if (tools != null && !tools.isEmpty()) {
+            requestBuilder.tools(tools);
+            requestBuilder.toolChoice("auto");
+        }
+
+        DeepSeekRequest request = requestBuilder.build();
 
         return deepSeekWebClient.post()
                 .uri("/v1/chat/completions")

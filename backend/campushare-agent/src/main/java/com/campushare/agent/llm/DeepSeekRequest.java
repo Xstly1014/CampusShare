@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -28,6 +29,11 @@ public class DeepSeekRequest {
     @JsonProperty("stream_options")
     private StreamOptions streamOptions;
 
+    private List<Map<String, Object>> tools;
+
+    @JsonProperty("tool_choice")
+    private Object toolChoice;
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -35,6 +41,33 @@ public class DeepSeekRequest {
     public static class Message {
         private String role;
         private String content;
+
+        @JsonProperty("tool_calls")
+        private List<ToolCall> toolCalls;
+
+        @JsonProperty("tool_call_id")
+        private String toolCallId;
+
+        private String name;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ToolCall {
+        private String id;
+        private String type;
+        private FunctionCall function;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FunctionCall {
+        private String name;
+        private String arguments;
     }
 
     @Data
