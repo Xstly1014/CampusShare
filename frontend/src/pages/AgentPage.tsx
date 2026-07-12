@@ -174,6 +174,7 @@ export default function AgentPage() {
             content: turn.assistantMessage,
             timestamp: turn.createdAt,
             refs: turn.refs ?? undefined,
+            navigate: turn.navigate ?? undefined,
           })
         }
       }
