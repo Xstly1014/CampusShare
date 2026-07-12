@@ -464,6 +464,8 @@
 | 8 | MCP 协议 | MCP协议模块设计方案.docx | generate-mcp-doc.py | ✅ 完成 |
 | 9 | 对话编排 | 对话编排模块设计方案.docx | generate-dialogue-orchestration-doc.py | ✅ 完成 |
 | 11 | 安全护栏 | 安全护栏模块设计方案.docx | generate-security-guardrails-doc.py | ✅ 完成 |
+| 12 | LLM 网关与多模型路由 | LLM网关与多模型路由模块设计方案.docx | generate-llm-gateway-doc.py | ✅ 完成 |
+| 13 | 可观测性 | 可观测性模块设计方案.docx | generate-observability-doc.py | ✅ 完成 |
 
 > **说明**：行动层（工具调用 + MCP 协议）+ 推理层（对话编排）已全部完成。
 > 工具调用（Function Calling）是机制层——解决"LLM 怎么调工具"；
@@ -476,14 +478,31 @@
 > Jailbreak 三层检测、PII 脱敏（5 类）、安全审计（agent_security_audit_log 表）、
 > 降级与熔断（5 级降级 + 攻击者熔断 3 次/10 分钟 → 30 分钟），共 7 条 ADR（ADR-SEC-01~07）。
 > 多 Agent 协作（MAG）经评估暂不写入：当前 V1.0 单 Agent 刚设计完、依赖未到位、业务驱动不足，属扩展方向（单 Agent 不够用时再写）。
+>
+> **LLM 网关（GW）已完成**：设计了统一 LlmClient 接口 + Provider Adapter 模式（DeepSeek + 通义千问）、
+> 意图驱动动态规则路由（IntentResult → 模型映射，Redis 热更新）、
+> 三级 Fallback 降级链（主模型 → 备用模型 → 模板兜底）、
+> API Key 池轮询 + 自动摘除（429 冷却 / 401 永久摘除）、
+> 5 维度成本追踪（用户/会话/模型/意图/天）、
+> per-model CircuitBreaker + 主动健康探测、
+> 四级优雅降级（缓存→主模型→备用模型→模板），共 7 条 ADR（ADR-GW-01~07）。
+> 预期收益：成本降 40%、闲聊 TTFT 降 60%、可用率 > 99.95%。
+>
+> **可观测性（OBS）已完成**：设计了可观测性三支柱（Logs + Metrics + Trace）完整体系，
+> 覆盖全链路 TraceId 传递（网关生成 32 位 UUID → X-Trace-Id Header → agent-service MDC + Reactor Context，解决 WebFlux 线程切换 MDC 丢失问题）、
+> Span 级链路追踪表（agent_trace_spans 记录 7 个阶段耗时：意图识别/RAG/Prompt 装配/LLM 流式/工具调用/记忆写入/完成，不引入 Jaeger/Zipkin 轻量方案）、
+> 统一 Metrics 体系（6 大维度 14 项指标：延迟 3 + Token 2 + 成本 2 + 错误 2 + 工具 2 + 缓存 3，基于现有 12 项指标扩展）、
+> 结构化 JSON 日志（logstash-logback-encoder 输出 JSON，MDC 7 个字段：traceId/sessionId/userId/turnId/intent/model/spanName）、
+> 告警规则体系（5 类告警 8 条规则，多窗口多燃烧率算法避免告警风暴）、
+> Grafana 仪表盘（4 大面板：概览/链路/成本/错误，Prometheus + MySQL 双数据源）、
+> BadCase 自动采集（定时扫描 ERROR + DISLIKE 记录，去重写入 agent_badcases 表），共 7 条 ADR（ADR-OBS-01~07）。
+> 预期收益：故障定位从分钟级降到秒级、P99 长尾延迟可视化、成本异常实时告警、BadCase 闭环驱动迭代。
 
 ### 6.2 待写的文档（按最终顺序）
 
 | 写作顺序 | 方向 | ADR 前缀 | 优先级 | 说明 |
 |---|---|---|---|---|
-| 12 | LLM 网关与多模型路由 | GW | 中 | 工程基础设施，**下一个** |
-| 13 | 可观测性 | OBS | 高 | 全链路追踪监控 |
-| 14 | 分层部署与在离线协同 | DEPLOY | 中 | 在线/异步/离线分层 + 协同链路 |
+| 14 | 分层部署与在离线协同 | DEPLOY | 中 | 在线/异步/离线分层 + 协同链路，**下一个** |
 | 15 | 性能 SLO 工程 | SLO | 高 | P99/TTFT SLO + 延迟预算分配 |
 | 16 | 评估体系 | EVAL | 高 | 系统化评估（含 BadCase 数据飞轮） |
 
