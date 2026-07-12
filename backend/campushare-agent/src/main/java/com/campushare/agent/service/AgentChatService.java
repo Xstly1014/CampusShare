@@ -843,6 +843,18 @@ public class AgentChatService {
             turn.setInputTokens(0);
             turn.setOutputTokens(0);
 
+            if (ctx.routeDecision() != null && ctx.routeDecision().getNavigateRoute() != null) {
+                try {
+                    Map<String, String> navPayload = new HashMap<>();
+                    navPayload.put("route", ctx.routeDecision().getNavigateRoute());
+                    String navLabel = buildNavigateLabel(ctx.intentResult(), ctx.routeDecision().getNavigateRoute());
+                    navPayload.put("label", navLabel);
+                    turn.setNavigateInfo(objectMapper.writeValueAsString(navPayload));
+                } catch (Exception e) {
+                    log.warn("Failed to serialize navigate info", e);
+                }
+            }
+
             session.setMessageCount(turn.getTurnNumber());
             session.setLastMessageAt(LocalDateTime.now());
             if (session.getLlmModel() == null) {

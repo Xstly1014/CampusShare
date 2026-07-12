@@ -67,6 +67,9 @@ public class AgentTurn implements Serializable {
     /** 是否被中断（0-否，1-是） */
     private Integer interrupted;
 
+    /** 导航信息JSON（NAVIGATE意图时存储route和label） */
+    private String navigateInfo;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

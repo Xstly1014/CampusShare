@@ -145,6 +145,7 @@ public class AgentSessionServiceImpl implements AgentSessionService {
                 .status(turn.getStatus())
                 .createdAt(turn.getCreatedAt())
                 .refs(buildRefsFromContext(turn.getRetrievalContext()))
+                .navigate(buildNavigateFromInfo(turn.getNavigateInfo()))
                 .build();
     }
 
@@ -178,6 +179,19 @@ public class AgentSessionServiceImpl implements AgentSessionService {
             return refs.isEmpty() ? null : refs;
         } catch (Exception e) {
             log.warn("Failed to build refs from retrievalContext: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private Map<String, String> buildNavigateFromInfo(String navigateInfoJson) {
+        if (navigateInfoJson == null || navigateInfoJson.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(navigateInfoJson,
+                    objectMapper.getTypeFactory().constructMapType(Map.class, String.class, String.class));
+        } catch (Exception e) {
+            log.warn("Failed to build navigate from navigateInfo: {}", e.getMessage());
             return null;
         }
     }
