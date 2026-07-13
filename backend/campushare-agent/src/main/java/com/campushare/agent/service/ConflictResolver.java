@@ -3,15 +3,22 @@ package com.campushare.agent.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campushare.agent.entity.UserMemory;
 import com.campushare.agent.entity.UserMemoryHistory;
+import com.campushare.agent.llm.DeepSeekClient;
+import com.campushare.agent.llm.DeepSeekRequest;
+import com.campushare.agent.llm.DeepSeekResponse;
 import com.campushare.agent.mapper.UserMemoryHistoryMapper;
 import com.campushare.agent.mapper.UserMemoryMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -20,8 +27,46 @@ public class ConflictResolver {
 
     private final UserMemoryMapper userMemoryMapper;
     private final UserMemoryHistoryMapper historyMapper;
+    private final DeepSeekClient deepSeekClient;
+    private final ObjectMapper objectMapper;
 
     private static final double CONFLICT_SIMILARITY_THRESHOLD = 0.3;
+
+    @Value("${app.memory-conflict.llm-arbitration-enabled:true}")
+    private boolean llmArbitrationEnabled;
+
+    private static final String CONFLICT_ARBITRATION_PROMPT = """
+            你是一个记忆冲突仲裁专家。请分析以下两个用户记忆是否冲突，如果冲突，请决定保留哪个。
+
+            现有记忆:
+            - 类型: %s
+            - 键: %s
+            - 值: %s
+            - 来源: %s
+            - 置信度: %s
+            - 更新时间: %s
+
+            新记忆:
+            - 类型: %s
+            - 键: %s
+            - 值: %s
+            - 来源: %s
+            - 置信度: %s
+            - 更新时间: %s
+
+            请输出JSON格式的仲裁结果:
+            {
+                "isConflict": true/false,
+                "keepExisting": true/false,
+                "reason": "简要说明原因"
+            }
+
+            规则:
+            1. EXPLICIT(用户明确声明)优先于INFERRED(行为推断)
+            2. 相同来源时，置信度高的优先
+            3. 相同来源和置信度时，较新的优先
+            4. 如果内容语义相同或高度相似，则不算冲突
+            """.trim();
 
     public void resolveOnInsert(UserMemory newMemory) {
         if (newMemory == null || newMemory.getUserId() == null
@@ -46,6 +91,30 @@ public class ConflictResolver {
     }
 
     private void resolveConflict(UserMemory existing, UserMemory incoming) {
+        if (llmArbitrationEnabled) {
+            try {
+                Map<String, Object> arbitrationResult = arbitrateWithLlm(existing, incoming);
+                boolean isConflict = arbitrationResult.get("isConflict") != null
+                        && (Boolean) arbitrationResult.get("isConflict");
+                
+                if (isConflict) {
+                    boolean keepExisting = arbitrationResult.get("keepExisting") != null
+                            && (Boolean) arbitrationResult.get("keepExisting");
+                    String reason = (String) arbitrationResult.get("reason");
+                    
+                    if (keepExisting) {
+                        markConflicting(incoming, "LLM arbitration: keep existing, reason=" + reason);
+                    } else {
+                        markConflicting(existing, "LLM arbitration: keep incoming, reason=" + reason);
+                    }
+                    return;
+                }
+            } catch (Exception e) {
+                log.warn("LLM arbitration failed, falling back to rule-based resolution: userId={}, key={}",
+                        existing.getUserId(), existing.getMemoryKey(), e);
+            }
+        }
+
         String existingSource = existing.getSource();
         String incomingSource = incoming.getSource();
         boolean existingExplicit = "EXPLICIT".equals(existingSource);
@@ -64,6 +133,59 @@ public class ConflictResolver {
         } else {
             resolveImplicitConflict(existing, incoming);
         }
+    }
+
+    private Map<String, Object> arbitrateWithLlm(UserMemory existing, UserMemory incoming) {
+        String prompt = String.format(CONFLICT_ARBITRATION_PROMPT,
+                existing.getMemoryType(), existing.getMemoryKey(),
+                existing.getMemoryValue(), existing.getSource(),
+                existing.getConfidence(), existing.getUpdatedAt(),
+                incoming.getMemoryType(), incoming.getMemoryKey(),
+                incoming.getMemoryValue(), incoming.getSource(),
+                incoming.getConfidence(), incoming.getUpdatedAt());
+
+        try {
+            List<DeepSeekRequest.Message> messages = List.of(
+                    DeepSeekRequest.Message.builder()
+                            .role("system")
+                            .content("你是一个专业的记忆冲突仲裁专家，只输出JSON格式的仲裁结果。")
+                            .build(),
+                    DeepSeekRequest.Message.builder()
+                            .role("user")
+                            .content(prompt)
+                            .build()
+            );
+
+            DeepSeekResponse response = deepSeekClient.chatCompletion(messages).block();
+            if (response != null && response.getChoices() != null && !response.getChoices().isEmpty()) {
+                String content = response.getChoices().get(0).getMessage().getContent();
+                if (content != null && !content.isEmpty()) {
+                    String json = content.trim();
+                    if (json.startsWith("```")) {
+                        int start = json.indexOf('\n');
+                        int end = json.lastIndexOf("```");
+                        if (start > 0 && end > start) {
+                            json = json.substring(start + 1, end).trim();
+                        }
+                    }
+                    try {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> result = objectMapper.readValue(json, Map.class);
+                        return result;
+                    } catch (Exception e) {
+                        log.warn("Failed to parse LLM arbitration result: {}", content, e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("LLM arbitration call failed", e);
+        }
+
+        Map<String, Object> fallback = new HashMap<>();
+        fallback.put("isConflict", true);
+        fallback.put("keepExisting", true);
+        fallback.put("reason", "LLM unavailable, fallback to keep existing");
+        return fallback;
     }
 
     private boolean isValueConflicting(String val1, String val2) {

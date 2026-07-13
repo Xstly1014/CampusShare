@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <springProperty name="appName" source="spring.application.name" defaultValue="campushare-agent"/>
+    <springProperty name="logLevel" source="logging.level.root" defaultValue="INFO"/>
+    <springProperty name="logPath" source="logging.file.path" defaultValue="./logs"/>
+
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+    <property name="JSON_TIMESTAMP_PATTERN" value="yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timestampPattern>${JSON_TIMESTAMP_PATTERN}</timestampPattern>
+            <customFields>{"app":"${appName}","environment":"${spring.profiles.active}"}</customFields>
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <level>level</level>
+                <thread>thread</thread>
+                <logger>logger</logger>
+                <message>message</message>
+                <stackTrace>stack_trace</stackTrace>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${logPath}/campushare-agent.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${logPath}/campushare-agent.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timestampPattern>${JSON_TIMESTAMP_PATTERN}</timestampPattern>
+            <customFields>{"app":"${appName}","environment":"${spring.profiles.active}"}</customFields>
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <level>level</level>
+                <thread>thread</thread>
+                <logger>logger</logger>
+                <message>message</message>
+                <stackTrace>stack_trace</stackTrace>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${logPath}/campushare-agent-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${logPath}/campushare-agent-error.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timestampPattern>${JSON_TIMESTAMP_PATTERN}</timestampPattern>
+            <customFields>{"app":"${appName}","environment":"${spring.profiles.active}"}</customFields>
+        </encoder>
+    </appender>
+
+    <logger name="com.campushare.agent" level="${logLevel}" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </logger>
+
+    <logger name="io.micrometer" level="WARN"/>
+    <logger name="io.resilience4j" level="WARN"/>
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="com.baomidou.mybatisplus" level="WARN"/>
+
+    <root level="${logLevel}">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </root>
+
+</configuration>
