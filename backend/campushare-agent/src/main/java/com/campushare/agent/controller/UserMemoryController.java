@@ -1,6 +1,6 @@
 package com.campushare.agent.controller;
 
-import com.campushare.agent.dto.Result;
+import com.campushare.common.result.Result;
 import com.campushare.agent.entity.UserMemory;
 import com.campushare.agent.service.InferredBehaviorService;
 import com.campushare.agent.service.LongTermMemoryService;
@@ -26,22 +26,22 @@ public class UserMemoryController {
     @GetMapping("/user/{userId}")
     public Result<List<UserMemory>> getUserMemories(@PathVariable String userId) {
         try {
-            List<UserMemory> memories = memoryRetrievalService.getAllMemories(userId);
+            List<UserMemory> memories = longTermMemoryService.getAllMemories(userId);
             return Result.success(memories);
         } catch (Exception e) {
             log.error("Failed to get user memories: userId={}", userId, e);
-            return Result.fail("获取记忆失败");
+            return Result.error("获取记忆失败");
         }
     }
 
     @GetMapping("/user/{userId}/active")
     public Result<List<UserMemory>> getActiveMemories(@PathVariable String userId) {
         try {
-            List<UserMemory> memories = memoryRetrievalService.getActiveMemories(userId);
+            List<UserMemory> memories = longTermMemoryService.getActiveMemories(userId);
             return Result.success(memories);
         } catch (Exception e) {
             log.error("Failed to get active memories: userId={}", userId, e);
-            return Result.fail("获取活跃记忆失败");
+            return Result.error("获取活跃记忆失败");
         }
     }
 
@@ -50,11 +50,11 @@ public class UserMemoryController {
             @PathVariable String userId,
             @RequestParam String query) {
         try {
-            List<UserMemory> memories = memoryRetrievalService.searchMemories(userId, query);
+            List<UserMemory> memories = longTermMemoryService.searchMemories(userId, query);
             return Result.success(memories);
         } catch (Exception e) {
             log.error("Failed to search memories: userId={}, query={}", userId, query, e);
-            return Result.fail("搜索记忆失败");
+            return Result.error("搜索记忆失败");
         }
     }
 
@@ -75,10 +75,10 @@ public class UserMemoryController {
             if (memory != null) {
                 return Result.success(memory);
             }
-            return Result.fail("创建记忆失败");
+            return Result.error("创建记忆失败");
         } catch (Exception e) {
             log.error("Failed to create memory: userId={}, key={}", userId, request.getKey(), e);
-            return Result.fail("创建记忆失败");
+            return Result.error("创建记忆失败");
         }
     }
 
@@ -100,10 +100,10 @@ public class UserMemoryController {
             if (memory != null) {
                 return Result.success(memory);
             }
-            return Result.fail("更新记忆失败");
+            return Result.error("更新记忆失败");
         } catch (Exception e) {
             log.error("Failed to update memory: userId={}, key={}", userId, key, e);
-            return Result.fail("更新记忆失败");
+            return Result.error("更新记忆失败");
         }
     }
 
@@ -112,11 +112,11 @@ public class UserMemoryController {
             @PathVariable String userId,
             @PathVariable String key) {
         try {
-            memoryRetrievalService.deleteMemory(userId, key);
+            longTermMemoryService.deleteMemory(userId, key);
             return Result.success();
         } catch (Exception e) {
             log.error("Failed to delete memory: userId={}, key={}", userId, key, e);
-            return Result.fail("删除记忆失败");
+            return Result.error("删除记忆失败");
         }
     }
 
@@ -129,10 +129,10 @@ public class UserMemoryController {
             if (memory != null) {
                 return Result.success(memory);
             }
-            return Result.fail("未找到可恢复的记忆");
+            return Result.error("未找到可恢复的记忆");
         } catch (Exception e) {
             log.error("Failed to recover memory: userId={}, key={}", userId, key, e);
-            return Result.fail("恢复记忆失败");
+            return Result.error("恢复记忆失败");
         }
     }
 
@@ -143,7 +143,7 @@ public class UserMemoryController {
             return Result.success(profile);
         } catch (Exception e) {
             log.error("Failed to get user profile: userId={}", userId, e);
-            return Result.fail("获取用户画像失败");
+            return Result.error("获取用户画像失败");
         }
     }
 
