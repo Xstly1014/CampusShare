@@ -24,37 +24,37 @@ public class SecurityAuditLog {
 
     private String turnId;
 
-    @Column("audit_type")
+    @TableField("audit_type")
     private String auditType;
 
-    @Column("audit_level")
+    @TableField("audit_level")
     private String auditLevel;
 
-    @Column("input_text")
+    @TableField("input_text")
     private String inputText;
 
-    @Column("output_text")
+    @TableField("output_text")
     private String outputText;
 
-    @Column("detected_threat")
+    @TableField("detected_threat")
     private String detectedThreat;
 
-    @Column("action_taken")
+    @TableField("action_taken")
     private String actionTaken;
 
-    @Column("confidence")
+    @TableField("confidence")
     private Double confidence;
 
-    @Column("tool_name")
+    @TableField("tool_name")
     private String toolName;
 
-    @Column("tool_parameters")
+    @TableField("tool_parameters")
     private String toolParameters;
 
-    @Column("blocked")
+    @TableField("blocked")
     private Boolean blocked;
 
-    @Column("error_message")
+    @TableField("error_message")
     private String errorMessage;
 
     @TableField(fill = FieldFill.INSERT)

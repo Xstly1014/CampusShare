@@ -91,7 +91,7 @@ public class JailbreakDetector {
         result.setThreatLevel(calculateThreatLevel(result.getTotalScore()));
         result.setBlocked(result.getThreatLevel().ordinal() >= ThreatLevel.MEDIUM.ordinal());
 
-        if (result.getBlocked()) {
+        if (result.isBlocked()) {
             log.warn("Jailbreak detected: layer1={}, layer2={}, layer3={}, total={}, threat={}",
                     layer1Score, layer2Score, layer3Score, result.getTotalScore(), result.getThreatLevel());
         }

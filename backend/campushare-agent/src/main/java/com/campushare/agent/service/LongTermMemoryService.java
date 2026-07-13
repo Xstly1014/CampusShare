@@ -687,4 +687,56 @@ public class LongTermMemoryService {
             }
         }).subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
+
+    public List<UserMemory> getAllMemories(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return Collections.emptyList();
+        }
+        return userMemoryMapper.selectList(new LambdaQueryWrapper<UserMemory>()
+                .eq(UserMemory::getUserId, userId)
+                .isNull(UserMemory::getDeletedAt)
+                .orderByDesc(UserMemory::getUpdatedAt));
+    }
+
+    public List<UserMemory> getActiveMemories(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return Collections.emptyList();
+        }
+        return userMemoryMapper.selectList(new LambdaQueryWrapper<UserMemory>()
+                .eq(UserMemory::getUserId, userId)
+                .isNull(UserMemory::getDeletedAt)
+                .gt(UserMemory::getConfidence, BigDecimal.ZERO)
+                .orderByDesc(UserMemory::getConfidence));
+    }
+
+    public List<UserMemory> searchMemories(String userId, String query) {
+        if (userId == null || userId.isBlank() || query == null || query.isBlank()) {
+            return Collections.emptyList();
+        }
+        return userMemoryMapper.selectList(new LambdaQueryWrapper<UserMemory>()
+                .eq(UserMemory::getUserId, userId)
+                .isNull(UserMemory::getDeletedAt)
+                .and(w -> w.like(UserMemory::getMemoryKey, query)
+                        .or()
+                        .like(UserMemory::getMemoryValue, query))
+                .orderByDesc(UserMemory::getUpdatedAt));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteMemory(String userId, String memoryKey) {
+        if (userId == null || userId.isBlank() || memoryKey == null || memoryKey.isBlank()) {
+            return;
+        }
+        UserMemory memory = userMemoryMapper.selectOne(new LambdaQueryWrapper<UserMemory>()
+                .eq(UserMemory::getUserId, userId)
+                .eq(UserMemory::getMemoryKey, memoryKey)
+                .isNull(UserMemory::getDeletedAt));
+        if (memory != null) {
+            memory.setDeletedAt(LocalDateTime.now());
+            memory.setConfidence(BigDecimal.ZERO);
+            userMemoryMapper.updateById(memory);
+            logHistory(memory, "DELETE", "user request");
+            asyncDeleteVector(memory.getId());
+        }
+    }
 }

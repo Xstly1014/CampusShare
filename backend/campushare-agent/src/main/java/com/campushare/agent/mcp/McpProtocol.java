@@ -20,6 +20,7 @@ public final class McpProtocol {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Request {
+        @Builder.Default
         private String jsonrpc = "2.0";
         private String id;
         private String method;
@@ -31,6 +32,7 @@ public final class McpProtocol {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Response {
+        @Builder.Default
         private String jsonrpc = "2.0";
         private String id;
         private Object result;
@@ -52,6 +54,7 @@ public final class McpProtocol {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Notification {
+        @Builder.Default
         private String jsonrpc = "2.0";
         private String method;
         private Map<String, Object> params;

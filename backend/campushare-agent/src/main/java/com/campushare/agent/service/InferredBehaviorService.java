@@ -108,18 +108,7 @@ public class InferredBehaviorService {
 
     private void logHistory(UserMemory memory, String action, String reason) {
         try {
-            UserMemoryHistory history = com.campushare.agent.entity.UserMemoryHistory.builder()
-                    .userId(memory.getUserId())
-                    .memoryType(memory.getMemoryType())
-                    .memoryKey(memory.getMemoryKey())
-                    .memoryValue(memory.getMemoryValue())
-                    .confidence(memory.getConfidence())
-                    .source(memory.getSource())
-                    .action(action)
-                    .reason(reason)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            evidenceMapper.getClass().getPackage().getName();
+            longTermMemoryService.logHistory(memory, action, reason);
         } catch (Exception e) {
             log.warn("Failed to log memory history", e);
         }

@@ -18,64 +18,64 @@ public class TraceSpan {
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 
-    @Column("trace_id")
+    @TableField("trace_id")
     private String traceId;
 
-    @Column("span_id")
+    @TableField("span_id")
     private String spanId;
 
-    @Column("parent_span_id")
+    @TableField("parent_span_id")
     private String parentSpanId;
 
-    @Column("session_id")
+    @TableField("session_id")
     private String sessionId;
 
-    @Column("turn_id")
+    @TableField("turn_id")
     private String turnId;
 
-    @Column("user_id")
+    @TableField("user_id")
     private String userId;
 
-    @Column("span_name")
+    @TableField("span_name")
     private String spanName;
 
-    @Column("span_type")
+    @TableField("span_type")
     private String spanType;
 
-    @Column("start_time")
+    @TableField("start_time")
     private LocalDateTime startTime;
 
-    @Column("end_time")
+    @TableField("end_time")
     private LocalDateTime endTime;
 
-    @Column("duration_ms")
+    @TableField("duration_ms")
     private Long durationMs;
 
-    @Column("status")
+    @TableField("status")
     private String status;
 
-    @Column("error_message")
+    @TableField("error_message")
     private String errorMessage;
 
-    @Column("model_name")
+    @TableField("model_name")
     private String modelName;
 
-    @Column("prompt_tokens")
+    @TableField("prompt_tokens")
     private Integer promptTokens;
 
-    @Column("completion_tokens")
+    @TableField("completion_tokens")
     private Integer completionTokens;
 
-    @Column("total_tokens")
+    @TableField("total_tokens")
     private Integer totalTokens;
 
-    @Column("intent")
+    @TableField("intent")
     private String intent;
 
-    @Column("tool_name")
+    @TableField("tool_name")
     private String toolName;
 
-    @Column("extra_data")
+    @TableField("extra_data")
     private String extraData;
 
     @TableField(fill = FieldFill.INSERT)
