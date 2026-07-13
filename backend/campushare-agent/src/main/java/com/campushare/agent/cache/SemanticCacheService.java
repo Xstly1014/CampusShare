@@ -17,18 +17,25 @@ import java.util.*;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SemanticCacheService {
 
     private final StringRedisTemplate redisTemplate;
     private final EmbeddingClient embeddingClient;
     private final ObjectMapper objectMapper;
-
-    @Qualifier("semanticCache")
     private final Cache<String, Object> localSemanticCache;
-
-    @Qualifier("embeddingCache")
     private final Cache<String, float[]> localEmbeddingCache;
+
+    public SemanticCacheService(StringRedisTemplate redisTemplate,
+                                EmbeddingClient embeddingClient,
+                                ObjectMapper objectMapper,
+                                @Qualifier("semanticCache") Cache<String, Object> localSemanticCache,
+                                @Qualifier("embeddingCache") Cache<String, float[]> localEmbeddingCache) {
+        this.redisTemplate = redisTemplate;
+        this.embeddingClient = embeddingClient;
+        this.objectMapper = objectMapper;
+        this.localSemanticCache = localSemanticCache;
+        this.localEmbeddingCache = localEmbeddingCache;
+    }
 
     private static final String SEMANTIC_CACHE_PREFIX = "agent:semantic:";
     private static final String EMBEDDING_CACHE_PREFIX = "agent:embedding:";
