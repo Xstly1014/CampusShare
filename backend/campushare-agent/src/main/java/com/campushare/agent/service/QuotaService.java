@@ -19,6 +19,7 @@ public class QuotaService {
 
     private static final String QUOTA_PREFIX = "agent:quota:";
     private static final String COST_PREFIX = "agent:cost:";
+    private static final String COST_ATTRIBUTION_PREFIX = "agent:cost_attr:";
 
     private static final Map<String, QuotaConfig> DEFAULT_QUOTAS = Map.of(
             "FREE", new QuotaConfig(100000, 1000000, 1000, 100),
@@ -53,6 +54,12 @@ public class QuotaService {
 
     public void consumeQuota(String userId, int promptTokens, int completionTokens,
                              String model, String provider) {
+        consumeQuota(userId, null, null, promptTokens, completionTokens, model, provider);
+    }
+
+    public void consumeQuota(String userId, String sessionId, String intent,
+                             int promptTokens, int completionTokens,
+                             String model, String provider) {
         int totalTokens = promptTokens + completionTokens;
         if (totalTokens <= 0) return;
 
@@ -64,9 +71,10 @@ public class QuotaService {
 
         BigDecimal cost = calculateCost(promptTokens, completionTokens, model);
         recordCost(userId, cost, model, provider);
+        recordCostAttribution(userId, sessionId, intent, model, cost, getTodayStr());
 
-        log.debug("Quota consumed: userId={}, prompt={}, completion={}, cost={}",
-                userId, promptTokens, completionTokens, cost);
+        log.debug("Quota consumed: userId={}, sessionId={}, intent={}, prompt={}, completion={}, cost={}",
+                userId, sessionId, intent, promptTokens, completionTokens, cost);
     }
 
     public QuotaStatus getQuotaStatus(String userId) {
@@ -117,6 +125,47 @@ public class QuotaService {
         redisTemplate.opsForValue().increment(dailyCostKey, cost.doubleValue());
         redisTemplate.opsForValue().increment(monthlyCostKey, cost.doubleValue());
         redisTemplate.opsForValue().increment(modelCostKey, cost.doubleValue());
+    }
+
+    private void recordCostAttribution(String userId, String sessionId, String intent,
+                                       String model, BigDecimal cost, String dayStr) {
+        double costValue = cost.doubleValue();
+
+        String userDayKey = COST_ATTRIBUTION_PREFIX + "user:day:" + userId + ":" + dayStr;
+        String sessionDayKey = sessionId != null ? COST_ATTRIBUTION_PREFIX + "session:day:" + sessionId + ":" + dayStr : null;
+        String intentDayKey = intent != null ? COST_ATTRIBUTION_PREFIX + "intent:day:" + intent + ":" + dayStr : null;
+        String modelDayKey = model != null ? COST_ATTRIBUTION_PREFIX + "model:day:" + model + ":" + dayStr : null;
+
+        redisTemplate.opsForValue().increment(userDayKey, costValue);
+        if (sessionDayKey != null) {
+            redisTemplate.opsForValue().increment(sessionDayKey, costValue);
+        }
+        if (intentDayKey != null) {
+            redisTemplate.opsForValue().increment(intentDayKey, costValue);
+        }
+        if (modelDayKey != null) {
+            redisTemplate.opsForValue().increment(modelDayKey, costValue);
+        }
+
+        String userTotalKey = COST_ATTRIBUTION_PREFIX + "user:total:" + userId;
+        redisTemplate.opsForValue().increment(userTotalKey, costValue);
+    }
+
+    public Map<String, Object> getCostAttribution(String userId, String dayStr) {
+        Map<String, Object> result = new java.util.HashMap<>();
+
+        String userDayKey = COST_ATTRIBUTION_PREFIX + "user:day:" + userId + ":" + dayStr;
+        String userTotalKey = COST_ATTRIBUTION_PREFIX + "user:total:" + userId;
+
+        result.put("userDailyCost", getDouble(userDayKey, 0.0));
+        result.put("userTotalCost", getDouble(userTotalKey, 0.0));
+
+        return result;
+    }
+
+    private double getDouble(String key, double defaultValue) {
+        String value = redisTemplate.opsForValue().get(key);
+        return value != null ? Double.parseDouble(value) : defaultValue;
     }
 
     private String getUserTier(String userId) {

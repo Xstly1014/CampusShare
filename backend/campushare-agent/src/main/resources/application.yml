@@ -197,6 +197,43 @@ app:
       gray-ratio: 100
       fallback-on-db-error: true
 
+  eval:
+    llm-judge-enabled: true
+
+  slo:
+    enabled: true
+    objectives:
+      chat:
+        name: Chat Service
+        description: Agent chat response SLO
+        availability: 99.9
+        latency-p50-ms: 800
+        latency-p95-ms: 3000
+        latency-p99-ms: 8000
+        error-rate: 0.01
+        burn-rate-threshold: 5
+        window-minutes: 5
+      intent-recognition:
+        name: Intent Recognition
+        description: Intent classification SLO
+        availability: 99.95
+        latency-p50-ms: 200
+        latency-p95-ms: 500
+        latency-p99-ms: 1000
+        error-rate: 0.005
+        burn-rate-threshold: 5
+        window-minutes: 5
+      retrieval:
+        name: RAG Retrieval
+        description: Knowledge retrieval SLO
+        availability: 99.9
+        latency-p50-ms: 300
+        latency-p95-ms: 1000
+        latency-p99-ms: 2000
+        error-rate: 0.01
+        burn-rate-threshold: 5
+        window-minutes: 5
+
 logging:
   level:
     root: INFO

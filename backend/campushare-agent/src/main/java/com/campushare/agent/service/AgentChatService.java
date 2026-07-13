@@ -10,11 +10,13 @@ import com.campushare.agent.dto.RouteDecision;
 import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
 import com.campushare.agent.entity.PromptVersion;
+import com.campushare.agent.entity.TraceSpan;
 import com.campushare.agent.enums.Intent;
 import com.campushare.agent.enums.SessionStatus;
 import com.campushare.agent.llm.DeepSeekClient;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
+import com.campushare.agent.service.SloService;
 import com.campushare.agent.tool.ToolExecutor;
 import com.campushare.agent.tool.ToolRegistry;
 import com.campushare.agent.tool.ToolResult;
@@ -85,6 +87,8 @@ public class AgentChatService {
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
+    private final TraceService traceService;
+    private final SloService sloService;
 
     private volatile Counter violationCounter;
     private volatile Counter injectionDetectedCounter;
@@ -188,9 +192,12 @@ public class AgentChatService {
                                                 if (signalType == SignalType.ON_COMPLETE) {
                                                     completeTurn(ctx.turn(), ctx.session(), content, elapsed,
                                                             totalUsageRef.get(), ctx.inputTokens(), ctx.retrievalContext(),
-                                                            ctx.intentResult(), ctx.promptVersion());
+                                                            ctx.intentResult(), ctx.promptVersion(), ctx.rootSpan());
                                                 } else if (signalType == SignalType.ON_ERROR) {
                                                     errorTurn(ctx.turn(), "Stream terminated with error");
+                                                    if (ctx.rootSpan() != null) {
+                                                        traceService.endSpanWithError(ctx.rootSpan(), "Stream terminated with error");
+                                                    }
                                                 }
                                             }).subscribeOn(Schedulers.boundedElastic()).subscribe();
                                         });
@@ -465,9 +472,20 @@ public class AgentChatService {
 
     private ChatContext prepareContext(String userId, ChatRequest request) {
         // MDC 链路追踪：traceId 贯穿意图识别→检索→prompt 装配日志（ADR-030）
-        MDC.put("traceId", UUID.randomUUID().toString().substring(0, 8));
+        String traceId = traceService.generateTraceId();
+        MDC.put("traceId", traceId.substring(0, 8));
+
+        // 启动根 span
+        TraceSpan rootSpan = traceService.startSpan(traceId, "chat", "CHAT");
+
         try {
             AgentSession session = getOrCreateSession(userId, request);
+            rootSpan.setSessionId(session.getId());
+            rootSpan.setUserId(userId);
+            traceService.updateById(rootSpan);
+
+            // ① 意图识别 span
+            TraceSpan intentSpan = traceService.startSpan(traceId, rootSpan.getSpanId(), "intent_recognition", "INTENT");
 
             // 状态转移：INIT → ACTIVE（首条消息时触发，ADR-064）
             SessionStatus currentStatus = sessionStateMachine.getCurrentStatus(session.getId());
@@ -480,6 +498,8 @@ public class AgentChatService {
 
             // ① 意图识别（三层漏斗：规则 → LLM → Embedding → SEARCH 兜底）
             IntentResult intentResult = recognizeIntent(userMessage, session.getId());
+            traceService.recordIntent(intentSpan, intentResult.getIntent().name());
+            traceService.endSpan(intentSpan);
 
             // ①.5 学校名称规则预提取 + 别名规范化（不依赖 LLM，确保学校过滤一定生效）
             // LLM 可能输出"北大"等简称导致 ILIKE 过滤失败，此处用正则从原始 query 中直接提取
@@ -518,7 +538,7 @@ public class AgentChatService {
                 intentMetrics.recordRoute(true, intentResult.getIntent().name());
                 AgentTurn turn = createTurn(session, userMessage, intentResult);
                 return new ChatContext(session, null, turn, System.currentTimeMillis(),
-                        0, null, intentResult, shortCircuit.get(), null, null);
+                        0, null, intentResult, shortCircuit.get(), null, null, traceId, rootSpan);
             }
 
             // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索，意图驱动检索策略 ADR-024）
@@ -526,6 +546,9 @@ public class AgentChatService {
             String retrieveQuery = intentResult.getRewrittenQuery() != null
                     ? intentResult.getRewrittenQuery()
                     : userMessage;
+
+            // RAG 检索 span
+            TraceSpan ragSpan = traceService.startSpan(traceId, rootSpan.getSpanId(), "rag_retrieval", "RAG");
 
             // CLARIFY 意图时加载上一轮检索结果，用于上下文合并（ADR-026）
             List<RetrievalResult> previousResults = null;
@@ -535,6 +558,7 @@ public class AgentChatService {
 
             List<RetrievalResult> retrievalResults = retrievalService.retrieve(
                     retrieveQuery, intentResult, previousResults).block();
+            traceService.endSpan(ragSpan);
 
             Set<Long> usedMemoryIds = new HashSet<>();
 
@@ -586,7 +610,7 @@ public class AgentChatService {
             String promptVersionStr = promptVersion != null ? promptVersion.getVersion() : null;
             return new ChatContext(session, assembled.messages(), turn, System.currentTimeMillis(),
                     assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr,
-                    allResults);
+                    allResults, traceId, rootSpan);
         } finally {
             MDC.remove("traceId");
         }
@@ -764,7 +788,7 @@ public class AgentChatService {
 
     private void completeTurn(AgentTurn turn, AgentSession session, String content, long elapsedMs,
             DeepSeekResponse.Usage usage, int inputTokens, String retrievalContextJson,
-            IntentResult intentResult, String promptVersion) {
+            IntentResult intentResult, String promptVersion, com.campushare.agent.entity.TraceSpan rootSpan) {
         try {
             int completionTokens;
             int totalTokens;
@@ -825,8 +849,25 @@ public class AgentChatService {
                     "Turn completed: sessionId={}, turn={}, inputTokens={}, outputTokens={}, totalTokens={}, elapsedMs={}, violation={}",
                     session.getId(), turn.getTurnNumber(), inputTokens, completionTokens, totalTokens, elapsedMs,
                     violation);
+
+            sloService.recordLatency("chat", elapsedMs, true);
+            if (intentResult != null) {
+                sloService.recordLatency("intent-recognition", elapsedMs, true);
+            }
+
+            if (rootSpan != null) {
+                traceService.recordLlmUsage(rootSpan, modelName, inputTokens, completionTokens, totalTokens);
+                traceService.endSpan(rootSpan);
+            }
         } catch (Exception e) {
             log.error("Failed to complete turn {}", turn.getId(), e);
+            sloService.recordError("chat");
+            if (intentResult != null) {
+                sloService.recordError("intent-recognition");
+            }
+            if (rootSpan != null) {
+                traceService.endSpanWithError(rootSpan, e.getMessage());
+            }
         }
     }
 
@@ -876,8 +917,15 @@ public class AgentChatService {
             log.info("Short-circuit turn completed: sessionId={}, turn={}, elapsedMs={}, intent={}",
                     session.getId(), turn.getTurnNumber(), elapsedMs,
                     ctx.intentResult() != null ? ctx.intentResult().getIntent() : "null");
+
+            if (ctx.rootSpan() != null) {
+                traceService.endSpan(ctx.rootSpan());
+            }
         } catch (Exception e) {
             log.error("Failed to complete short-circuit turn {}", ctx.turn().getId(), e);
+            if (ctx.rootSpan() != null) {
+                traceService.endSpanWithError(ctx.rootSpan(), e.getMessage());
+            }
         }
     }
 
@@ -1051,7 +1099,7 @@ public class AgentChatService {
     private record ChatContext(AgentSession session, List<DeepSeekRequest.Message> messages,
             AgentTurn turn, long startTime, int inputTokens, String retrievalContext,
             IntentResult intentResult, RouteDecision routeDecision, String promptVersion,
-            List<RetrievalResult> retrievalResults) {
+            List<RetrievalResult> retrievalResults, String traceId, com.campushare.agent.entity.TraceSpan rootSpan) {
     }
 
     /**

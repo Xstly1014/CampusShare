@@ -1,10 +1,12 @@
 package com.campushare.agent.cache;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.campushare.agent.llm.EmbeddingClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -22,6 +24,12 @@ public class SemanticCacheService {
     private final EmbeddingClient embeddingClient;
     private final ObjectMapper objectMapper;
 
+    @Qualifier("semanticCache")
+    private final Cache<String, Object> localSemanticCache;
+
+    @Qualifier("embeddingCache")
+    private final Cache<String, float[]> localEmbeddingCache;
+
     private static final String SEMANTIC_CACHE_PREFIX = "agent:semantic:";
     private static final String EMBEDDING_CACHE_PREFIX = "agent:embedding:";
     private static final Duration SEMANTIC_CACHE_TTL = Duration.ofHours(24);
@@ -31,24 +39,47 @@ public class SemanticCacheService {
 
     public Mono<CachedResult> getSemanticCache(String query) {
         return Mono.fromCallable(() -> {
-            Set<String> keys = redisTemplate.keys(SEMANTIC_CACHE_PREFIX + "*");
-            if (keys == null || keys.isEmpty()) {
-                return null;
+            String cacheKey = generateCacheKey(query);
+
+            Object localResult = localSemanticCache.getIfPresent(cacheKey);
+            if (localResult != null) {
+                log.debug("L1 semantic cache hit: key={}", cacheKey);
+                return new CachedResult(localResult, 1.0);
             }
 
-            float[] queryEmbedding = embeddingClient.embed(query).block();
+            float[] queryEmbedding = getEmbedding(query);
             if (queryEmbedding == null || queryEmbedding.length == 0) {
                 return null;
             }
 
             double highestSimilarity = 0;
-            String bestKey = null;
+            String bestRedisKey = null;
             Object bestValue = null;
+
+            Map<String, float[]> localEmbeddings = new HashMap<>();
+            for (Map.Entry<String, float[]> entry : localEmbeddingCache.asMap().entrySet()) {
+                double similarity = cosineSimilarity(queryEmbedding, entry.getValue());
+                if (similarity > highestSimilarity && similarity >= SEMANTIC_SIMILARITY_THRESHOLD) {
+                    highestSimilarity = similarity;
+                    String semanticKey = entry.getKey();
+                    Object localSemantic = localSemanticCache.getIfPresent(semanticKey);
+                    if (localSemantic != null) {
+                        log.debug("L1 semantic cache hit (via embedding): key={}, similarity={}", semanticKey, highestSimilarity);
+                        return new CachedResult(localSemantic, highestSimilarity);
+                    }
+                    bestRedisKey = SEMANTIC_CACHE_PREFIX + semanticKey;
+                }
+            }
+
+            Set<String> keys = redisTemplate.keys(SEMANTIC_CACHE_PREFIX + "*");
+            if (keys == null || keys.isEmpty()) {
+                return null;
+            }
 
             for (String key : keys) {
                 try {
-                    String cacheKey = key.substring(SEMANTIC_CACHE_PREFIX.length());
-                    String embeddingKey = EMBEDDING_CACHE_PREFIX + cacheKey;
+                    String redisCacheKey = key.substring(SEMANTIC_CACHE_PREFIX.length());
+                    String embeddingKey = EMBEDDING_CACHE_PREFIX + redisCacheKey;
                     String embeddingJson = redisTemplate.opsForValue().get(embeddingKey);
                     if (embeddingJson == null) continue;
 
@@ -58,28 +89,56 @@ public class SemanticCacheService {
                     double similarity = cosineSimilarity(queryEmbedding, cachedEmbedding);
                     if (similarity > highestSimilarity && similarity >= SEMANTIC_SIMILARITY_THRESHOLD) {
                         highestSimilarity = similarity;
-                        bestKey = key;
+                        bestRedisKey = key;
                     }
                 } catch (Exception e) {
                     log.debug("Failed to check semantic cache entry: {}", key);
                 }
             }
 
-            if (bestKey != null) {
-                String valueJson = redisTemplate.opsForValue().get(bestKey);
+            if (bestRedisKey != null) {
+                String valueJson = redisTemplate.opsForValue().get(bestRedisKey);
                 if (valueJson != null) {
                     try {
                         bestValue = objectMapper.readValue(valueJson, Object.class);
                     } catch (JsonProcessingException e) {
                         bestValue = valueJson;
                     }
+                    String localKey = bestRedisKey.substring(SEMANTIC_CACHE_PREFIX.length());
+                    localSemanticCache.put(localKey, bestValue);
                 }
-                log.debug("Semantic cache hit: similarity={}", highestSimilarity);
+                log.debug("L2 semantic cache hit: similarity={}", highestSimilarity);
                 return new CachedResult(bestValue, highestSimilarity);
             }
 
             return null;
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private float[] getEmbedding(String text) {
+        String key = generateCacheKey(text);
+        float[] local = localEmbeddingCache.getIfPresent(key);
+        if (local != null) {
+            return local;
+        }
+
+        String embeddingKey = EMBEDDING_CACHE_PREFIX + key;
+        String embeddingJson = redisTemplate.opsForValue().get(embeddingKey);
+        if (embeddingJson != null) {
+            float[] parsed = parseEmbedding(embeddingJson);
+            if (parsed != null) {
+                localEmbeddingCache.put(key, parsed);
+                return parsed;
+            }
+        }
+
+        float[] embedding = embeddingClient.embed(text).block();
+        if (embedding != null && embedding.length > 0) {
+            localEmbeddingCache.put(key, embedding);
+            String embeddingJsonValue = Arrays.toString(embedding);
+            redisTemplate.opsForValue().set(embeddingKey, embeddingJsonValue, EMBEDDING_CACHE_TTL);
+        }
+        return embedding;
     }
 
     public Mono<Void> putSemanticCache(String query, Object result) {
