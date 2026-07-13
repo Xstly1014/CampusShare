@@ -50,6 +50,10 @@ public class DeepSeekClient {
     @Value("${app.llm.deepseek.stream-timeout-seconds:120}")
     private long streamTimeoutSeconds;
 
+    public String getDefaultModel() {
+        return defaultModel;
+    }
+
     public Mono<DeepSeekResponse> chatCompletion(List<DeepSeekRequest.Message> messages) {
         return chatCompletion(messages, defaultTemperature, defaultMaxTokens, null);
     }
