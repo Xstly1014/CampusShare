@@ -1,24 +1,26 @@
 package com.campushare.agent.cache;
 
 import com.campushare.agent.llm.EmbeddingClient;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SemanticCacheService {
 
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final EmbeddingClient embeddingClient;
+    private final ObjectMapper objectMapper;
 
     private static final String SEMANTIC_CACHE_PREFIX = "agent:semantic:";
     private static final String EMBEDDING_CACHE_PREFIX = "agent:embedding:";
@@ -29,8 +31,8 @@ public class SemanticCacheService {
 
     public Mono<CachedResult> getSemanticCache(String query) {
         return Mono.fromCallable(() -> {
-            String[] keys = getAllSemanticCacheKeys();
-            if (keys.length == 0) {
+            Set<String> keys = redisTemplate.keys(SEMANTIC_CACHE_PREFIX + "*");
+            if (keys == null || keys.isEmpty()) {
                 return null;
             }
 
@@ -45,14 +47,18 @@ public class SemanticCacheService {
 
             for (String key : keys) {
                 try {
-                    String embeddingKey = EMBEDDING_CACHE_PREFIX + key;
-                    float[] cachedEmbedding = (float[]) redisTemplate.opsForValue().get(embeddingKey);
+                    String cacheKey = key.substring(SEMANTIC_CACHE_PREFIX.length());
+                    String embeddingKey = EMBEDDING_CACHE_PREFIX + cacheKey;
+                    String embeddingJson = redisTemplate.opsForValue().get(embeddingKey);
+                    if (embeddingJson == null) continue;
+
+                    float[] cachedEmbedding = parseEmbedding(embeddingJson);
                     if (cachedEmbedding == null) continue;
 
                     double similarity = cosineSimilarity(queryEmbedding, cachedEmbedding);
                     if (similarity > highestSimilarity && similarity >= SEMANTIC_SIMILARITY_THRESHOLD) {
                         highestSimilarity = similarity;
-                        bestKey = SEMANTIC_CACHE_PREFIX + key;
+                        bestKey = key;
                     }
                 } catch (Exception e) {
                     log.debug("Failed to check semantic cache entry: {}", key);
@@ -60,7 +66,14 @@ public class SemanticCacheService {
             }
 
             if (bestKey != null) {
-                bestValue = redisTemplate.opsForValue().get(bestKey);
+                String valueJson = redisTemplate.opsForValue().get(bestKey);
+                if (valueJson != null) {
+                    try {
+                        bestValue = objectMapper.readValue(valueJson, Object.class);
+                    } catch (JsonProcessingException e) {
+                        bestValue = valueJson;
+                    }
+                }
                 log.debug("Semantic cache hit: similarity={}", highestSimilarity);
                 return new CachedResult(bestValue, highestSimilarity);
             }
@@ -74,12 +87,19 @@ public class SemanticCacheService {
             String cacheKey = generateCacheKey(query);
             String fullKey = SEMANTIC_CACHE_PREFIX + cacheKey;
 
-            redisTemplate.opsForValue().set(fullKey, result, SEMANTIC_CACHE_TTL);
+            String resultJson;
+            try {
+                resultJson = objectMapper.writeValueAsString(result);
+            } catch (JsonProcessingException e) {
+                resultJson = String.valueOf(result);
+            }
+            redisTemplate.opsForValue().set(fullKey, resultJson, SEMANTIC_CACHE_TTL);
 
             float[] embedding = embeddingClient.embed(query).block();
             if (embedding != null && embedding.length > 0) {
                 String embeddingKey = EMBEDDING_CACHE_PREFIX + cacheKey;
-                redisTemplate.opsForValue().set(embeddingKey, embedding, EMBEDDING_CACHE_TTL);
+                String embeddingJson = Arrays.toString(embedding);
+                redisTemplate.opsForValue().set(embeddingKey, embeddingJson, EMBEDDING_CACHE_TTL);
             }
 
             log.debug("Semantic cache stored: key={}", cacheKey);
@@ -90,14 +110,16 @@ public class SemanticCacheService {
     public Mono<float[]> getEmbeddingCache(String text) {
         return Mono.fromCallable(() -> {
             String key = EMBEDDING_CACHE_PREFIX + generateCacheKey(text);
-            return (float[]) redisTemplate.opsForValue().get(key);
+            String embeddingJson = redisTemplate.opsForValue().get(key);
+            return parseEmbedding(embeddingJson);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
     public Mono<Void> putEmbeddingCache(String text, float[] embedding) {
         return Mono.fromCallable(() -> {
             String key = EMBEDDING_CACHE_PREFIX + generateCacheKey(text);
-            redisTemplate.opsForValue().set(key, embedding, EMBEDDING_CACHE_TTL);
+            String embeddingJson = Arrays.toString(embedding);
+            redisTemplate.opsForValue().set(key, embeddingJson, EMBEDDING_CACHE_TTL);
             return null;
         }).subscribeOn(Schedulers.boundedElastic()).then();
     }
@@ -106,14 +128,21 @@ public class SemanticCacheService {
         return String.format("%08x", text.hashCode());
     }
 
-    private String[] getAllSemanticCacheKeys() {
-        Set<String> keys = redisTemplate.keys(SEMANTIC_CACHE_PREFIX + "*");
-        if (keys == null || keys.isEmpty()) {
-            return new String[0];
+    private float[] parseEmbedding(String embeddingJson) {
+        if (embeddingJson == null || embeddingJson.isEmpty()) {
+            return null;
         }
-        return keys.stream()
-                .map(k -> k.substring(SEMANTIC_CACHE_PREFIX.length()))
-                .toArray(String[]::new);
+        try {
+            String trimmed = embeddingJson.trim().replace("[", "").replace("]", "");
+            String[] parts = trimmed.split(",");
+            float[] result = new float[parts.length];
+            for (int i = 0; i < parts.length; i++) {
+                result[i] = Float.parseFloat(parts[i].trim());
+            }
+            return result;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private double cosineSimilarity(float[] a, float[] b) {

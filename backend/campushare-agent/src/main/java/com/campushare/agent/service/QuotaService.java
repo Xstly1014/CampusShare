@@ -2,22 +2,20 @@ package com.campushare.agent.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class QuotaService {
 
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     private static final String QUOTA_PREFIX = "agent:quota:";
     private static final String COST_PREFIX = "agent:cost:";
@@ -123,13 +121,13 @@ public class QuotaService {
 
     private String getUserTier(String userId) {
         String tierKey = QUOTA_PREFIX + "tier:" + userId;
-        Object tier = redisTemplate.opsForValue().get(tierKey);
-        return tier != null ? tier.toString() : "FREE";
+        String tier = redisTemplate.opsForValue().get(tierKey);
+        return tier != null ? tier : "FREE";
     }
 
     private long getLong(String key, long defaultValue) {
-        Object value = redisTemplate.opsForValue().get(key);
-        return value != null ? ((Number) value).longValue() : defaultValue;
+        String value = redisTemplate.opsForValue().get(key);
+        return value != null ? Long.parseLong(value) : defaultValue;
     }
 
     private String getTodayStr() {
