@@ -26,6 +26,8 @@ import com.campushare.agent.service.MemoryRetrievalService;
 import com.campushare.agent.service.RetrievalService;
 import com.campushare.agent.service.RuleShortCircuitFilter;
 import com.campushare.agent.service.SessionStateMachine;
+import com.campushare.agent.service.SloService;
+import com.campushare.agent.service.TraceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.campushare.common.exception.BusinessException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -178,7 +180,9 @@ class AgentChatServicePromptIntegrationTest {
                 mock(com.campushare.agent.tool.ToolExecutor.class),
                 meterRegistry,
                 new ObjectMapper(),
-                transactionTemplate);
+                transactionTemplate,
+                mock(TraceService.class),
+                mock(SloService.class));
         // 手动调用 @PostConstruct initCounters()（package-private，用反射跨包调用）
         try {
             Method init = AgentChatService.class.getDeclaredMethod("initCounters");
