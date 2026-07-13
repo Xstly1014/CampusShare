@@ -158,9 +158,13 @@ public class AgentChatService {
                     return runToolCallLoop(messages, toolSchemas, allRefs, toolCallRecords, totalUsageRef, userId, 0)
                             .flatMapMany(finalMessages -> {
                                 // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
+                                // 优先使用工具调用结果，工具调用为空时使用检索结果
                                 Flux<ChatEvent> refsEvent = Flux.empty();
                                 if (!allRefs.isEmpty()) {
                                     String refsJson = buildToolRefsJson(allRefs);
+                                    refsEvent = Flux.just(new ChatEvent("refs", refsJson));
+                                } else if (ctx.retrievalResults() != null && !ctx.retrievalResults().isEmpty()) {
+                                    String refsJson = buildRefsJson(ctx.retrievalResults());
                                     refsEvent = Flux.just(new ChatEvent("refs", refsJson));
                                 }
 
