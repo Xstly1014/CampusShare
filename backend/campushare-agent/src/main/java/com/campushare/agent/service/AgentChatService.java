@@ -158,13 +158,16 @@ public class AgentChatService {
                                     request.getMessage(), ctx.intentResult(), ctx.retrievalResults())
                             .flatMapMany(turnResponse -> {
                                 // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
+                                // CLARIFY 意图时不显示引用卡片，因为只是追问澄清，不需要引用
                                 Flux<ChatEvent> refsEvent = Flux.empty();
-                                if (turnResponse.getRefs() != null && !turnResponse.getRefs().isEmpty()) {
-                                    String refsJson = buildRefsJsonFromTurnResponse(turnResponse.getRefs());
-                                    refsEvent = Flux.just(new ChatEvent("refs", refsJson));
-                                } else if (ctx.retrievalResults() != null && !ctx.retrievalResults().isEmpty()) {
-                                    String refsJson = buildRefsJson(ctx.retrievalResults());
-                                    refsEvent = Flux.just(new ChatEvent("refs", refsJson));
+                                if (ctx.intentResult().getIntent() != Intent.CLARIFY) {
+                                    if (turnResponse.getRefs() != null && !turnResponse.getRefs().isEmpty()) {
+                                        String refsJson = buildRefsJsonFromTurnResponse(turnResponse.getRefs());
+                                        refsEvent = Flux.just(new ChatEvent("refs", refsJson));
+                                    } else if (ctx.retrievalResults() != null && !ctx.retrievalResults().isEmpty()) {
+                                        String refsJson = buildRefsJson(ctx.retrievalResults());
+                                        refsEvent = Flux.just(new ChatEvent("refs", refsJson));
+                                    }
                                 }
 
                                 // navigate 事件：如果存在跳转信息

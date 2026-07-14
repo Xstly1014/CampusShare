@@ -314,8 +314,26 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
                 .content("你是一个对话澄清助手。你的任务是向用户提问以获取完成任务所需的缺失信息。" +
-                        "请以自然、友好的方式提问，每次只问一个问题。")
+                        "请以自然、友好的方式提问，每次只问一个问题。" +
+                        "\n\n重要：请根据历史对话上下文进行追问，不要忘记之前讨论的主题。")
                 .build());
+
+        List<AgentTurn> recentTurns = loadRecentTurns(sessionId, 5);
+        for (AgentTurn turn : recentTurns) {
+            if (turn.getUserMessage() != null) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("user")
+                        .content(turn.getUserMessage())
+                        .build());
+            }
+            if (turn.getAssistantMessage() != null) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("assistant")
+                        .content(turn.getAssistantMessage())
+                        .build());
+            }
+        }
+
         messages.add(DeepSeekRequest.Message.builder()
                 .role("user")
                 .content("用户问题: " + userMessage + "\n当前意图: " + intentResult.getIntent() +
