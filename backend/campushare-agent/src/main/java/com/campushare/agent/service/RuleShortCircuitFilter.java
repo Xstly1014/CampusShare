@@ -40,6 +40,11 @@ public class RuleShortCircuitFilter {
             Pattern.compile("替我(发|点|改|删)")
     );
 
+    /** 简短回答模式（如"都可以"、"随便"等，不应该被识别为闲聊） */
+    private static final Pattern SHORT_REPLY_PATTERN = Pattern.compile(
+            "^(都可以|都行|随便|好|好的|嗯|是的|对|没问题|OK|ok|可以|也行|随便你|随便吧|都行吧)$"
+    );
+
     /** 规则 3：闲聊问候（^开头匹配） */
     private static final List<Pattern> CHITCHAT_PATTERNS = List.of(
             Pattern.compile("^(你好|您好|hi|hello|嗨|哈喽|hey).*", Pattern.CASE_INSENSITIVE),
@@ -70,6 +75,13 @@ public class RuleShortCircuitFilter {
             return Optional.empty();
         }
         String trimmed = query.trim();
+
+        // 优先级 0：简短回答（都可以、随便等）→ 不短路，进入LLM分类层
+        // 这些回答需要结合历史上下文理解，不能单独分类
+        if (SHORT_REPLY_PATTERN.matcher(trimmed).matches()) {
+            log.debug("Rule matched: SHORT_REPLY (skip short circuit), query='{}'", trimmed);
+            return Optional.empty();
+        }
 
         // 优先级 1：指代词 → 强制 CLARIFY（ADR-015）
         if (COREFERENCE_PATTERN.matcher(trimmed).matches()) {

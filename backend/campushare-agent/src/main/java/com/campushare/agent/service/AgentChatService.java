@@ -625,12 +625,18 @@ public class AgentChatService {
         }
     }
 
+    /** 简短回答模式（需要上下文理解的回答） */
+    private static final java.util.regex.Pattern SHORT_REPLY_PATTERN = java.util.regex.Pattern.compile(
+            "^(都可以|都行|随便|好|好的|嗯|是的|对|没问题|OK|ok|可以|也行|随便你|随便吧|都行吧)$"
+    );
+
     /**
      * 意图识别主入口（三层漏斗）。
      *
      * Layer 1: 规则短路（RuleShortCircuitFilter）
-     * Layer 2: LLM 分类（IntentClassifier）
-     * Layer 3: Embedding 兜底（EmbeddingIntentFallback，由 IntentClassifier 内部调用）
+     * Layer 2: 简短回答检测 → CLARIFY（需要历史上下文理解）
+     * Layer 3: LLM 分类（IntentClassifier）
+     * Layer 4: Embedding 兜底（由 IntentClassifier 内部调用）
      * Default: SEARCH 兜底（全部失败时）
      */
     private IntentResult recognizeIntent(String query, String sessionId) {
@@ -641,7 +647,31 @@ public class AgentChatService {
             intentMetrics.recordClassification(r.getIntent(), r.getSubIntent(), r.getClassifyLayer(), "SUCCESS");
             return r;
         }
-        // Layer 2/3: LLM 分类 + Embedding 兜底 + Default SEARCH
+
+        // Layer 2: 简短回答检测（都可以、随便等）
+        // 如果会话有历史记录，这些回答需要结合上下文理解，标记为CLARIFY
+        if (query != null && !query.isBlank()) {
+            String trimmed = query.trim();
+            if (SHORT_REPLY_PATTERN.matcher(trimmed).matches()) {
+                int historyCount = getSessionHistoryCount(sessionId);
+                if (historyCount > 0) {
+                    log.info("Short reply detected with history ({} turns), classify as CLARIFY for query='{}'",
+                            historyCount, trimmed);
+                    IntentResult result = IntentResult.builder()
+                            .intent(Intent.CLARIFY)
+                            .subIntent(Intent.SubIntent.COREFERENCE)
+                            .confidence(0.90)
+                            .rewrittenQuery(trimmed)
+                            .classifyLayer("RULE")
+                            .build();
+                    intentMetrics.recordClassification(result.getIntent(), result.getSubIntent(),
+                            result.getClassifyLayer(), "SUCCESS");
+                    return result;
+                }
+            }
+        }
+
+        // Layer 3/4: LLM 分类 + Embedding 兜底 + Default SEARCH
         IntentResult result = intentClassifier.classify(query, sessionId)
                 .defaultIfEmpty(buildDefaultSearchIntent(query))
                 .block();
@@ -658,6 +688,19 @@ public class AgentChatService {
                 .rewrittenQuery(query != null ? query : "")
                 .classifyLayer("DEFAULT")
                 .build();
+    }
+
+    /**
+     * 获取会话历史轮次数量。
+     */
+    private int getSessionHistoryCount(String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            return 0;
+        }
+        LambdaQueryWrapper<AgentTurn> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AgentTurn::getSessionId, sessionId)
+                .eq(AgentTurn::getStatus, "COMPLETED");
+        return turnMapper.selectCount(wrapper).intValue();
     }
 
     private AgentSession getOrCreateSession(String userId, ChatRequest request) {
