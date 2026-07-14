@@ -197,6 +197,20 @@ app:
       gray-ratio: 100
       fallback-on-db-error: true
 
+  rate-limit:
+    global:
+      max-requests: 1000
+      window-seconds: 60
+    user:
+      max-requests: 60
+      window-seconds: 60
+    ip:
+      max-requests: 500
+      window-seconds: 60
+    session:
+      max-requests: 30
+      window-seconds: 60
+
   eval:
     llm-judge-enabled: true
 

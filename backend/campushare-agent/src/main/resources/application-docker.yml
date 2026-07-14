@@ -137,6 +137,21 @@ app:
   internal:
     token: ${INTERNAL_API_TOKEN:campushare-internal-token}
 
+  # 限流配置
+  rate-limit:
+    global:
+      max-requests: 1000
+      window-seconds: 60
+    user:
+      max-requests: 60
+      window-seconds: 60
+    ip:
+      max-requests: 500
+      window-seconds: 60
+    session:
+      max-requests: 30
+      window-seconds: 60
+
 logging:
   level:
     root: WARN
