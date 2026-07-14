@@ -25,4 +25,8 @@ public class TurnResponse {
     private LocalDateTime createdAt;
     private List<Map<String, Object>> refs;
     private Map<String, String> navigate;
+
+    private String content;
+    private Boolean isClarification;
+    private Boolean isSummary;
 }

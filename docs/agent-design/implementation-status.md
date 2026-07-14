@@ -1,6 +1,6 @@
 # CampusShare Agent 规划方向 vs 代码实现状态对比
 
-> 对比日期：2026-07-15（更新）
+> 对比日期：2026-07-14（最新更新）
 > 规划文档：`docs/agent-design/Agent搭建系列文档规划指南.md`（8 大层 23 个方向）
 > 代码位置：`backend/campushare-agent/src/main/java/com/campushare/agent/`
 > 验证方式：源码走查 + 设计文档对照
@@ -22,26 +22,26 @@
 | 9 | 工具调用（Function Calling） | D | ✅ 核心 | 85% | 🟢 已实现 |
 | 10 | MCP 协议 | D | ✅ 核心 | 80% | 🟢 已实现 |
 | 11 | 代码执行沙箱 | D | ⏳ 扩展 | 0% | ⚪ 未实现 |
-| 12 | 对话编排 | E | ✅ 核心 | 40% | 🟡 基础实现 |
+| 12 | 对话编排 | E | ✅ 核心 | 70% | 🟡 部分实现 |
 | 13 | 多 Agent 协作 | E | ⏳ 扩展 | 0% | ⚪ 未实现 |
 | 14 | 安全护栏 | F | ✅ 核心 | 85% | 🟢 已实现 |
 | 15 | 内容审核与 PII 脱敏 | F | ⏳ 扩展 | 10% | 🟠 仅基础 |
 | 16 | LLM 网关与多模型路由 | G | ✅ 核心 | 70% | 🟢 已实现 |
-| 17 | 缓存层 | G | ⏳ 扩展 | 70% | 🟡 部分实现 |
-| 18 | 限流配额与成本控制 | G | ⏳ 扩展 | 55% | 🟡 部分实现 |
-| 19 | 可观测性 | H | ✅ 核心 | 80% | 🟢 已实现 |
+| 17 | 缓存层 | G | ⏳ 扩展 | 85% | 🟢 已实现 |
+| 18 | 限流配额与成本控制 | G | ⏳ 扩展 | 70% | 🟡 部分实现 |
+| 19 | 可观测性 | H | ✅ 核心 | 85% | 🟢 已实现 |
 | 20 | 评估体系 | H | ✅ 核心 | 80% | 🟢 已实现 |
 | 21 | A/B 测试与灰度发布 | H | ⏳ 扩展 | 30% | 🟡 部分实现 |
 | 22 | 分层部署与在离线协同 | G | ✅ 核心 | 15% | 🟠 仅基础 |
 | 23 | 性能 SLO 工程 | H | ✅ 核心 | 75% | 🟡 部分实现 |
 
 **统计**：
-- 🟢 已实现（≥80%）：11 个方向（新增 1 个：评估体系）
-- 🟡 部分实现（30%-79%）：6 个方向（评估体系从部分实现升级为已实现）
+- 🟢 已实现（≥80%）：13 个方向（新增 2 个：缓存层、可观测性提升）
+- 🟡 部分实现（30%-79%）：5 个方向（缓存层从部分实现升级为已实现）
 - 🟠 仅基础（10%-29%）：2 个方向（无变化）
-- ⚪ 未实现（<10%）：4 个方向（无变化）
+- ⚪ 未实现（<10%）：3 个方向（无变化）
 
-**核心方向完成情况**（15 个核心方向）：已实现 11 个，部分实现 3 个，仅基础 1 个，未实现 0 个。
+**核心方向完成情况**（15 个核心方向）：已实现 12 个，部分实现 2 个，仅基础 1 个，未实现 0 个。
 
 ---
 
@@ -259,7 +259,7 @@
 
 ## 六、阶段五：推理层（E 层）
 
-### 方向 12：对话编排 — 40% 🟡
+### 方向 12：对话编排 — 70% 🟡
 
 **已实现**：
 - [AgentChatService.java](file:///d:/WorkSpace-java/CS/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentChatService.java) `runToolCallLoop()` 实现了类 ReAct 范式：LLM 思考 → 工具调用 → 观察结果 → 继续思考
@@ -270,13 +270,25 @@
   - `summarizeSession()` 会话级总结（完整对话摘要）
   - `summarizeTurn()` 轮次级总结（滚动摘要）
   - LLM 驱动总结 + 降级策略
+- [OrchestrationMode.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/orchestration/OrchestrationMode.java) 编排模式枚举（REACT/COT/PLAN_AND_EXECUTE/REFLEXION/CLARIFY）
+- [DialogueOrchestrator.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/orchestration/DialogueOrchestrator.java) 对话编排器接口：
+  - `orchestrate()` 统一编排入口，自动选择模式
+  - `clarify()` 追问澄清（支持最多 3 轮）
+  - `summarize()` 会话总结
+  - `planAndExecute()` 计划与执行（支持最多 5 步）
+  - `reflexion()` 反思优化（基于历史尝试分析）
+  - `selectMode()` 模式选择策略（基于意图、槽位、复杂度、失败历史）
+- [DialogueOrchestratorImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/orchestration/impl/DialogueOrchestratorImpl.java) 完整实现：
+  - ReAct：思考-行动-观察循环
+  - CoT：链式思考推理
+  - Plan-and-Execute：任务分解 + 逐步执行
+  - Reflexion：分析历史尝试 + 优化查询
+  - Clarify：缺失槽位追问澄清
 
 **缺失项**：
-- 显式的 ReAct / CoT / Plan-and-Execute / Reflexion 范式选型未实现
-- 多轮流程控制（追问澄清、并行调用、总结收尾）未完整实现
-- 编排与上下文工程的协作（多步记忆管理）未完整实现
-- 计划-执行模式未实现
-- 反思机制未实现
+- 与 AgentChatService 的集成未完成（当前 AgentChatService 使用独立的工具调用循环）
+- Reflexion 的失败检测逻辑需完善
+- 并行工具调用未实现
 
 ---
 
@@ -364,7 +376,7 @@
 
 ---
 
-### 方向 17：缓存层 — 70% 🟡
+### 方向 17：缓存层 — 85% 🟢
 
 **已实现**：
 - [IntentCacheService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/IntentCacheService.java) 意图识别结果缓存（Redis，MD5 key 精确匹配）
@@ -380,31 +392,39 @@
   - Embedding 向量缓存（StringRedisTemplate + JSON 序列化）
   - 缓存命中 / 写入逻辑
   - TTL 过期策略
+- [CacheInvalidationService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/CacheInvalidationService.java) 事件驱动缓存失效：
+  - `onKnowledgeUpdated/deleted/batchUpdated()` 知识库变更触发失效
+  - `onPostUpdated/deleted()` 帖子变更触发失效
+  - `onMemoryUpdated()` 记忆变更触发失效
+  - `invalidateSemanticCache()` / `invalidateIntentCache()` / `invalidateAllCaches()` 分级失效
+  - 本地缓存 + Redis 缓存同步失效
 
 **缺失项**：
-- 缓存失效策略未系统化（事件驱动失效）
+- 细粒度缓存失效（按 key 精确失效，而非全量失效）
 
 ---
 
-### 方向 18：限流配额与成本控制 — 55% 🟡
+### 方向 18：限流配额与成本控制 — 70% 🟡
 
 **已实现**：
 - [AgentRateLimiter.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentRateLimiter.java) 基于 Redis 的简单限流（滑动窗口 / 令牌桶）
 - [AgentController.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/controller/AgentController.java) 接口层限流
 - [QuotaService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/QuotaService.java) 配额管理：
-  - 用户层级管理（FREE 等）
-  - Token 配额管理
-  - 每日配额检查
+  - 用户层级管理（FREE/PRO/ENTERPRISE）
+  - Token 配额管理（每日/每月限额）
+  - 每日配额检查 `checkQuota()`
   - 成本归因 5 维度（用户/会话/模型/意图/天），通过 `consumeQuota()` 记录到 Redis
+  - `checkCostAlerts()` WARNING/CRITICAL 两级成本告警（日/月维度）
+  - `getSystemCostOverview()` 系统级成本概览（总日/月成本、活跃用户数）
 - [ToolPermissionMatrix.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/security/ToolPermissionMatrix.java) 工具级速率限制和每日调用次数限制
 
 **缺失项**：
 - 多租户隔离未实现
-- 成本告警未实现
+- 成本告警通知机制（邮件/短信/Webhook）未实现
 
 ---
 
-### 方向 19：可观测性 — 80% 🟢
+### 方向 19：可观测性 — 85% 🟢
 
 **已实现**：
 - [AgentChatService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentChatService.java) TraceService 集成到请求链路：
@@ -420,20 +440,23 @@
   - traceId / spanId / parentSpanId
   - 7 阶段耗时记录（意图识别/RAG/Prompt 装配/LLM 流式/工具调用/记忆写入/完成）
   - 模型名称、Token 计数、意图、工具名称等字段
-- `MeterRegistry` Counter 指标：
-  - `agent.prompt.violation` Constitutional AI 违规计数
-  - `agent.prompt.injection.detected` 注入检测计数
+- [TraceIdFilter.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/TraceIdFilter.java) X-Trace-Id Header 传递过滤器：
+  - 接收/生成 traceId，写入响应头
+  - Reactor Context + MDC 双重传递，解决 WebFlux 线程切换问题
+- [MetricsService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/MetricsService.java) 统一 Metrics 服务接口：
+  - 6 大维度 14 项核心指标：延迟 5（chat/intent/rag/llm/tool）+ Token 2 + 成本 2 + 错误 2 + 工具 2 + 缓存 3
+- [MetricsServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/impl/MetricsServiceImpl.java) 完整实现：
+  - @PostConstruct 预创建所有 Timer/Counter/DistributionSummary
+  - 支持百分位数（P50/P95/P99）和直方图
+  - 动态工具/缓存指标（ConcurrentHashMap 按需创建）
 - [IntentMetricsConfig.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/IntentMetricsConfig.java) 意图识别指标
 - [KnowledgeMetricsConfig.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/KnowledgeMetricsConfig.java) 知识库指标
 - [logback-spring.xml](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/resources/logback-spring.xml) 结构化 JSON 日志配置（logstash-logback-encoder）
 - `agent_turns` 表记录对话 turn
 
 **缺失项**：
-- X-Trace-Id Header 传递未实现
-- 统一 Metrics 体系（6 大维度 14 项指标未完整）
 - 告警规则体系未实现
 - Grafana 仪表盘未配置
-- BadCase 自动采集未实现
 
 ---
 
@@ -548,34 +571,34 @@
 
 ## 八、按完成度分组汇总
 
-### 🟢 已实现（11 个，完成度 ≥ 80%）
+### 🟢 已实现（13 个，完成度 ≥ 80%）
 
 | # | 方向 | 完成度 |
 |---|------|--------|
 | 2 | 意图识别与路由 | 95% |
+| 8 | 长期记忆 | 95% |
 | 4 | 知识库管理 | 90% |
 | 7 | 上下文工程 | 90% |
-| 8 | 长期记忆 | 95% |
 | 1 | System Prompt 工程 | 85% |
 | 5 | RAG 检索增强 | 85% |
 | 9 | 工具调用 | 85% |
 | 14 | 安全护栏 | 85% |
+| 17 | 缓存层 | 85% |
+| 19 | 可观测性 | 85% |
 | 10 | MCP 协议 | 80% |
-| 19 | 可观测性 | 80% |
 | 20 | 评估体系 | 80% |
 
-**结论**：A-E 层核心能力（基础能力 + 知识 + 记忆 + 行动）已基本完整，安全护栏、可观测性和评估体系也达到生产可用水平。Agent 能完成"听懂 → 检索 → 记住 → 行动 → 安全防护 → 可观测 → 评估"的完整闭环。
+**结论**：A-E 层核心能力（基础能力 + 知识 + 记忆 + 行动）已基本完整，安全护栏、可观测性、评估体系和缓存层也达到生产可用水平。Agent 能完成"听懂 → 检索 → 记住 → 行动 → 安全防护 → 可观测 → 评估 → 缓存加速"的完整闭环。
 
 ---
 
-### 🟡 部分实现（6 个，完成度 30%-79%）
+### 🟡 部分实现（5 个，完成度 30%-79%）
 
 | # | 方向 | 完成度 | 主要缺失 |
 |---|------|--------|---------|
 | 16 | LLM 网关与多模型路由 | 70% | 多 Provider 适配、API Key 池、成本追踪 |
-| 17 | 缓存层 | 70% | 事件驱动失效策略 |
 | 23 | 性能 SLO 工程 | 75% | 延迟预算分配、SLO 驱动降级、仪表盘 |
-| 18 | 限流配额与成本控制 | 55% | 多租户隔离、成本告警 |
+| 18 | 限流配额与成本控制 | 70% | 多租户隔离、成本告警通知 |
 | 12 | 对话编排 | 40% | 范式选型、追问澄清、Plan-and-Execute、Reflexion |
 | 21 | A/B 测试与灰度发布 | 30% | A/B 实验平台、统计显著性 |
 
@@ -607,22 +630,23 @@
 
 | 状态 | 数量 | 占比 |
 |------|------|------|
-| 🟢 已实现 | 11 | 73% |
-| 🟡 部分实现 | 3 | 20% |
+| 🟢 已实现 | 12 | 80% |
+| 🟡 部分实现 | 2 | 13% |
 | 🟠 仅基础 | 1 | 7% |
 | ⚪ 未实现 | 0 | 0% |
 
-**核心方向整体完成度**：约 85%
+**核心方向整体完成度**：约 88%
 
 ### 扩展方向（8 个）
 
 | 状态 | 数量 | 占比 |
 |------|------|------|
-| 🟡 部分实现 | 3 | 37% |
+| 🟢 已实现 | 1 | 12% |
+| 🟡 部分实现 | 2 | 25% |
 | 🟠 仅基础 | 1 | 12% |
 | ⚪ 未实现 | 4 | 50% |
 
-**扩展方向整体完成度**：约 20%
+**扩展方向整体完成度**：约 25%
 
 ---
 
@@ -636,10 +660,10 @@
 | D | 行动层 | 3 | 2 | 0 | 0 | 1 | 55% |
 | E | 推理层 | 2 | 0 | 1 | 0 | 1 | 20% |
 | F | 安全层 | 2 | 1 | 0 | 1 | 0 | 48% |
-| G | 工程基础设施层 | 4 | 0 | 3 | 1 | 0 | 45% |
-| H | 观测与评估层 | 4 | 2 | 2 | 0 | 0 | 78% |
+| G | 工程基础设施层 | 4 | 1 | 2 | 1 | 0 | 55% |
+| H | 观测与评估层 | 4 | 3 | 1 | 0 | 0 | 85% |
 
-**整体完成度**：约 65%（按 23 个方向平均）
+**整体完成度**：约 70%（按 23 个方向平均）
 
 ---
 
@@ -675,30 +699,38 @@
 
 | 方向 | 之前完成度 | 当前完成度 | 主要新增实现 |
 |------|-----------|-----------|-------------|
-| 可观测性（19） | 50% | 80% | TraceService 集成到请求链路、JSON 日志配置、X-Trace-Id Header 传递 |
-| 评估体系（20） | 70% | 80% | BadCaseService 自动采集、BadCaseScheduler 定时任务、BadCase 转测试用例 |
-| 性能 SLO 工程（23） | 60% | 75% | 多窗口燃烧率告警、SloController REST API、告警冷却机制 |
-| 长期记忆（8） | 90% | 95% | UserMemoryController 用户记忆管理 API |
-| 安全护栏（14） | 75% | 85% | SecurityAuditServiceImpl 安全审计日志写入、ToolPermissionMatrix 权限矩阵 |
-| 缓存层（17） | 70% | 90% | CacheInvalidationService 事件驱动缓存失效 |
-| 限流配额（18） | 55% | 75% | 成本告警、系统成本概览 |
-| 对话编排（12） | 35% | 40% | ConversationSummaryService 对话总结 |
+| 缓存层（17） | 70% | 85% | CacheInvalidationService 事件驱动缓存失效（知识库/帖子/记忆变更触发）、本地+Redis同步失效 |
+| 可观测性（19） | 80% | 85% | TraceIdFilter X-Trace-Id Header 传递过滤器、统一 MetricsService（6 大维度 14 项指标）、MetricsServiceImpl 预创建实现 |
+| 限流配额（18） | 55% | 70% | QuotaService.checkCostAlerts() 两级成本告警、getSystemCostOverview() 系统成本概览、用户层级（FREE/PRO/ENTERPRISE） |
+| 评估体系（20） | 80% | 85% | BadCaseScheduler 定时任务（每日全量 + 每小时增量）、BadCaseController REST API |
 
 ### 核心方向整体完成度提升
 
-- **之前**：约 82%（10 个已实现）
-- **当前**：约 85%（11 个已实现）
+- **之前**：约 85%（11 个已实现）
+- **当前**：约 88%（12 个已实现）
 
 ### 整体完成度提升
 
-- **之前**：约 62%
-- **当前**：约 65%
+- **之前**：约 65%
+- **当前**：约 70%
+
+### 已实现的关键新增组件
+
+| 组件 | 文件路径 | 功能描述 |
+|------|---------|---------|
+| TraceIdFilter | [TraceIdFilter.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/TraceIdFilter.java) | X-Trace-Id Header 传递，解决 WebFlux 线程切换 MDC 丢失 |
+| MetricsService | [MetricsService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/MetricsService.java) | 统一 Metrics 接口，6 大维度 14 项核心指标 |
+| MetricsServiceImpl | [MetricsServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/impl/MetricsServiceImpl.java) | 预创建所有 Timer/Counter，支持百分位数和直方图 |
+| CacheInvalidationService | [CacheInvalidationService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/CacheInvalidationService.java) | 事件驱动缓存失效，知识库/帖子/记忆变更触发 |
+| BadCaseScheduler | [BadCaseScheduler.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/BadCaseScheduler.java) | BadCase 自动采集定时任务 |
+| BadCaseController | [BadCaseController.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/controller/BadCaseController.java) | BadCase 管理 REST API |
 
 ### 仍待重点关注的问题
 
-1. **评估体系（20，80%）**：核心框架已实现，需补全 CI/CD 集成、影子评估、回归检测
+1. **评估体系（20，85%）**：核心框架已实现，需补全 CI/CD 集成、影子评估、回归检测
 2. **性能 SLO 工程（23，75%）**：核心服务已实现，需补全延迟预算分配、SLO 驱动降级、Grafana 仪表盘
 3. **LLM 网关（16，70%）**：核心框架已完成，需适配更多 Provider（GPT/通义千问）、API Key 池轮询
+4. **对话编排（12，40%）**：当前 ReAct 已满足基本需求，Plan-and-Execute / Reflexion 待业务驱动
 
 **code-review-issues.md 中已修复的长期记忆问题**：
 - 问题 9：INFERRED 行为推断通道 ✅ 已实现（InferredBehaviorService）
