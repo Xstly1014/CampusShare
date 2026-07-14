@@ -23,11 +23,16 @@ public class SloServiceImpl implements SloService {
 
     private static final DateTimeFormatter MINUTE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
     private static final DateTimeFormatter DAY_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHH");
     private static final Duration RETENTION_DURATION = Duration.ofDays(7);
 
     private final Map<String, List<Long>> latencyWindow = new ConcurrentHashMap<>();
     private final Map<String, AtomicCounter> errorCounter = new ConcurrentHashMap<>();
     private final Map<String, AtomicCounter> totalCounter = new ConcurrentHashMap<>();
+
+    private static final int[] WINDOW_MINUTES = {1, 5, 15};
+    private static final double[] BURN_RATE_THRESHOLDS = {1.0, 5.0, 14.4};
+    private final Map<String, LocalDateTime> lastAlertTime = new ConcurrentHashMap<>();
 
     @Override
     public void recordLatency(String objectiveName, long latencyMs, boolean success) {
@@ -206,6 +211,119 @@ public class SloServiceImpl implements SloService {
 
         long total = errors + success;
         return total > 0 ? (double) errors / total : 0;
+    }
+
+    public Map<String, Object> checkBurnRateAlerts(String objectiveName) {
+        Map<String, Object> alertResult = new HashMap<>();
+        alertResult.put("objective", objectiveName);
+        alertResult.put("alerts", new ArrayList<Map<String, Object>>());
+        alertResult.put("ok", true);
+
+        SloConfig.ServiceLevelObjective objective = sloConfig.getObjective(objectiveName);
+        if (objective == null) {
+            return alertResult;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        boolean hasAlert = false;
+
+        for (int i = 0; i < WINDOW_MINUTES.length; i++) {
+            int windowMinutes = WINDOW_MINUTES[i];
+            double threshold = BURN_RATE_THRESHOLDS[i];
+
+            LocalDateTime windowStart = now.minusMinutes(windowMinutes);
+            double burnRate = calculateBurnRate(objectiveName, windowStart, now);
+
+            Map<String, Object> windowResult = new HashMap<>();
+            windowResult.put("windowMinutes", windowMinutes);
+            windowResult.put("burnRate", burnRate);
+            windowResult.put("threshold", threshold);
+            windowResult.put("breaching", burnRate >= threshold);
+
+            if (burnRate >= threshold) {
+                hasAlert = true;
+                windowResult.put("alert", true);
+
+                String alertKey = objectiveName + ":" + windowMinutes + "m";
+                LocalDateTime lastAlert = lastAlertTime.get(alertKey);
+                if (lastAlert == null || lastAlert.isBefore(now.minusMinutes(5))) {
+                    triggerAlert(objectiveName, windowMinutes, burnRate, threshold);
+                    lastAlertTime.put(alertKey, now);
+                    windowResult.put("alertTriggered", true);
+                } else {
+                    windowResult.put("alertTriggered", false);
+                    windowResult.put("alertCooldown", true);
+                }
+            } else {
+                windowResult.put("alert", false);
+                windowResult.put("alertTriggered", false);
+            }
+
+            ((List<Map<String, Object>>) alertResult.get("alerts")).add(windowResult);
+        }
+
+        alertResult.put("ok", !hasAlert);
+        return alertResult;
+    }
+
+    private void triggerAlert(String objectiveName, int windowMinutes, double burnRate, double threshold) {
+        String alertMessage = String.format(
+                "[SLO ALERT] Objective '%s' breaching burn rate threshold in %d-minute window. " +
+                        "Burn rate: %.2fx, Threshold: %.2fx",
+                objectiveName, windowMinutes, burnRate, threshold);
+
+        log.error(alertMessage);
+
+        String alertKey = "slo:alert:" + objectiveName + ":" + LocalDateTime.now().format(HOUR_FORMATTER);
+        String alertData = String.format("{\"timestamp\":\"%s\",\"objective\":\"%s\",\"windowMinutes\":%d," +
+                        "\"burnRate\":%.2f,\"threshold\":%.2f}",
+                LocalDateTime.now(), objectiveName, windowMinutes, burnRate, threshold);
+        redisTemplate.opsForList().rightPush(alertKey, alertData);
+        redisTemplate.expire(alertKey, Duration.ofHours(24));
+    }
+
+    public List<Map<String, Object>> getRecentAlerts(String objectiveName, int limit) {
+        List<Map<String, Object>> alerts = new ArrayList<>();
+        String alertKeyPattern = "slo:alert:" + objectiveName + ":*";
+
+        Set<String> keys = redisTemplate.keys(alertKeyPattern);
+        if (keys == null || keys.isEmpty()) {
+            return alerts;
+        }
+
+        List<String> allAlertData = new ArrayList<>();
+        for (String key : keys) {
+            List<String> values = redisTemplate.opsForList().range(key, 0, -1);
+            if (values != null) {
+                allAlertData.addAll(values);
+            }
+        }
+
+        allAlertData.sort(Comparator.reverseOrder());
+
+        int count = 0;
+        for (String alertData : allAlertData) {
+            if (count >= limit) break;
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> alert = new java.util.LinkedHashMap<>();
+                String[] parts = alertData.replace("{", "").replace("}", "").split(",");
+                for (String part : parts) {
+                    String[] kv = part.split(":", 2);
+                    if (kv.length == 2) {
+                        String k = kv[0].trim().replace("\"", "");
+                        String v = kv[1].trim().replace("\"", "");
+                        alert.put(k, v);
+                    }
+                }
+                alerts.add(alert);
+                count++;
+            } catch (Exception e) {
+                log.warn("Failed to parse alert data: {}", alertData);
+            }
+        }
+
+        return alerts;
     }
 
     private static class AtomicCounter {

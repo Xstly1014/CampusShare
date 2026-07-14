@@ -23,4 +23,8 @@ public interface SloService {
     Map<String, Object> getLatencyPercentiles(String objectiveName, LocalDateTime startTime, LocalDateTime endTime);
 
     double getErrorRate(String objectiveName, LocalDateTime startTime, LocalDateTime endTime);
+
+    Map<String, Object> checkBurnRateAlerts(String objectiveName);
+
+    List<Map<String, Object>> getRecentAlerts(String objectiveName, int limit);
 }

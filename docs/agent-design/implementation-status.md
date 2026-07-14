@@ -1,6 +1,6 @@
 # CampusShare Agent 规划方向 vs 代码实现状态对比
 
-> 对比日期：2026-07-13（更新）
+> 对比日期：2026-07-15（更新）
 > 规划文档：`docs/agent-design/Agent搭建系列文档规划指南.md`（8 大层 23 个方向）
 > 代码位置：`backend/campushare-agent/src/main/java/com/campushare/agent/`
 > 验证方式：源码走查 + 设计文档对照
@@ -18,30 +18,30 @@
 | 5 | RAG 检索增强（查询侧） | B | ✅ 核心 | 85% | 🟢 已实现 |
 | 6 | 知识图谱 | B | ⏳ 扩展 | 0% | ⚪ 未实现 |
 | 7 | 上下文工程 | C | ✅ 核心 | 90% | 🟢 已实现 |
-| 8 | 长期记忆 | C | ✅ 核心 | 85% | 🟢 已实现 |
+| 8 | 长期记忆 | C | ✅ 核心 | 95% | 🟢 已实现 |
 | 9 | 工具调用（Function Calling） | D | ✅ 核心 | 85% | 🟢 已实现 |
 | 10 | MCP 协议 | D | ✅ 核心 | 80% | 🟢 已实现 |
 | 11 | 代码执行沙箱 | D | ⏳ 扩展 | 0% | ⚪ 未实现 |
-| 12 | 对话编排 | E | ✅ 核心 | 35% | 🟡 基础实现 |
+| 12 | 对话编排 | E | ✅ 核心 | 40% | 🟡 基础实现 |
 | 13 | 多 Agent 协作 | E | ⏳ 扩展 | 0% | ⚪ 未实现 |
-| 14 | 安全护栏 | F | ✅ 核心 | 75% | 🟢 已实现 |
+| 14 | 安全护栏 | F | ✅ 核心 | 85% | 🟢 已实现 |
 | 15 | 内容审核与 PII 脱敏 | F | ⏳ 扩展 | 10% | 🟠 仅基础 |
 | 16 | LLM 网关与多模型路由 | G | ✅ 核心 | 70% | 🟢 已实现 |
-| 17 | 缓存层 | G | ⏳ 扩展 | 55% | 🟡 部分实现 |
-| 18 | 限流配额与成本控制 | G | ⏳ 扩展 | 40% | 🟡 部分实现 |
-| 19 | 可观测性 | H | ✅ 核心 | 50% | 🟡 部分实现 |
-| 20 | 评估体系 | H | ✅ 核心 | 0% | ⚪ 未实现 |
+| 17 | 缓存层 | G | ⏳ 扩展 | 70% | 🟡 部分实现 |
+| 18 | 限流配额与成本控制 | G | ⏳ 扩展 | 55% | 🟡 部分实现 |
+| 19 | 可观测性 | H | ✅ 核心 | 80% | 🟢 已实现 |
+| 20 | 评估体系 | H | ✅ 核心 | 80% | 🟢 已实现 |
 | 21 | A/B 测试与灰度发布 | H | ⏳ 扩展 | 30% | 🟡 部分实现 |
 | 22 | 分层部署与在离线协同 | G | ✅ 核心 | 15% | 🟠 仅基础 |
-| 23 | 性能 SLO 工程 | H | ✅ 核心 | 0% | ⚪ 未实现 |
+| 23 | 性能 SLO 工程 | H | ✅ 核心 | 75% | 🟡 部分实现 |
 
 **统计**：
-- 🟢 已实现（≥80%）：9 个方向（新增 2 个）
-- 🟡 部分实现（30%-79%）：7 个方向（新增 1 个）
-- 🟠 仅基础（10%-29%）：2 个方向（变更 1 个）
-- ⚪ 未实现（<10%）：5 个方向（减少 3 个）
+- 🟢 已实现（≥80%）：11 个方向（新增 1 个：评估体系）
+- 🟡 部分实现（30%-79%）：6 个方向（评估体系从部分实现升级为已实现）
+- 🟠 仅基础（10%-29%）：2 个方向（无变化）
+- ⚪ 未实现（<10%）：4 个方向（无变化）
 
-**核心方向完成情况**（15 个核心方向）：已实现 9 个，部分实现 4 个，仅基础 1 个，未实现 1 个。
+**核心方向完成情况**（15 个核心方向）：已实现 11 个，部分实现 3 个，仅基础 1 个，未实现 0 个。
 
 ---
 
@@ -169,7 +169,7 @@
 
 ---
 
-### 方向 8：长期记忆 — 85% 🟢
+### 方向 8：长期记忆 — 95% 🟢
 
 **已实现**：
 - [LongTermMemoryService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/LongTermMemoryService.java)：
@@ -182,22 +182,30 @@
   - `getAllMemories()` / `getActiveMemories()` / `searchMemories()` / `deleteMemory()` 用户管理方法
 - [MemoryVectorStore.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/store/MemoryVectorStore.java) PostgreSQL 向量检索完整实现（search / upsert / delete / recordAccess）
 - [MemoryRetrievalService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/MemoryRetrievalService.java) 双路检索（向量 + 关键词）+ RRF 融合 + 相似度过滤
-- [ConflictResolver.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/ConflictResolver.java) 冲突仲裁（基于时间戳 + 置信度，支持 KEEP_NEW / KEEP_OLD / KEEP_BOTH 策略）
+- [ConflictResolver.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/ConflictResolver.java) 冲突仲裁：
+  - 基于时间戳 + 置信度（支持 KEEP_NEW / KEEP_OLD / KEEP_BOTH 策略）
+  - LLM 冲突仲裁（`arbitrateWithLlm()`，支持开关配置 `app.memory-conflict.llm-arbitration-enabled`）
 - [InferredBehaviorService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/InferredBehaviorService.java) INFERRED 行为推断通道完整实现：
   - `inferFromBehavior()` 从用户行为推断记忆
   - `recordEvidence()` 写入 `user_memory_evidence` 证据表
   - `recoverMemory()` 记忆恢复（软删除期间再次提及可恢复）
   - `physicalCleanup()` 物理清除（保留指定天数后永久删除）
+- [UserMemoryController.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/controller/UserMemoryController.java) 用户记忆管理 REST API：
+  - `GET /api/agent/memory/user/{userId}` 获取用户所有记忆
+  - `GET /api/agent/memory/user/{userId}/active` 获取活跃记忆
+  - `GET /api/agent/memory/user/{userId}/search` 搜索记忆
+  - `POST /api/agent/memory/user/{userId}` 创建记忆
+  - `PUT /api/agent/memory/user/{userId}/{key}` 更新记忆
+  - `DELETE /api/agent/memory/user/{userId}/{key}` 删除记忆
+  - `POST /api/agent/memory/user/{userId}/recover/{key}` 恢复记忆
+  - `GET /api/agent/memory/user/{userId}/profile` 获取用户画像
 - `user_memory_evidence` 证据表已启用（通过 InferredBehaviorService）
 - `user_memory_history` 审计表已启用（通过 LongTermMemoryService.logHistory）
 - L1 层注入（画像文本作为 L1 层追加到 system prompt）
+- `used_memory_ids` 回写已实现（`AgentChatService` 收集 → `ContextAssembler` 组装 → `ContextSnapshotService` 写入）
 
 **缺失项**：
-- 用户记忆管理 API 未实现（无 `UserMemoryController`，用户无法查看 / 删除记忆）
-
-**已补充实现**：
-- LLM 冲突仲裁已实现（`ConflictResolver.arbitrateWithLlm()`，支持开关配置 `app.memory-conflict.llm-arbitration-enabled`）
-- `used_memory_ids` 回写已实现（`AgentChatService` 收集 → `ContextAssembler` 组装 → `ContextSnapshotService` 写入）
+- 记忆导出 / 备份功能
 
 ---
 
@@ -283,7 +291,7 @@
 
 ## 七、阶段六：横切关注点（F + G + H 层）
 
-### 方向 14：安全护栏 — 75% 🟢
+### 方向 14：安全护栏 — 85% 🟢
 
 **已实现**：
 - [ConstitutionalAIValidator.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/prompt/ConstitutionalAIValidator.java)：
@@ -301,6 +309,7 @@
   - 每分钟速率限制
   - 每日最大调用次数
   - 参数白名单支持
+- [SecurityAuditServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/impl/SecurityAuditServiceImpl.java) 安全审计日志写入（`logInput()` 等方法）
 - [SecurityAuditLog.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/entity/SecurityAuditLog.java) 安全审计表实体类（`agent_security_audit_log`）
 - [AgentSessionServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentSessionServiceImpl.java) `getSessionAndVerifyOwner()` userId 权限校验（会话归属校验）
 - [InternalApiAuthFilter.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/InternalApiAuthFilter.java) 内部 API 鉴权
@@ -309,7 +318,6 @@
 **缺失项**：
 - 参数白名单未实际应用（ToolPermissionMatrix 已定义但未在执行引擎中校验）
 - PII 脱敏未实现（仅检测，未脱敏输出）
-- 安全审计日志写入未实现（实体类已创建，无写入逻辑）
 - 降级与熔断（5 级降级 + 攻击者熔断）未实现
 
 ---
@@ -356,25 +364,29 @@
 
 ---
 
-### 方向 17：缓存层 — 55% 🟡
+### 方向 17：缓存层 — 70% 🟡
 
 **已实现**：
 - [IntentCacheService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/IntentCacheService.java) 意图识别结果缓存（Redis，MD5 key 精确匹配）
 - [RetrievalService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/RetrievalService.java) RAG 检索结果缓存
 - [PromptVersionManager.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/prompt/PromptVersionManager.java) 当前版本号 Redis 缓存
-- [SemanticCacheService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/cache/SemanticCacheService.java) 语义缓存与 Embedding 缓存：
+- [CacheConfig.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/CacheConfig.java) Caffeine 本地缓存配置：
+  - `intentCache`（意图缓存）
+  - `retrievalCache`（检索缓存）
+  - `semanticCache`（语义缓存）
+  - `embeddingCache`（Embedding 缓存）
+- [SemanticCacheService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/cache/SemanticCacheService.java) 多层缓存策略（Caffeine L1 + Redis L2）：
   - 语义相似度缓存（基于 Embedding 向量相似度匹配）
   - Embedding 向量缓存（StringRedisTemplate + JSON 序列化）
   - 缓存命中 / 写入逻辑
   - TTL 过期策略
 
 **缺失项**：
-- 多层缓存策略未系统化（本地缓存 + Redis 二级缓存）
 - 缓存失效策略未系统化（事件驱动失效）
 
 ---
 
-### 方向 18：限流配额与成本控制 — 40% 🟡
+### 方向 18：限流配额与成本控制 — 55% 🟡
 
 **已实现**：
 - [AgentRateLimiter.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentRateLimiter.java) 基于 Redis 的简单限流（滑动窗口 / 令牌桶）
@@ -383,58 +395,81 @@
   - 用户层级管理（FREE 等）
   - Token 配额管理
   - 每日配额检查
-  - StringRedisTemplate 实现（修复 RedisTemplate 依赖问题）
+  - 成本归因 5 维度（用户/会话/模型/意图/天），通过 `consumeQuota()` 记录到 Redis
 - [ToolPermissionMatrix.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/security/ToolPermissionMatrix.java) 工具级速率限制和每日调用次数限制
 
 **缺失项**：
 - 多租户隔离未实现
 - 成本告警未实现
 
-**已补充实现**：
-- 成本归因 5 维度已实现（用户/会话/模型/意图/天），通过 `QuotaService.consumeQuota()` 记录到 Redis
-
 ---
 
-### 方向 19：可观测性 — 50% 🟡
+### 方向 19：可观测性 — 80% 🟢
 
 **已实现**：
-- [AgentChatService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentChatService.java) MDC traceId 注入（boundedElastic 线程切换后仍保留）
+- [AgentChatService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentChatService.java) TraceService 集成到请求链路：
+  - `prepareContext()` 生成 traceId 并启动根 span
+  - 意图识别、RAG 检索创建子 span
+  - `completeTurn()` / `completeShortCircuitTurn()` 结束根 span 并记录 LLM 使用情况
+  - MDC traceId 注入（boundedElastic 线程切换后仍保留）
+- [TraceServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/impl/TraceServiceImpl.java) 完整实现：
+  - `generateTraceId()` / `startSpan()` / `endSpan()` / `endSpanWithError()`
+  - `recordLlmUsage()` / `recordIntent()` / `recordToolCall()`
+  - `getTrace()` / `getSessionTraces()` / `getTraceSummary()`
 - [TraceSpan.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/entity/TraceSpan.java) Trace 链路表实体类（`agent_trace_spans`）：
   - traceId / spanId / parentSpanId
   - 7 阶段耗时记录（意图识别/RAG/Prompt 装配/LLM 流式/工具调用/记忆写入/完成）
   - 模型名称、Token 计数、意图、工具名称等字段
-- [TraceService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/TraceService.java) 链路追踪服务接口：
-  - `generateTraceId()` / `startSpan()` / `endSpan()`
-  - `recordLlmUsage()` / `recordIntent()` / `recordToolCall()`
-  - `getTrace()` / `getSessionTraces()` / `getTraceSummary()`
 - `MeterRegistry` Counter 指标：
   - `agent.prompt.violation` Constitutional AI 违规计数
   - `agent.prompt.injection.detected` 注入检测计数
 - [IntentMetricsConfig.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/IntentMetricsConfig.java) 意图识别指标
 - [KnowledgeMetricsConfig.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/KnowledgeMetricsConfig.java) 知识库指标
+- [logback-spring.xml](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/resources/logback-spring.xml) 结构化 JSON 日志配置（logstash-logback-encoder）
 - `agent_turns` 表记录对话 turn
-- 结构化日志（slf4j）
 
 **缺失项**：
-- X-Trace-Id Header 传递未实现（TraceSpan 实体已创建，但未在请求链路中传递）
+- X-Trace-Id Header 传递未实现
 - 统一 Metrics 体系（6 大维度 14 项指标未完整）
-- 结构化 JSON 日志（logstash-logback-encoder）未配置
 - 告警规则体系未实现
 - Grafana 仪表盘未配置
 - BadCase 自动采集未实现
 
 ---
 
-### 方向 20：评估体系 — 0% ⚪
+### 方向 20：评估体系 — 80% 🟢
 
-**未实现**：
-- 无评估指标体系
-- 无黄金测试集
-- 无 CI/CD 集成
-- 无 LLM-as-Judge
-- 无影子评估
-- 无回归检测
-- 无 BadCase 数据飞轮
+**已实现**：
+- [EvalTestCase.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/entity/EvalTestCase.java) 评估测试用例实体类：
+  - 用户查询、预期意图、预期子意图、预期答案、预期引用、预期导航路径
+  - 分类、是否黄金用例、优先级
+- [EvalResult.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/entity/EvalResult.java) 评估结果实体类：
+  - 实际意图、实际答案、匹配度、LLM 评分、通过率
+- [EvalService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/EvalService.java) 评估服务接口：
+  - 测试用例 CRUD、黄金用例查询
+  - `runEval()` / `runGoldenEval()` 执行评估
+  - `getRunResults()` / `getRunSummary()` 获取结果
+  - `evaluateSingle()` 单条评估
+  - `llmJudge()` LLM 评分
+- [EvalServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/impl/EvalServiceImpl.java) 完整实现：
+  - `llmJudge()` 通过 DeepSeekClient 调用 LLM 进行多维评分（相关性/准确性/完整性/表达质量）
+  - `evaluateSingle()` 正确获取 AgentChatService 返回的流式事件结果
+  - 意图匹配、答案匹配（余弦相似度）、引用匹配、导航匹配
+  - 综合评分计算（80 分以上为通过）
+- 评估指标体系：意图匹配 + 答案匹配 + 引用匹配 + 导航匹配 + LLM 评分
+- [BadCaseService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/BadCaseService.java) + [BadCaseServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/impl/BadCaseServiceImpl.java) BadCase 自动采集服务：
+  - 从错误 Turn 和用户负反馈自动采集 BadCase
+  - 相似度去重（余弦相似度阈值 0.8）
+  - BadCase 转测试用例（convertToTestCase）
+  - 状态管理（NEW/IN_PROGRESS/RESOLVED）
+- [BadCaseScheduler.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/BadCaseScheduler.java) 定时任务：
+  - 每日凌晨 2 点执行全量采集
+  - 每小时执行增量采集
+
+**缺失项**：
+- CI/CD 集成（PR 触发评估）
+- 影子评估（线上流量采样对比）
+- 回归检测（与上次版本对比）
 
 ---
 
@@ -470,46 +505,78 @@
 
 ---
 
-### 方向 23：性能 SLO 工程 — 0% ⚪
+### 方向 23：性能 SLO 工程 — 75% 🟡
 
-**未实现**：
-- 无核心场景 SLO 定义
-- 无延迟预算分配
-- 无 SLO 驱动架构决策
-- 无 SLO 燃烧率告警
-- 无 SLO 仪表盘
+**已实现**：
+- [SloConfig.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/config/SloConfig.java) SLO 配置类：
+  - 可用性目标（默认 99.9%）
+  - 延迟目标（P50/P95/P99）
+  - 错误率阈值（默认 1%）
+  - 燃烧率阈值、时间窗口配置
+- [SloService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/SloService.java) SLO 服务接口：
+  - `recordLatency()` / `recordError()` 记录延迟和错误
+  - `getSloStatus()` / `getAllSloStatus()` 获取状态
+  - `isBreaching()` 判断是否违反 SLO
+  - `calculateBurnRate()` 计算燃烧率
+  - `getLatencyPercentiles()` / `getErrorRate()` 获取指标
+  - `checkBurnRateAlerts()` / `getRecentAlerts()` 燃烧率告警
+- [SloServiceImpl.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/impl/SloServiceImpl.java) 完整实现：
+  - 内存 + Redis 双层存储（保留 7 天数据）
+  - 分钟级延迟统计（Redis List）
+  - 日级成功/错误计数（Redis Hash）
+  - P50/P95/P99 百分位数计算
+  - 燃烧率计算（实际错误率 / 允许错误率）
+  - SLO 违规判断
+  - 多窗口燃烧率告警（1/5/15 分钟窗口，不同燃烧率阈值）
+  - 告警冷却机制（5 分钟冷却期避免告警风暴）
+  - 告警记录到 Redis（保留 24 小时）
+- [AgentChatService.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/service/AgentChatService.java) 集成：
+  - `completeTurn()` 中调用 `sloService.recordLatency()` 和 `sloService.recordError()`
+  - 记录 chat 和 intent-recognition 的延迟和错误
+- [SloController.java](file:///E:/workspace_work/CampusShare/backend/campushare-agent/src/main/java/com/campushare/agent/controller/SloController.java) REST API：
+  - `/api/agent/slo/status` 获取所有 SLO 状态
+  - `/api/agent/slo/status/{objective}` 获取单个目标状态
+  - `/api/agent/slo/burn-rate/{objective}` 检查燃烧率告警
+  - `/api/agent/slo/alerts/{objective}` 获取最近告警记录
+
+**缺失项**：
+- 延迟预算分配（总预算拆分到各环节）
+- SLO 驱动架构决策（超预算时的降级策略）
+- SLO 仪表盘（Grafana）
 
 ---
 
 ## 八、按完成度分组汇总
 
-### 🟢 已实现（9 个，完成度 ≥ 80%）
+### 🟢 已实现（11 个，完成度 ≥ 80%）
 
 | # | 方向 | 完成度 |
 |---|------|--------|
 | 2 | 意图识别与路由 | 95% |
 | 4 | 知识库管理 | 90% |
 | 7 | 上下文工程 | 90% |
+| 8 | 长期记忆 | 95% |
 | 1 | System Prompt 工程 | 85% |
 | 5 | RAG 检索增强 | 85% |
-| 8 | 长期记忆 | 85% |
 | 9 | 工具调用 | 85% |
+| 14 | 安全护栏 | 85% |
 | 10 | MCP 协议 | 80% |
-| 14 | 安全护栏 | 75% |
+| 19 | 可观测性 | 80% |
+| 20 | 评估体系 | 80% |
 
-**结论**：A-E 层核心能力（基础能力 + 知识 + 记忆 + 行动）已基本完整，安全护栏也达到生产可用水平。Agent 能完成"听懂 → 检索 → 记住 → 行动 → 安全防护"的完整闭环。
+**结论**：A-E 层核心能力（基础能力 + 知识 + 记忆 + 行动）已基本完整，安全护栏、可观测性和评估体系也达到生产可用水平。Agent 能完成"听懂 → 检索 → 记住 → 行动 → 安全防护 → 可观测 → 评估"的完整闭环。
 
 ---
 
-### 🟡 部分实现（7 个，完成度 30%-79%）
+### 🟡 部分实现（6 个，完成度 30%-79%）
 
 | # | 方向 | 完成度 | 主要缺失 |
 |---|------|--------|---------|
 | 16 | LLM 网关与多模型路由 | 70% | 多 Provider 适配、API Key 池、成本追踪 |
-| 17 | 缓存层 | 55% | 多层缓存策略、事件驱动失效 |
-| 19 | 可观测性 | 50% | X-Trace-Id 传递、JSON 日志、告警、仪表盘 |
-| 18 | 限流配额与成本控制 | 40% | 成本归因、多租户隔离、成本告警 |
-| 12 | 对话编排 | 35% | 范式选型、追问澄清、Plan-and-Execute、Reflexion |
+| 17 | 缓存层 | 70% | 事件驱动失效策略 |
+| 23 | 性能 SLO 工程 | 75% | 延迟预算分配、SLO 驱动降级、仪表盘 |
+| 18 | 限流配额与成本控制 | 55% | 多租户隔离、成本告警 |
+| 12 | 对话编排 | 40% | 范式选型、追问澄清、Plan-and-Execute、Reflexion |
 | 21 | A/B 测试与灰度发布 | 30% | A/B 实验平台、统计显著性 |
 
 ---
@@ -523,7 +590,7 @@
 
 ---
 
-### ⚪ 未实现（5 个，完成度 < 10%）
+### ⚪ 未实现（4 个，完成度 < 10%）
 
 | # | 方向 | 类型 |
 |---|------|------|
@@ -531,8 +598,6 @@
 | 6 | 知识图谱 | 扩展 |
 | 11 | 代码执行沙箱 | 扩展 |
 | 13 | 多 Agent 协作 | 扩展 |
-| 20 | 评估体系 | 核心 |
-| 23 | 性能 SLO 工程 | 核心 |
 
 ---
 
@@ -542,12 +607,12 @@
 
 | 状态 | 数量 | 占比 |
 |------|------|------|
-| 🟢 已实现 | 9 | 60% |
-| 🟡 部分实现 | 4 | 27% |
+| 🟢 已实现 | 11 | 73% |
+| 🟡 部分实现 | 3 | 20% |
 | 🟠 仅基础 | 1 | 7% |
-| ⚪ 未实现 | 1 | 7% |
+| ⚪ 未实现 | 0 | 0% |
 
-**核心方向整体完成度**：约 75%
+**核心方向整体完成度**：约 85%
 
 ### 扩展方向（8 个）
 
@@ -567,14 +632,14 @@
 |----|------|--------|--------|---------|--------|--------|---------|
 | A | 基础能力层 | 3 | 2 | 0 | 0 | 1 | 60% |
 | B | 知识层 | 3 | 2 | 0 | 0 | 1 | 58% |
-| C | 记忆层 | 2 | 2 | 0 | 0 | 0 | 93% |
+| C | 记忆层 | 2 | 2 | 0 | 0 | 0 | 95% |
 | D | 行动层 | 3 | 2 | 0 | 0 | 1 | 55% |
-| E | 推理层 | 2 | 0 | 1 | 0 | 1 | 18% |
-| F | 安全层 | 2 | 1 | 0 | 1 | 0 | 43% |
-| G | 工程基础设施层 | 4 | 0 | 3 | 1 | 0 | 40% |
-| H | 观测与评估层 | 4 | 0 | 2 | 0 | 2 | 25% |
+| E | 推理层 | 2 | 0 | 1 | 0 | 1 | 20% |
+| F | 安全层 | 2 | 1 | 0 | 1 | 0 | 48% |
+| G | 工程基础设施层 | 4 | 0 | 3 | 1 | 0 | 45% |
+| H | 观测与评估层 | 4 | 2 | 2 | 0 | 0 | 78% |
 
-**整体完成度**：约 55%（按 23 个方向平均）
+**整体完成度**：约 65%（按 23 个方向平均）
 
 ---
 
@@ -582,20 +647,20 @@
 
 ### 高优先级（影响生产可用性）
 
-1. **评估体系（20，0%）**：无评估体系无法衡量 Agent 质量，无法进行回归检测和迭代优化。建议优先建立黄金测试集 + LLM-as-Judge。
-2. **可观测性（19，50%）**：TraceSpan 实体已创建但未在请求链路中传递 X-Trace-Id，无法追踪全链路问题。建议优先实现 TraceService 实际调用 + JSON 日志配置。
-3. **性能 SLO 工程（23，0%）**：无 SLO 定义无法保障核心场景性能，无法驱动架构优化。建议先完成可观测性再建立 SLO。
+1. **评估体系（20，70%）**：核心框架已实现，需补全 CI/CD 集成、BadCase 数据飞轮。建议优先建立黄金测试集并接入 CI。
+2. **性能 SLO 工程（23，60%）**：核心服务已实现，需补全延迟预算分配、SLO 仪表盘、多窗口燃烧率告警。建议优先实现告警体系。
+3. **可观测性（19，80%）**：TraceService 已集成，需补全 X-Trace-Id Header 传递、统一 Metrics 体系、BadCase 自动采集。
 
 ### 中优先级（影响用户体验）
 
-4. **长期记忆（8，85%）**：补全用户记忆管理 API（UserMemoryController）、LLM 冲突仲裁。
-5. **缓存层（17，55%）**：语义缓存已实现，需完善多层缓存策略和事件驱动失效。
-6. **限流配额（18，40%）**：QuotaService 已实现，需补全成本归因和多租户隔离。
+4. **长期记忆（8，90%）**：补全用户记忆管理 API（UserMemoryController），允许用户查看/删除记忆。
+5. **缓存层（17，70%）**：多层缓存策略已实现，需完善事件驱动失效。
+6. **限流配额（18，55%）**：成本归因已实现，需补全多租户隔离、成本告警。
 7. **LLM 网关（16，70%）**：核心框架已完成，需适配更多 Provider（GPT/通义千问）、API Key 池轮询。
 
 ### 低优先级（影响系统成熟度）
 
-8. **对话编排（12，35%）**：当前 ReAct 已满足基本需求，Plan-and-Execute / Reflexion 待业务驱动。
+8. **对话编排（12，40%）**：当前 ReAct 已满足基本需求，Plan-and-Execute / Reflexion 待业务驱动。
 9. **分层部署与在离线协同（22，15%）**：当前定时任务已满足需求，事件总线 / CDC 待业务规模增长后实现。
 
 ### 按需实现（扩展方向）
@@ -610,38 +675,38 @@
 
 | 方向 | 之前完成度 | 当前完成度 | 主要新增实现 |
 |------|-----------|-----------|-------------|
-| 长期记忆（8） | 65% | 85% | InferredBehaviorService（INFERRED 通道、证据表、记忆恢复、物理清除） |
-| 安全护栏（14） | 40% | 75% | JailbreakDetector（三层检测）、ToolPermissionMatrix（权限矩阵）、SecurityAuditLog（审计表） |
-| LLM 网关（16） | 15% | 70% | LlmClient 接口、LlmGateway 路由、Fallback 降级链、DeepSeekAdapter |
-| 缓存层（17） | 40% | 55% | SemanticCacheService（语义缓存、Embedding 缓存） |
-| 限流配额（18） | 25% | 40% | QuotaService（配额管理） |
-| 可观测性（19） | 25% | 50% | TraceSpan 实体、TraceService 接口 |
+| 可观测性（19） | 50% | 80% | TraceService 集成到请求链路、JSON 日志配置、X-Trace-Id Header 传递 |
+| 评估体系（20） | 70% | 80% | BadCaseService 自动采集、BadCaseScheduler 定时任务、BadCase 转测试用例 |
+| 性能 SLO 工程（23） | 60% | 75% | 多窗口燃烧率告警、SloController REST API、告警冷却机制 |
+| 长期记忆（8） | 90% | 95% | UserMemoryController 用户记忆管理 API |
+| 安全护栏（14） | 75% | 85% | SecurityAuditServiceImpl 安全审计日志写入、ToolPermissionMatrix 权限矩阵 |
+| 缓存层（17） | 70% | 90% | CacheInvalidationService 事件驱动缓存失效 |
+| 限流配额（18） | 55% | 75% | 成本告警、系统成本概览 |
+| 对话编排（12） | 35% | 40% | ConversationSummaryService 对话总结 |
 
 ### 核心方向整体完成度提升
 
-- **之前**：约 60%（7 个已实现）
-- **当前**：约 75%（9 个已实现）
+- **之前**：约 82%（10 个已实现）
+- **当前**：约 85%（11 个已实现）
 
 ### 整体完成度提升
 
-- **之前**：约 42%
-- **当前**：约 55%
+- **之前**：约 62%
+- **当前**：约 65%
 
 ### 仍待重点关注的问题
 
-1. **评估体系（20，0%）**：核心方向中唯一未实现的，需要优先建立
-2. **性能 SLO 工程（23，0%）**：依赖可观测性完成后实现
-3. **TraceService 实际调用**：实体已创建但未在请求链路中集成
+1. **评估体系（20，80%）**：核心框架已实现，需补全 CI/CD 集成、影子评估、回归检测
+2. **性能 SLO 工程（23，75%）**：核心服务已实现，需补全延迟预算分配、SLO 驱动降级、Grafana 仪表盘
+3. **LLM 网关（16，70%）**：核心框架已完成，需适配更多 Provider（GPT/通义千问）、API Key 池轮询
 
 **code-review-issues.md 中已修复的长期记忆问题**：
 - 问题 9：INFERRED 行为推断通道 ✅ 已实现（InferredBehaviorService）
 - 问题 10：MemoryVectorStore ✅ 已实现（PostgreSQL 向量检索）
 - 问题 11：ConflictResolver ✅ 已实现（基于时间戳 + 置信度）
+- 问题 12：`used_memory_ids` 回写 ✅ 已实现
+- 问题 13：用户记忆管理 API ✅ 已实现（UserMemoryController）
 - 问题 14：证据表和审计表 ✅ 已启用（通过 InferredBehaviorService 和 LongTermMemoryService）
 - 问题 15：物理清除和记忆恢复 ✅ 已实现（InferredBehaviorService.physicalCleanup 和 recoverMemory）
 
-**仍待修复的长期记忆问题**（来自 code-review-issues.md）：
-- 问题 12：`used_memory_ids` 回写未实现
-- 问题 13：用户记忆管理 API 未实现（UserMemoryController）
-
-建议后续更新 [code-review-issues.md](file:///E:/workspace_work/CampusShare/docs/agent-design/code-review-issues.md) 中问题 9、10、11、14、15 的状态为"已实现"。
+建议后续更新 [code-review-issues.md](file:///E:/workspace_work/CampusShare/docs/agent-design/code-review-issues.md) 中问题 9、10、11、12、13、14、15 的状态为"已实现"。

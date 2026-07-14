@@ -89,6 +89,7 @@ public class AgentChatService {
     private final TransactionTemplate transactionTemplate;
     private final TraceService traceService;
     private final SloService sloService;
+    private final MetricsService metricsService;
 
     private volatile Counter violationCounter;
     private volatile Counter injectionDetectedCounter;
@@ -855,6 +856,10 @@ public class AgentChatService {
                 sloService.recordLatency("intent-recognition", elapsedMs, true);
             }
 
+            metricsService.recordChatLatency(elapsedMs);
+            metricsService.recordPromptTokens(inputTokens);
+            metricsService.recordCompletionTokens(completionTokens);
+
             if (rootSpan != null) {
                 traceService.recordLlmUsage(rootSpan, modelName, inputTokens, completionTokens, totalTokens);
                 traceService.endSpan(rootSpan);
@@ -862,8 +867,10 @@ public class AgentChatService {
         } catch (Exception e) {
             log.error("Failed to complete turn {}", turn.getId(), e);
             sloService.recordError("chat");
+            metricsService.recordChatError();
             if (intentResult != null) {
                 sloService.recordError("intent-recognition");
+                metricsService.recordIntentError();
             }
             if (rootSpan != null) {
                 traceService.endSpanWithError(rootSpan, e.getMessage());
