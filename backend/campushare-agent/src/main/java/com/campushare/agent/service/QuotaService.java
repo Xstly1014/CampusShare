@@ -7,7 +7,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
@@ -172,6 +174,140 @@ public class QuotaService {
         String tierKey = QUOTA_PREFIX + "tier:" + userId;
         String tier = redisTemplate.opsForValue().get(tierKey);
         return tier != null ? tier : "FREE";
+    }
+
+    private static final String ALERT_PREFIX = "agent:alert:cost:";
+    private static final Map<String, CostAlertConfig> COST_ALERT_CONFIGS = Map.of(
+            "FREE", new CostAlertConfig(5.0, 10.0, 15.0, 30),
+            "PRO", new CostAlertConfig(50.0, 100.0, 200.0, 60),
+            "ENTERPRISE", new CostAlertConfig(500.0, 1000.0, 2000.0, 120)
+    );
+
+    public Map<String, Object> checkCostAlerts(String userId) {
+        String tier = getUserTier(userId);
+        CostAlertConfig config = COST_ALERT_CONFIGS.getOrDefault(tier, COST_ALERT_CONFIGS.get("FREE"));
+
+        String dailyCostKey = COST_PREFIX + "daily:" + userId + ":" + getTodayStr();
+        String monthlyCostKey = COST_PREFIX + "monthly:" + userId + ":" + getMonthStr();
+
+        double dailyCost = getDouble(dailyCostKey, 0.0);
+        double monthlyCost = getDouble(monthlyCostKey, 0.0);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("userId", userId);
+        result.put("tier", tier);
+        result.put("dailyCost", dailyCost);
+        result.put("monthlyCost", monthlyCost);
+        result.put("alerts", new java.util.ArrayList<Map<String, Object>>());
+
+        checkAndTriggerAlert(userId, "daily", dailyCost, config.dailyWarningThreshold, "WARNING", result);
+        checkAndTriggerAlert(userId, "daily", dailyCost, config.dailyCriticalThreshold, "CRITICAL", result);
+        checkAndTriggerAlert(userId, "monthly", monthlyCost, config.monthlyWarningThreshold, "WARNING", result);
+        checkAndTriggerAlert(userId, "monthly", monthlyCost, config.monthlyCriticalThreshold, "CRITICAL", result);
+
+        return result;
+    }
+
+    private void checkAndTriggerAlert(String userId, String period, double cost,
+                                       double threshold, String severity, Map<String, Object> result) {
+        if (cost < threshold) return;
+
+        String alertKey = ALERT_PREFIX + period + ":" + severity + ":" + userId;
+        String lastAlertStr = redisTemplate.opsForValue().get(alertKey);
+
+        long cooldownMinutes = COST_ALERT_CONFIGS.getOrDefault(getUserTier(userId),
+                COST_ALERT_CONFIGS.get("FREE")).alertCooldownMinutes;
+
+        if (lastAlertStr != null) {
+            try {
+                LocalDateTime lastAlert = LocalDateTime.parse(lastAlertStr);
+                if (LocalDateTime.now().isBefore(lastAlert.plusMinutes(cooldownMinutes))) {
+                    return;
+                }
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+
+        log.error("[COST ALERT] userId={}, period={}, severity={}, cost={}, threshold={}",
+                userId, period, severity, cost, threshold);
+
+        redisTemplate.opsForValue().set(alertKey, LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+        Map<String, Object> alert = new HashMap<>();
+        alert.put("period", period);
+        alert.put("severity", severity);
+        alert.put("cost", cost);
+        alert.put("threshold", threshold);
+        alert.put("timestamp", LocalDateTime.now());
+        ((java.util.List<Map<String, Object>>) result.get("alerts")).add(alert);
+    }
+
+    public Map<String, Object> getSystemCostOverview() {
+        Map<String, Object> result = new HashMap<>();
+
+        double totalDailyCost = 0;
+        double totalMonthlyCost = 0;
+        long activeUsersToday = 0;
+
+        String todayStr = getTodayStr();
+        String monthStr = getMonthStr();
+
+        try {
+            var dailyKeys = redisTemplate.keys(COST_PREFIX + "daily:*:" + todayStr);
+            var monthlyKeys = redisTemplate.keys(COST_PREFIX + "monthly:*:" + monthStr);
+
+            if (dailyKeys != null) {
+                for (String key : dailyKeys) {
+                    try {
+                        double cost = getDouble(key, 0.0);
+                        totalDailyCost += cost;
+                        activeUsersToday++;
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                }
+            }
+
+            if (monthlyKeys != null) {
+                for (String key : monthlyKeys) {
+                    try {
+                        totalMonthlyCost += getDouble(key, 0.0);
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get system cost overview", e);
+        }
+
+        result.put("totalDailyCost", totalDailyCost);
+        result.put("totalMonthlyCost", totalMonthlyCost);
+        result.put("activeUsersToday", activeUsersToday);
+        result.put("timestamp", LocalDateTime.now());
+
+        return result;
+    }
+
+    @lombok.Data
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class CostAlertConfig {
+        private double dailyWarningThreshold;
+        private double dailyCriticalThreshold;
+        private double monthlyWarningThreshold;
+        private double monthlyCriticalThreshold;
+        private int alertCooldownMinutes;
+
+        public CostAlertConfig(double dailyWarningThreshold, double dailyCriticalThreshold,
+                               double monthlyWarningThreshold, int alertCooldownMinutes) {
+            this.dailyWarningThreshold = dailyWarningThreshold;
+            this.dailyCriticalThreshold = dailyCriticalThreshold;
+            this.monthlyWarningThreshold = monthlyWarningThreshold;
+            this.monthlyCriticalThreshold = monthlyWarningThreshold * 2;
+            this.alertCooldownMinutes = alertCooldownMinutes;
+        }
     }
 
     private long getLong(String key, long defaultValue) {

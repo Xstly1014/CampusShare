@@ -19,61 +19,46 @@ public class SloController {
     private final SloService sloService;
 
     @GetMapping("/status")
-    public Result<List<Map<String, Object>>> getAllSloStatus() {
+    public Result<List<Map<String, Object>>> getAllStatus() {
         return Result.success(sloService.getAllSloStatus());
     }
 
-    @GetMapping("/status/{objectiveName}")
-    public Result<Map<String, Object>> getSloStatus(@PathVariable String objectiveName) {
-        return Result.success(sloService.getSloStatus(objectiveName));
+    @GetMapping("/status/{objective}")
+    public Result<Map<String, Object>> getStatus(@PathVariable String objective) {
+        return Result.success(sloService.getSloStatus(objective));
     }
 
-    @GetMapping("/summary/{objectiveName}")
-    public Result<Map<String, Object>> getSloSummary(
-            @PathVariable String objectiveName,
-            @RequestParam(required = false) LocalDateTime startTime,
-            @RequestParam(required = false) LocalDateTime endTime) {
-        return Result.success(sloService.getSloSummary(objectiveName,
-                startTime != null ? startTime : LocalDateTime.now().minusHours(1),
-                endTime != null ? endTime : LocalDateTime.now()));
+    @GetMapping("/summary/{objective}")
+    public Result<Map<String, Object>> getSummary(@PathVariable String objective) {
+        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime startTime = endTime.minusMinutes(5);
+        return Result.success(sloService.getSloSummary(objective, startTime, endTime));
     }
 
-    @GetMapping("/breaching")
-    public Result<List<Map<String, Object>>> getBreachingObjectives() {
-        List<Map<String, Object>> allStatus = sloService.getAllSloStatus();
-        allStatus.removeIf(status -> !Boolean.TRUE.equals(status.get("breaching")));
-        return Result.success(allStatus);
+    @GetMapping("/latency/{objective}")
+    public Result<Map<String, Object>> getLatencyPercentiles(@PathVariable String objective,
+                                                              @RequestParam(defaultValue = "5") int minutes) {
+        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime startTime = endTime.minusMinutes(minutes);
+        return Result.success(sloService.getLatencyPercentiles(objective, startTime, endTime));
     }
 
-    @GetMapping("/latency/{objectiveName}")
-    public Result<Map<String, Object>> getLatencyPercentiles(
-            @PathVariable String objectiveName,
-            @RequestParam(required = false) LocalDateTime startTime,
-            @RequestParam(required = false) LocalDateTime endTime) {
-        return Result.success(sloService.getLatencyPercentiles(objectiveName,
-                startTime != null ? startTime : LocalDateTime.now().minusHours(1),
-                endTime != null ? endTime : LocalDateTime.now()));
+    @GetMapping("/burn-rate/{objective}")
+    public Result<Map<String, Object>> checkBurnRateAlerts(@PathVariable String objective) {
+        return Result.success(sloService.checkBurnRateAlerts(objective));
     }
 
-    @GetMapping("/error-rate/{objectiveName}")
-    public Result<Map<String, Double>> getErrorRate(
-            @PathVariable String objectiveName,
-            @RequestParam(required = false) LocalDateTime startTime,
-            @RequestParam(required = false) LocalDateTime endTime) {
-        double errorRate = sloService.getErrorRate(objectiveName,
-                startTime != null ? startTime : LocalDateTime.now().minusHours(1),
-                endTime != null ? endTime : LocalDateTime.now());
-        return Result.success(Map.of("errorRate", errorRate));
+    @GetMapping("/alerts/{objective}")
+    public Result<List<Map<String, Object>>> getRecentAlerts(@PathVariable String objective,
+                                                              @RequestParam(defaultValue = "20") int limit) {
+        return Result.success(sloService.getRecentAlerts(objective, limit));
     }
 
-    @GetMapping("/burn-rate/{objectiveName}")
-    public Result<Map<String, Double>> getBurnRate(
-            @PathVariable String objectiveName,
-            @RequestParam(required = false) LocalDateTime startTime,
-            @RequestParam(required = false) LocalDateTime endTime) {
-        double burnRate = sloService.calculateBurnRate(objectiveName,
-                startTime != null ? startTime : LocalDateTime.now().minusHours(1),
-                endTime != null ? endTime : LocalDateTime.now());
-        return Result.success(Map.of("burnRate", burnRate));
+    @GetMapping("/error-rate/{objective}")
+    public Result<Double> getErrorRate(@PathVariable String objective,
+                                        @RequestParam(defaultValue = "5") int minutes) {
+        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime startTime = endTime.minusMinutes(minutes);
+        return Result.success(sloService.getErrorRate(objective, startTime, endTime));
     }
 }
