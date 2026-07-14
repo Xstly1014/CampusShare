@@ -17,7 +17,7 @@ import java.time.Duration;
 
 @Slf4j
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 4)
+@Order(Ordered.HIGHEST_PRECEDENCE + 1)
 @RequiredArgsConstructor
 public class AntiReplayFilter implements WebFilter {
 
@@ -35,7 +35,6 @@ public class AntiReplayFilter implements WebFilter {
         }
 
         String requestId = exchange.getRequest().getHeaders().getFirst("X-Request-Id");
-        AuthContext authContext = exchange.getAttribute(AuthenticationFilter.AUTH_CONTEXT_KEY);
 
         if (requestId == null || requestId.isBlank()) {
             log.warn("X-Request-Id is required");
@@ -43,8 +42,20 @@ public class AntiReplayFilter implements WebFilter {
             return exchange.getResponse().setComplete();
         }
 
+        AuthContext authContext = exchange.getAttribute(AuthenticationFilter.AUTH_CONTEXT_KEY);
+
         if (authContext == null) {
-            return chain.filter(exchange);
+            String replayKey = REPLAY_PREFIX + "anonymous:" + requestId;
+            return redisTemplate.opsForValue().setIfAbsent(replayKey, "1", Duration.ofSeconds(REPLAY_TTL))
+                    .flatMap(set -> {
+                        if (Boolean.TRUE.equals(set)) {
+                            return chain.filter(exchange);
+                        } else {
+                            log.warn("Duplicate request detected, anonymous, requestId={}", requestId);
+                            exchange.getResponse().setStatusCode(HttpStatus.CONFLICT);
+                            return exchange.getResponse().setComplete();
+                        }
+                    });
         }
 
         String replayKey = REPLAY_PREFIX + authContext.getUserId() + ":" + requestId;
