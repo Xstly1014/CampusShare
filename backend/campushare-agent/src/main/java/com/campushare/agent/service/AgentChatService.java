@@ -14,6 +14,7 @@ import com.campushare.agent.entity.TraceSpan;
 import com.campushare.agent.enums.Intent;
 import com.campushare.agent.enums.SessionStatus;
 import com.campushare.agent.llm.DeepSeekClient;
+import com.campushare.agent.orchestration.DialogueOrchestrator;
 import com.campushare.agent.llm.DeepSeekRequest;
 import com.campushare.agent.llm.DeepSeekResponse;
 import com.campushare.agent.service.SloService;
@@ -90,6 +91,7 @@ public class AgentChatService {
     private final TraceService traceService;
     private final SloService sloService;
     private final MetricsService metricsService;
+    private final DialogueOrchestrator dialogueOrchestrator;
 
     private volatile Counter violationCounter;
     private volatile Counter injectionDetectedCounter;
@@ -151,48 +153,42 @@ public class AgentChatService {
                         return Flux.concat(sessionEvent, finalDeltaFlux);
                     }
 
-                    // 慢路径：工具调用循环 + 最终流式回答
-                    List<DeepSeekRequest.Message> messages = new ArrayList<>(ctx.messages());
-                    List<ToolResult.Ref> allRefs = new ArrayList<>();
-                    List<String> toolCallRecords = new ArrayList<>();
-                    AtomicReference<DeepSeekResponse.Usage> totalUsageRef = new AtomicReference<>();
-
-                    // 获取当前意图可用的工具 Schema
-                    List<Map<String, Object>> toolSchemas = toolRegistry.getToolSchemas(ctx.intentResult().getIntent());
-
-                    return runToolCallLoop(messages, toolSchemas, allRefs, toolCallRecords, totalUsageRef, userId, 0)
-                            .flatMapMany(finalMessages -> {
+                    // 慢路径：对话编排（支持 ReAct/CoT/Plan-and-Execute/Reflexion/CLARIFY 多种范式）
+                    return dialogueOrchestrator.orchestrate(userId, ctx.session().getId(),
+                                    request.getMessage(), ctx.intentResult(), ctx.retrievalResults())
+                            .flatMapMany(turnResponse -> {
                                 // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
-                                // 优先使用工具调用结果，工具调用为空时使用检索结果
                                 Flux<ChatEvent> refsEvent = Flux.empty();
-                                if (!allRefs.isEmpty()) {
-                                    String refsJson = buildToolRefsJson(allRefs);
+                                if (turnResponse.getRefs() != null && !turnResponse.getRefs().isEmpty()) {
+                                    String refsJson = buildRefsJsonFromTurnResponse(turnResponse.getRefs());
                                     refsEvent = Flux.just(new ChatEvent("refs", refsJson));
                                 } else if (ctx.retrievalResults() != null && !ctx.retrievalResults().isEmpty()) {
                                     String refsJson = buildRefsJson(ctx.retrievalResults());
                                     refsEvent = Flux.just(new ChatEvent("refs", refsJson));
                                 }
 
-                                // 最终流式回答（不带 tools）
+                                // navigate 事件：如果存在跳转信息
+                                Flux<ChatEvent> navigateEvent = Flux.empty();
+                                if (turnResponse.getNavigate() != null) {
+                                    try {
+                                        String navJson = objectMapper.writeValueAsString(turnResponse.getNavigate());
+                                        navigateEvent = Flux.just(new ChatEvent("navigate", navJson));
+                                    } catch (Exception e) {
+                                        log.warn("Failed to serialize navigate info", e);
+                                    }
+                                }
+
+                                // 流式回答
                                 StringBuilder assistantContent = new StringBuilder();
-                                Flux<ChatEvent> deltaStream = deepSeekClient.chatCompletionStream(finalMessages)
-                                        .doOnNext(chunk -> {
-                                            if (chunk.content() != null) {
-                                                assistantContent.append(chunk.content());
-                                            }
-                                            if (chunk.usage() != null) {
-                                                totalUsageRef.set(chunk.usage());
-                                            }
-                                        })
-                                        .filter(chunk -> chunk.content() != null)
-                                        .map(chunk -> new ChatEvent("delta", chunk.content()))
+                                Flux<ChatEvent> deltaStream = streamText(turnResponse.getContent())
+                                        .doOnNext(event -> assistantContent.append(event.data()))
                                         .doFinally(signalType -> {
                                             long elapsed = System.currentTimeMillis() - ctx.startTime();
                                             String content = assistantContent.toString();
                                             Mono.fromRunnable(() -> {
                                                 if (signalType == SignalType.ON_COMPLETE) {
                                                     completeTurn(ctx.turn(), ctx.session(), content, elapsed,
-                                                            totalUsageRef.get(), ctx.inputTokens(), ctx.retrievalContext(),
+                                                            null, ctx.inputTokens(), ctx.retrievalContext(),
                                                             ctx.intentResult(), ctx.promptVersion(), ctx.rootSpan());
                                                 } else if (signalType == SignalType.ON_ERROR) {
                                                     errorTurn(ctx.turn(), "Stream terminated with error");
@@ -203,7 +199,7 @@ public class AgentChatService {
                                             }).subscribeOn(Schedulers.boundedElastic()).subscribe();
                                         });
 
-                                return Flux.concat(sessionEvent, deltaStream, refsEvent);
+                                return Flux.concat(sessionEvent, deltaStream, refsEvent, navigateEvent);
                             });
                 });
     }
@@ -257,6 +253,15 @@ public class AgentChatService {
             return objectMapper.writeValueAsString(refs);
         } catch (Exception e) {
             log.warn("Failed to build refs JSON: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
+    private String buildRefsJsonFromTurnResponse(List<Map<String, Object>> refs) {
+        try {
+            return objectMapper.writeValueAsString(refs);
+        } catch (Exception e) {
+            log.warn("Failed to build refs JSON from TurnResponse", e);
             return "[]";
         }
     }
