@@ -81,7 +81,8 @@ public class RateLimitService {
     }
 
     public Mono<Void> resetRateLimit(String key) {
-        return redisTemplate.delete(KEY_PREFIX + key + ":*")
+        return redisTemplate.keys(KEY_PREFIX + key + ":*")
+                .flatMap(redisTemplate::delete)
                 .then();
     }
 }
