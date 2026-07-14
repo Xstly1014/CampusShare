@@ -95,6 +95,7 @@ class AgentChatServicePromptIntegrationTest {
     private TransactionTemplate transactionTemplate;
 
     private AgentChatService chatService;
+    private com.campushare.agent.orchestration.DialogueOrchestrator dialogueOrchestrator;
 
     @BeforeEach
     void setUp() {
@@ -106,6 +107,7 @@ class AgentChatServicePromptIntegrationTest {
         promptVersionManager = mock(PromptVersionManager.class);
         meterRegistry = new SimpleMeterRegistry();
         transactionTemplate = mock(TransactionTemplate.class);
+        dialogueOrchestrator = mock(com.campushare.agent.orchestration.DialogueOrchestrator.class);
 
         // Mock TransactionTemplate to execute callback directly
         doAnswer(invocation -> {
@@ -158,6 +160,12 @@ class AgentChatServicePromptIntegrationTest {
         // 默认 stub：历史查询返回空（无历史轮次）
         when(turnMapper.selectList(any())).thenReturn(new ArrayList<>());
 
+        // 默认 stub：DialogueOrchestrator 返回固定响应（慢路径）
+        when(dialogueOrchestrator.orchestrate(anyString(), anyString(), anyString(), any(), any()))
+                .thenReturn(Mono.just(com.campushare.agent.dto.TurnResponse.builder()
+                        .content("我是小享，CampusShare 的智能助手。")
+                        .build()));
+
         chatService = new AgentChatService(
                 deepSeekClient,
                 sessionMapper,
@@ -184,7 +192,8 @@ class AgentChatServicePromptIntegrationTest {
                 transactionTemplate,
                 mock(TraceService.class),
                 mock(SloService.class),
-                mock(MetricsService.class));
+                mock(MetricsService.class),
+                dialogueOrchestrator);
         // 手动调用 @PostConstruct initCounters()（package-private，用反射跨包调用）
         try {
             Method init = AgentChatService.class.getDeclaredMethod("initCounters");
