@@ -48,21 +48,17 @@ public class RateLimitFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 
-        if (path.startsWith("/actuator/") || path.startsWith("/internal/")) {
+        if (path.startsWith("/actuator/") || path.startsWith("/internal/") || path.startsWith("/agent/config/rate-limit/")) {
             return chain.filter(exchange);
         }
 
         AuthContext authContext = exchange.getAttribute(AuthenticationFilter.AUTH_CONTEXT_KEY);
-        if (authContext == null) {
+
+        if (authContext != null && authContext.isVip()) {
             return chain.filter(exchange);
         }
 
-        if (authContext.isVip()) {
-            return chain.filter(exchange);
-        }
-
-        String clientIp = authContext.getClientIp();
-        String userId = authContext.getUserId();
+        String clientIp = getClientIp(exchange);
 
         List<String> keys = new ArrayList<>();
         List<Integer> maxRequests = new ArrayList<>();
@@ -73,8 +69,10 @@ public class RateLimitFilter implements WebFilter {
         keys.add("ip:" + clientIp);
         maxRequests.add(ipMaxRequests);
 
-        keys.add("user:" + userId);
-        maxRequests.add(userMaxRequests);
+        if (authContext != null) {
+            keys.add("user:" + authContext.getUserId());
+            maxRequests.add(userMaxRequests);
+        }
 
         return rateLimitService.checkMultiRateLimit(keys, maxRequests, globalWindowSeconds)
                 .flatMap(result -> {
@@ -88,5 +86,15 @@ public class RateLimitFilter implements WebFilter {
                         return exchange.getResponse().setComplete();
                     }
                 });
+    }
+
+    private String getClientIp(ServerWebExchange exchange) {
+        AuthContext authContext = exchange.getAttribute(AuthenticationFilter.AUTH_CONTEXT_KEY);
+        if (authContext != null && authContext.getClientIp() != null) {
+            return authContext.getClientIp();
+        }
+        return exchange.getRequest().getRemoteAddress() != null
+                ? exchange.getRequest().getRemoteAddress().getAddress().getHostAddress()
+                : "unknown";
     }
 }

@@ -59,12 +59,12 @@ public class RateLimitService {
         return redisTemplate.execute(new DefaultRedisScript<>(LUA_SCRIPT, List.class), redisKeys, args)
                 .next()
                 .map(result -> {
-                    List<Long> list = (List<Long>) result;
-                    if (list.get(0) == 1) {
+                    List<?> list = (List<?>) result;
+                    if (list.size() >= 4 && ((Number) list.get(0)).intValue() == 1) {
                         return RateLimitResult.exceeded(
-                                list.get(1).toString(),
-                                list.get(2).intValue(),
-                                list.get(3).intValue()
+                                String.valueOf(list.get(1)),
+                                ((Number) list.get(2)).intValue(),
+                                ((Number) list.get(3)).intValue()
                         );
                     }
                     return RateLimitResult.allowed();
