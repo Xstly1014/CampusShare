@@ -19,6 +19,27 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class AgentGlobalExceptionHandler {
 
+    @ExceptionHandler(com.campushare.agent.exception.AuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public Mono<Result<Void>> handleAuthenticationException(com.campushare.agent.exception.AuthenticationException e) {
+        log.warn("Authentication exception: {}", e.getMessage());
+        return Mono.just(Result.error(e.getCode(), e.getMessage()));
+    }
+
+    @ExceptionHandler(com.campushare.agent.exception.RateLimitException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public Mono<Result<Void>> handleRateLimitException(com.campushare.agent.exception.RateLimitException e) {
+        log.warn("Rate limit exception: {}", e.getMessage());
+        return Mono.just(Result.error(e.getCode(), e.getMessage()));
+    }
+
+    @ExceptionHandler(com.campushare.agent.exception.ReplayDetectedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Mono<Result<Void>> handleReplayDetectedException(com.campushare.agent.exception.ReplayDetectedException e) {
+        log.warn("Replay detected exception: {}", e.getMessage());
+        return Mono.just(Result.error(e.getCode(), e.getMessage()));
+    }
+
     @ExceptionHandler(BusinessException.class)
     @ResponseStatus(HttpStatus.OK)
     public Mono<Result<Void>> handleBusinessException(BusinessException e) {
