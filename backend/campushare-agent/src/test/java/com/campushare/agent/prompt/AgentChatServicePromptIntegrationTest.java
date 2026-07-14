@@ -27,6 +27,7 @@ import com.campushare.agent.service.RetrievalService;
 import com.campushare.agent.service.RuleShortCircuitFilter;
 import com.campushare.agent.service.SessionStateMachine;
 import com.campushare.agent.service.SloService;
+import com.campushare.agent.service.MetricsService;
 import com.campushare.agent.service.TraceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.campushare.common.exception.BusinessException;
@@ -182,7 +183,8 @@ class AgentChatServicePromptIntegrationTest {
                 new ObjectMapper(),
                 transactionTemplate,
                 mock(TraceService.class),
-                mock(SloService.class));
+                mock(SloService.class),
+                mock(MetricsService.class));
         // 手动调用 @PostConstruct initCounters()（package-private，用反射跨包调用）
         try {
             Method init = AgentChatService.class.getDeclaredMethod("initCounters");
