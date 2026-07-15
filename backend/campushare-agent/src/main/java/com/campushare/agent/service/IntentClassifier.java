@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * LLM 意图分类器（Layer 2，核心）。
@@ -48,6 +49,14 @@ public class IntentClassifier {
     private static final double CONFIDENCE_THRESHOLD = 0.6;
     private static final double LLM_TEMPERATURE = 0.0;
     private static final int LLM_MAX_TOKENS = 200;
+
+    /**
+     * 资源请求关键词：用户表达想获取学习资料/教程/资源时，即使 LLM 误判为 OUT_OF_SCOPE/open_domain
+     * 也应降级为 SEARCH/resource。覆盖 "我想学python" / "求Python教程" / "找C++资料" 等。
+     */
+    private static final Pattern RESOURCE_REQUEST_PATTERN = Pattern.compile(
+            "(想学|想求|求|找|有没有|查).*(资料|教程|笔记|笔记|卷子|试卷|答案|教材|课件|课程|题库|面试题|面经|代码|项目|实验报告|ppt|pdf|word|电子书|书籍|书|课|学习|python|java|c\\+\\+|c语言|js|javascript|前端|后端|算法|数据结构|操作系统|数据库|网络|高数|线代|概率|英语|四六级|考研|期末|期中|复试)"
+    );
 
     public IntentClassifier(DeepSeekClient deepSeekClient,
                             IntentCacheService cacheService,
@@ -118,6 +127,15 @@ public class IntentClassifier {
                     if (result.isLowConfidence()) {
                         log.info("Low confidence ({}), fallback to SEARCH for query='{}'",
                                 result.getConfidence(), query);
+                        result.setIntent(Intent.SEARCH);
+                        result.setSubIntent(Intent.SubIntent.RESOURCE);
+                    }
+                    // Guard：学习资源请求不应被识别为 OUT_OF_SCOPE/open_domain
+                    if (result.getIntent() == Intent.OUT_OF_SCOPE
+                            && Intent.SubIntent.OPEN_DOMAIN.equals(result.getSubIntent())
+                            && looksLikeResourceRequest(query)) {
+                        log.warn("LLM misclassified resource query as OUT_OF_SCOPE/open_domain: '{}'. Downgrade to SEARCH/resource",
+                                query);
                         result.setIntent(Intent.SEARCH);
                         result.setSubIntent(Intent.SubIntent.RESOURCE);
                     }
@@ -198,5 +216,15 @@ public class IntentClassifier {
                 .rewrittenQuery(query != null ? query : "")
                 .classifyLayer("DEFAULT")
                 .build();
+    }
+
+    /**
+     * 判断查询是否为资源请求（学习资料/教程/资源等）。
+     */
+    private boolean looksLikeResourceRequest(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        return RESOURCE_REQUEST_PATTERN.matcher(query.trim().toLowerCase()).find();
     }
 }

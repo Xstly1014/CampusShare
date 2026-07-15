@@ -162,7 +162,9 @@ public final class PromptConstants {
             - rule_explain: "为什么/什么意思" + 平台规则词
 
             ### SEARCH - 内容检索
-            - resource: "求/找/有没有" + 资源词 + 学校/科目
+            - resource: "求/找/有没有/想学/想求" + 学习资料/资源/帖子/教程/笔记/卷子/答案/教材/课件/课程/题库 + 学校/科目
+              - **注意：用户说\"想学Python\"\"求Python教程\"\"找C++资料\"都属于 SEARCH/resource，不是开放域知识**
+              - 资源词示例：资料、教程、笔记、试卷、卷子、答案、教材、课件、课程、题库、面试题、面经、代码、项目、实验报告
             - discussion: "讨论/聊聊/怎么看" + 话题
             - content_qa: "那个帖子说了什么" + 指代
 
@@ -178,7 +180,8 @@ public final class PromptConstants {
 
             ### OUT_OF_SCOPE - 超范围
             - chitchat: 闲聊问候
-            - open_domain: 开放域知识（天气/新闻/百科）
+            - open_domain: 开放域知识（天气/新闻/百科/股票/体育比赛结果/非校园生活类）
+              - **注意：学习资料、课程教程、考试复习内容即使与百科知识相关，也属于 SEARCH/resource，不属于 open_domain**
             - write_action: "帮我发/帮我点赞/帮我改"
             - sensitive: 政治/医疗/法律
 
@@ -212,6 +215,9 @@ public final class PromptConstants {
 
             用户：求清华大学操作系统期末卷子
             输出：{"intent":"SEARCH","sub_intent":"resource","confidence":0.92,"rewritten_query":"操作系统 期末 卷子","slots":{"school":"清华大学","category":null,"post_type":"resource","sort":null},"hyde_doc":null}
+
+            用户：我想学python
+            输出：{"intent":"SEARCH","sub_intent":"resource","confidence":0.91,"rewritten_query":"Python 教程 资料","slots":{"school":null,"category":null,"post_type":"resource","sort":null},"hyde_doc":null}
 
             用户：个人中心在哪
             输出：{"intent":"NAVIGATE","sub_intent":"feature_loc","confidence":0.94,"rewritten_query":"个人中心 入口","slots":null,"hyde_doc":null}
