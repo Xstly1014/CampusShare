@@ -12,10 +12,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 验证点：
  *  - DEFAULT 预算总和 = 8000
- *  - HOW_TO：L3 优先（4000），L4 压缩（1500）
- *  - SEARCH：L3/L4 均衡（3500/2000）
- *  - NAVIGATE：L4 优先（3000），L3 压缩（1000）
- *  - CLARIFY：L4 最大化（4000），L3 最小化（500）
+ *  - HOW_TO：L3 优先（4000），L4 压缩（1000）
+ *  - SEARCH：L3/L4 均衡（3500/1500）
+ *  - NAVIGATE：L4 优先（2500），L3 压缩（1000）
+ *  - CLARIFY：L4 最大化（3000），L3 最小化（500）
  *  - null intent → DEFAULT
  */
 @DisplayName("TokenBudget 单元测试")
@@ -39,7 +39,7 @@ class TokenBudgetTest {
             assertThat(b.l1Profile()).isEqualTo(300);
             assertThat(b.l2ToolDefs()).isEqualTo(500);
             assertThat(b.l3Retrieval()).isEqualTo(3000);
-            assertThat(b.l4History()).isEqualTo(2500);
+            assertThat(b.l4History()).isEqualTo(2000);
             assertThat(b.l5UserInput()).isEqualTo(700);
         }
     }
@@ -57,38 +57,38 @@ class TokenBudgetTest {
         }
 
         @Test
-        @DisplayName("HOW_TO：L3=4000 L4=1500（检索优先）")
+        @DisplayName("HOW_TO：L3=4000 L4=1000（检索优先）")
         void forIntent_howTo_retrievalPriority() {
             TokenBudget b = TokenBudget.forIntent(intent(Intent.HOW_TO));
             assertThat(b.l3Retrieval()).isEqualTo(4000);
+            assertThat(b.l4History()).isEqualTo(1000);
+            assertThat(b.total()).isEqualTo(8000);
+        }
+
+        @Test
+        @DisplayName("SEARCH：L3=3500 L4=1500（均衡）")
+        void forIntent_search_balanced() {
+            TokenBudget b = TokenBudget.forIntent(intent(Intent.SEARCH));
+            assertThat(b.l3Retrieval()).isEqualTo(3500);
             assertThat(b.l4History()).isEqualTo(1500);
             assertThat(b.total()).isEqualTo(8000);
         }
 
         @Test
-        @DisplayName("SEARCH：L3=3500 L4=2000（均衡）")
-        void forIntent_search_balanced() {
-            TokenBudget b = TokenBudget.forIntent(intent(Intent.SEARCH));
-            assertThat(b.l3Retrieval()).isEqualTo(3500);
-            assertThat(b.l4History()).isEqualTo(2000);
-            assertThat(b.total()).isEqualTo(8000);
-        }
-
-        @Test
-        @DisplayName("NAVIGATE：L3=1000 L4=3000（历史优先）")
+        @DisplayName("NAVIGATE：L3=1000 L4=2500（历史优先）")
         void forIntent_navigate_historyPriority() {
             TokenBudget b = TokenBudget.forIntent(intent(Intent.NAVIGATE));
             assertThat(b.l3Retrieval()).isEqualTo(1000);
-            assertThat(b.l4History()).isEqualTo(3000);
+            assertThat(b.l4History()).isEqualTo(2500);
             assertThat(b.total()).isEqualTo(8000);
         }
 
         @Test
-        @DisplayName("CLARIFY：L3=500 L4=4000（历史最大化）")
+        @DisplayName("CLARIFY：L3=500 L4=3000（历史最大化）")
         void forIntent_clarify_historyMaximized() {
             TokenBudget b = TokenBudget.forIntent(intent(Intent.CLARIFY));
             assertThat(b.l3Retrieval()).isEqualTo(500);
-            assertThat(b.l4History()).isEqualTo(4000);
+            assertThat(b.l4History()).isEqualTo(3000);
             assertThat(b.total()).isEqualTo(8000);
         }
 

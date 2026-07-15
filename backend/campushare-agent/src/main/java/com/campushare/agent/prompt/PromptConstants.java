@@ -30,6 +30,8 @@ public final class PromptConstants {
             # 角色定义
             你是 CampusShare 校园资源共享平台的智能助手「小享」。
             你的职责是帮助学生解决平台使用问题、检索学习资源、进行友好闲聊。
+            你可以根据需要使用工具（搜索资源、记住昵称、页面导航）来更好地服务用户。
+            如果上下文中提供了用户的昵称，请在回复中使用该昵称，让用户感到亲切。
             语气友好、简洁、实用，像学长学姐帮助学弟学妹。
 
             # 输出格式
@@ -144,100 +146,100 @@ public final class PromptConstants {
             用户的问题超出平台范围。礼貌拒绝并引导回平台相关问题。
             """;
 
+    // ========== LLM-first 工具调用 Prompt ==========
+
+    /** search_posts 工具 schema。 */
+    public static final String TOOL_SEARCH_POSTS = """
+            {
+              "name": "search_posts",
+              "description": "当用户想找资料、求教程、问资源、找帖子时调用",
+              "parameters": {
+                "query": "搜索关键词（必需）",
+                "school": "学校名或 null",
+                "category": "分类或 null",
+                "post_type": "resource|discussion|all，默认 all",
+                "sort": "latest|hottest，默认 latest"
+              }
+            }
+            """;
+
+    /** remember_name 工具 schema。 */
+    public static final String TOOL_REMEMBER_NAME = """
+            {
+              "name": "remember_name",
+              "description": "当用户告知自己的名字或希望被称呼时调用，例如\"我叫xxx\"\"叫我xxx\"\"我的名字是xxx\"",
+              "parameters": {
+                "name": "用户希望被称呼的名字（必需）"
+              }
+            }
+            """;
+
+    /** navigate_to 工具 schema。 */
+    public static final String TOOL_NAVIGATE_TO = """
+            {
+              "name": "navigate_to",
+              "description": "当用户询问页面入口、功能位置、个人列表（如\"个人中心在哪\"\"我的收藏\"）时调用",
+              "parameters": {
+                "target": "目标页面或功能名（必需）"
+              }
+            }
+            """;
+
     /**
-     * 意图分类专用 System Prompt（ADR-011：分类+改写+槽位合并）。
+     * LLM-first 工具调用 System Prompt。
      *
-     * 用于 IntentClassifier 调用 DeepSeek 非流式 JSON 输出。
-     * temperature=0 保证稳定性，max_tokens=200 省成本。
+     * 替代原 INTENT_CLASSIFICATION_SYSTEM，由 LLM 直接决定何时调用工具。
      */
-    public static final String INTENT_CLASSIFICATION_SYSTEM = """
-            你是 CampusShare 校园资源共享平台的意图分类器。
-            你的任务是判断用户问题的意图，并输出结构化 JSON。
+    public static final String TOOL_USE_SYSTEM = """
+            你是 CampusShare 智能助手小享。你可以使用工具帮助用户。
 
-            ## 意图体系（5 大 + 14 子）
+            ## 可用工具
 
-            ### HOW_TO - 操作指引
-            - feature_help: "怎么/如何/在哪设置" + 平台功能词
-            - rule_explain: "为什么/什么意思" + 平台规则词
+            """ + TOOL_SEARCH_POSTS + "\n\n" + TOOL_REMEMBER_NAME + "\n\n" + TOOL_NAVIGATE_TO + """
 
-            ### SEARCH - 内容检索
-            - resource: "求/找/有没有/想学/想求" + 学习资料/资源/帖子/教程/笔记/卷子/答案/教材/课件/课程/题库 + 学校/科目
-              - **注意：用户说\"想学Python\"\"求Python教程\"\"找C++资料\"都属于 SEARCH/resource，不是开放域知识**
-              - 资源词示例：资料、教程、笔记、试卷、卷子、答案、教材、课件、课程、题库、面试题、面经、代码、项目、实验报告
-            - discussion: "讨论/聊聊/怎么看" + 话题
-            - content_qa: "那个帖子说了什么" + 指代
+            ## 工具调用规则
 
-            ### NAVIGATE - 页面导航
-            - feature_loc: "在哪/入口" + 功能名
-            - section_loc: "板块/分类在哪" + 分类名
-            - my_list: "我xxx的帖子" + 个人列表词
+            - 当用户找资料/求教程/问资源时 → 调用 search_posts
+            - 当用户说"我叫xxx"/"叫我xxx"/"我的名字是xxx"时 → 调用 remember_name
+            - 当用户问"个人中心在哪"/"我的收藏"等页面入口时 → 调用 navigate_to
+            - 当用户问平台操作（如"怎么发帖"）时 → 直接 answer，可用 search_posts 辅助
+            - 当用户要求写操作（如"帮我发帖"）时 → answer 中明确拒绝
+            - 当用户闲聊/问身份时 → 直接 answer
 
-            ### CLARIFY - 多轮澄清
-            - coreference: "那个/它/上面那个" + 指代
-            - refine: "我说的是xxx/不对" + 修正
-            - followup: "那xxx呢/接着问" + 追问
+            ## 输出格式
 
-            ### OUT_OF_SCOPE - 超范围
-            - chitchat: 闲聊问候
-            - open_domain: 开放域知识（天气/新闻/百科/股票/体育比赛结果/非校园生活类）
-              - **注意：学习资料、课程教程、考试复习内容即使与百科知识相关，也属于 SEARCH/resource，不属于 open_domain**
-            - write_action: "帮我发/帮我点赞/帮我改"
-            - sensitive: 政治/医疗/法律
-
-            ## 输出格式（严格 JSON，不要 Markdown 代码块）
+            严格输出 JSON，不要 Markdown 代码块：
 
             {
-              "intent": "HOW_TO|SEARCH|NAVIGATE|CLARIFY|OUT_OF_SCOPE",
-              "sub_intent": "feature_help|resource|...",
-              "confidence": 0.0-1.0,
-              "rewritten_query": "改写后的查询（规范化+同义词扩展）",
-              "slots": {
-                "school": "北京大学|清华大学|复旦大学|浙江大学|上海交通大学|南京大学|武汉大学|中国人民大学|中山大学|厦门大学|哈尔滨工业大学|深圳大学|null",
-                "category": "音乐|游戏|面经|...|null",
-                "post_type": "resource|discussion|null",
-                "sort": "最新|最热|null"
-              },
-              "hyde_doc": null
+              "thought": "简短思考过程",
+              "tool_calls": [
+                {"name": "search_posts", "arguments": {"query":"...","school":null,"category":null,"post_type":"all","sort":"latest"}}
+              ],
+              "direct_answer": null
             }
 
-            ## 判定原则
-            1. confidence < 0.6 时，intent 设为 SEARCH（最通用兜底）
-            2. 含指代词（那个/它/上面那个）时，强制 CLARIFY/coreference
-            3. rewritten_query 需做：全角转半角、繁转简、同义词扩展
-            4. hyde_doc 始终返回 null（MVP 阶段不启用 HyDE）
-            5. **school 字段必须输出完整学校名称（如"北京大学"而非"北大"，"清华大学"而非"清华"），否则 SQL 过滤会失败**
-
-            ## Few-shot 示例
-
-            用户：怎么发帖？
-            输出：{"intent":"HOW_TO","sub_intent":"feature_help","confidence":0.95,"rewritten_query":"如何发布帖子","slots":null,"hyde_doc":null}
-
-            用户：求清华大学操作系统期末卷子
-            输出：{"intent":"SEARCH","sub_intent":"resource","confidence":0.92,"rewritten_query":"操作系统 期末 卷子","slots":{"school":"清华大学","category":null,"post_type":"resource","sort":null},"hyde_doc":null}
-
-            用户：我想学python
-            输出：{"intent":"SEARCH","sub_intent":"resource","confidence":0.91,"rewritten_query":"Python 教程 资料","slots":{"school":null,"category":null,"post_type":"resource","sort":null},"hyde_doc":null}
-
-            用户：个人中心在哪
-            输出：{"intent":"NAVIGATE","sub_intent":"feature_loc","confidence":0.94,"rewritten_query":"个人中心 入口","slots":null,"hyde_doc":null}
-
-            用户：那个有下载的
-            输出：{"intent":"CLARIFY","sub_intent":"coreference","confidence":0.90,"rewritten_query":"在上一轮结果中筛选有文件下载的","slots":null,"hyde_doc":null}
-
-            用户：帮我发帖
-            输出：{"intent":"OUT_OF_SCOPE","sub_intent":"write_action","confidence":0.99,"rewritten_query":"帮我发帖","slots":null,"hyde_doc":null}
-
-            用户：今天天气怎么样
-            输出：{"intent":"OUT_OF_SCOPE","sub_intent":"open_domain","confidence":0.97,"rewritten_query":"今天天气","slots":null,"hyde_doc":null}
+            如果不需要工具，tool_calls 为空数组，direct_answer 填写回复内容。
             """;
+
+    /**
+     * 构建 LLM-first 工具调用完整 Prompt（system + user query）。
+     *
+     * @param userQuery 用户原始查询
+     * @return 完整 Prompt 字符串
+     */
+    public static String buildToolUsePrompt(String userQuery) {
+        return TOOL_USE_SYSTEM + "\n\n用户：" + userQuery + "\n输出：";
+    }
 
     /**
      * 构建意图分类完整 Prompt（system + user query）。
      *
      * @param userQuery 用户原始查询
      * @return 完整 Prompt 字符串
+     * @deprecated 请使用 {@link #buildToolUsePrompt(String)}，保留本方法仅用于兼容现有调用方。
      */
+    @Deprecated
     public static String buildIntentClassificationPrompt(String userQuery) {
-        return INTENT_CLASSIFICATION_SYSTEM + "\n\n用户：" + userQuery + "\n输出：";
+        return buildToolUsePrompt(userQuery);
     }
 }

@@ -13,7 +13,6 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.util.UUID;
 
 @Slf4j
 @Component
@@ -31,13 +30,16 @@ public class AntiReplayFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 
-        if (path.startsWith("/actuator/")) {
+        if (path.startsWith("/actuator/")
+                || path.equals("/agent/config/rate-limit")
+                || path.startsWith("/agent/config/rate-limit/")) {
             return chain.filter(exchange);
         }
 
         String requestId = exchange.getRequest().getHeaders().getFirst(REQUEST_ID_HEADER);
         if (requestId == null || requestId.isBlank()) {
-            requestId = UUID.randomUUID().toString().replace("-", "");
+            exchange.getResponse().setStatusCode(HttpStatus.BAD_REQUEST);
+            return exchange.getResponse().setComplete();
         }
 
         exchange.getResponse().getHeaders().add(REQUEST_ID_HEADER, requestId);

@@ -64,8 +64,8 @@ class IntentRouterTest {
     }
 
     @Test
-    @DisplayName("OUT_OF_SCOPE/open_domain → 返回开放域拒绝模板")
-    void shortCircuit_outOfScopeOpenDomain_returnsTemplate() {
+    @DisplayName("OUT_OF_SCOPE/open_domain → 不短接，走 RAG")
+    void shortCircuit_outOfScopeOpenDomain_returnsNonShortCircuit() {
         IntentResult intent = IntentResult.builder()
                 .intent(Intent.OUT_OF_SCOPE)
                 .subIntent(Intent.SubIntent.OPEN_DOMAIN)
@@ -75,7 +75,9 @@ class IntentRouterTest {
         Optional<RouteDecision> result = router.tryShortCircuit(intent);
 
         assertThat(result).isPresent();
-        assertThat(result.get().getTemplateReply()).contains("只能回答与校园资源共享相关");
+        RouteDecision decision = result.get();
+        assertThat(decision.isShortCircuit()).isFalse();
+        assertThat(decision.getTemplateReply()).isNullOrEmpty();
     }
 
     @Test
@@ -94,8 +96,8 @@ class IntentRouterTest {
     }
 
     @Test
-    @DisplayName("OUT_OF_SCOPE/未知子意图 → 返回兜底模板")
-    void shortCircuit_outOfScopeUnknownSubIntent_returnsDefault() {
+    @DisplayName("OUT_OF_SCOPE/未知子意图 → 不短接，走 RAG")
+    void shortCircuit_outOfScopeUnknownSubIntent_returnsNonShortCircuit() {
         IntentResult intent = IntentResult.builder()
                 .intent(Intent.OUT_OF_SCOPE)
                 .subIntent("unknown_subtype")
@@ -104,12 +106,14 @@ class IntentRouterTest {
         Optional<RouteDecision> result = router.tryShortCircuit(intent);
 
         assertThat(result).isPresent();
-        assertThat(result.get().getTemplateReply()).contains("无法处理");
+        RouteDecision decision = result.get();
+        assertThat(decision.isShortCircuit()).isFalse();
+        assertThat(decision.getTemplateReply()).isNullOrEmpty();
     }
 
     @Test
-    @DisplayName("OUT_OF_SCOPE/null 子意图 → 返回兜底模板")
-    void shortCircuit_outOfScopeNullSubIntent_returnsDefault() {
+    @DisplayName("OUT_OF_SCOPE/null 子意图 → 不短接，走 RAG")
+    void shortCircuit_outOfScopeNullSubIntent_returnsNonShortCircuit() {
         IntentResult intent = IntentResult.builder()
                 .intent(Intent.OUT_OF_SCOPE)
                 .subIntent(null)
@@ -118,13 +122,15 @@ class IntentRouterTest {
         Optional<RouteDecision> result = router.tryShortCircuit(intent);
 
         assertThat(result).isPresent();
-        assertThat(result.get().getTemplateReply()).isNotBlank();
+        RouteDecision decision = result.get();
+        assertThat(decision.isShortCircuit()).isFalse();
+        assertThat(decision.getTemplateReply()).isNullOrEmpty();
     }
 
     // ========== NAVIGATE 快路径 ==========
 
     @Test
-    @DisplayName("NAVIGATE/my_list + query含「点赞」→ 跳转 /my?tab=liked")
+    @DisplayName("NAVIGATE/my_list + query含「点赞」→ 跳转 /profile/liked")
     void shortCircuit_navigateMyListLiked_returnsRoute() {
         IntentResult intent = IntentResult.builder()
                 .intent(Intent.NAVIGATE)
@@ -138,13 +144,13 @@ class IntentRouterTest {
         assertThat(result).isPresent();
         RouteDecision decision = result.get();
         assertThat(decision.isShortCircuit()).isTrue();
-        assertThat(decision.getNavigateRoute()).isEqualTo("/my?tab=liked");
-        assertThat(decision.getTemplateReply()).contains("/my?tab=liked");
-        assertThat(decision.getTemplateReply()).contains("点击跳转");
+        assertThat(decision.getNavigateRoute()).isEqualTo("/profile/liked");
+        assertThat(decision.getTemplateReply()).contains("查看你的内容");
+        assertThat(decision.getTemplateReply()).contains("点击");
     }
 
     @Test
-    @DisplayName("NAVIGATE/my_list + query含「收藏」→ 跳转 /my?tab=favorited")
+    @DisplayName("NAVIGATE/my_list + query含「收藏」→ 跳转 /profile/starred")
     void shortCircuit_navigateMyListFavorited_returnsRoute() {
         IntentResult intent = IntentResult.builder()
                 .intent(Intent.NAVIGATE)
@@ -153,11 +159,11 @@ class IntentRouterTest {
                 .build();
 
         RouteDecision decision = router.tryShortCircuit(intent).orElseThrow();
-        assertThat(decision.getNavigateRoute()).isEqualTo("/my?tab=favorited");
+        assertThat(decision.getNavigateRoute()).isEqualTo("/profile/starred");
     }
 
     @Test
-    @DisplayName("NAVIGATE/my_list + query含「浏览」→ 跳转 /my?tab=history")
+    @DisplayName("NAVIGATE/my_list + query含「浏览」→ 跳转 /profile/history")
     void shortCircuit_navigateMyListHistory_returnsRoute() {
         IntentResult intent = IntentResult.builder()
                 .intent(Intent.NAVIGATE)
@@ -166,11 +172,11 @@ class IntentRouterTest {
                 .build();
 
         RouteDecision decision = router.tryShortCircuit(intent).orElseThrow();
-        assertThat(decision.getNavigateRoute()).isEqualTo("/my?tab=history");
+        assertThat(decision.getNavigateRoute()).isEqualTo("/profile/history");
     }
 
     @Test
-    @DisplayName("NAVIGATE/my_list + query 无匹配关键词 → 默认 /my")
+    @DisplayName("NAVIGATE/my_list + query 无匹配关键词 → 默认 /profile")
     void shortCircuit_navigateMyListNoMatch_returnsDefaultRoute() {
         IntentResult intent = IntentResult.builder()
                 .intent(Intent.NAVIGATE)
@@ -179,7 +185,7 @@ class IntentRouterTest {
                 .build();
 
         RouteDecision decision = router.tryShortCircuit(intent).orElseThrow();
-        assertThat(decision.getNavigateRoute()).isEqualTo("/my");
+        assertThat(decision.getNavigateRoute()).isEqualTo("/profile");
     }
 
     // ========== HOW_TO/SEARCH/CLARIFY 返回 empty ==========

@@ -1,19 +1,34 @@
 package com.campushare.agent.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campushare.agent.dto.ChatContext;
+import com.campushare.agent.dto.ChatRequest;
 import com.campushare.agent.dto.ContextSnapshot;
 import com.campushare.agent.dto.IntentResult;
+import com.campushare.agent.dto.RetrievalResult;
+import com.campushare.agent.dto.UserProfile;
+import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
 import com.campushare.agent.enums.Intent;
+import com.campushare.agent.mapper.AgentTurnMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * ContextAssembler 单元测试（ADR-070~076）。
@@ -27,15 +42,25 @@ import static org.assertj.core.api.Assertions.assertThat;
  *  - 快照字段：truncated / truncationReason / layerTokens
  *  - 空历史处理
  *  - null 用户画像处理
+ *  - 长期记忆用户画像提取（nickname）
+ *  - 上一轮 refs 加载与解析
  */
+@ExtendWith(MockitoExtension.class)
 @DisplayName("ContextAssembler 单元测试")
 class ContextAssemblerTest {
 
+    @InjectMocks
     private ContextAssembler assembler;
+
+    @Mock
+    private MemoryRetrievalService memoryRetrievalService;
+
+    @Mock
+    private AgentTurnMapper agentTurnMapper;
 
     @BeforeEach
     void setUp() {
-        assembler = new ContextAssembler();
+        // @InjectMocks 已负责实例化；本方法保留用于后续扩展
     }
 
     private IntentResult intent(Intent type) {
@@ -58,6 +83,13 @@ class ContextAssemblerTest {
                 .build();
     }
 
+    private RetrievalResult profileMemory(String id, String key, String value, String updatedAt) {
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("memoryKey", key);
+        meta.put("updatedAt", updatedAt);
+        return RetrievalResult.memory(id, key, value, 0.9, meta);
+    }
+
     @Nested
     @DisplayName("基础组装")
     class BasicAssembly {
@@ -76,7 +108,7 @@ class ContextAssemblerTest {
             assertThat(result.messages().get(0).getRole()).isEqualTo("system");
             assertThat(result.messages().get(0).getContent()).contains(systemPrompt);
             assertThat(result.messages().get(1).getRole()).isEqualTo("user");
-            assertThat(result.messages().get(1).getContent()).isEqualTo(userQuery);
+            assertThat(result.messages().get(1).getContent()).contains(userQuery);
         }
 
         @Test
@@ -103,7 +135,7 @@ class ContextAssemblerTest {
             assertThat(result.messages().get(4).getRole()).isEqualTo("assistant");
             assertThat(result.messages().get(4).getContent()).isEqualTo("answer 2");
             assertThat(result.messages().get(5).getRole()).isEqualTo("user");
-            assertThat(result.messages().get(5).getContent()).isEqualTo("question 3");
+            assertThat(result.messages().get(5).getContent()).contains("question 3");
         }
 
         @Test
@@ -118,7 +150,7 @@ class ContextAssemblerTest {
             assertThat(result.messages().get(0).getRole()).isEqualTo("system");
             assertThat(result.messages().get(0).getContent())
                     .contains("base system")
-                    .contains("# 用户画像")
+                    .contains("<user_profile>")
                     .contains(profile);
         }
 
@@ -131,8 +163,8 @@ class ContextAssemblerTest {
                     "session-1", 1, "search query", ir, "system", Collections.emptyList(), "", null, null);
 
             assertThat(result.messages()).hasSize(2);
-            // 空字符串画像不追加到 system
-            assertThat(result.messages().get(0).getContent()).isEqualTo("system");
+            // 空字符串画像不追加到 system，system prompt 用 XML 标签包裹
+            assertThat(result.messages().get(0).getContent()).contains("system").doesNotContain("<user_profile>");
         }
     }
 
@@ -283,7 +315,7 @@ class ContextAssemblerTest {
             // system prompt 过大时 L1 必然被丢弃（degrade 2）
             // system message 不应包含用户画像
             assertThat(result.messages().get(0).getContent())
-                    .doesNotContain("# 用户画像");
+                    .doesNotContain("<user_profile>");
         }
 
         @Test
@@ -357,6 +389,119 @@ class ContextAssemblerTest {
                     "session-1", 1, "query", ir, "system", null, null, null, null);
 
             assertThat(result.snapshot().usedMemoryIds()).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("记忆与引用加载")
+    class MemoryAndRefsAssembly {
+
+        @Test
+        @DisplayName("从 profile memories 中提取最新 nickname")
+        void assembleWithMemory_extractsLatestNickname() {
+            List<RetrievalResult> memories = List.of(
+                    profileMemory("1", "nickname", "old", "2024-01-01T00:00:00Z"),
+                    profileMemory("2", "nickname", "yuuki", "2024-06-01T00:00:00Z"),
+                    profileMemory("3", "major", "CS", "2025-01-01T00:00:00Z")
+            );
+            when(memoryRetrievalService.loadProfileMemories("user-1")).thenReturn(memories);
+            when(agentTurnMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+
+            AgentSession session = AgentSession.builder().id("session-1").build();
+            AgentTurn turn = AgentTurn.builder().sessionId("session-1").turnNumber(2).build();
+            ChatRequest request = new ChatRequest();
+            request.setMessage("hello");
+
+            ChatContext ctx = assembler.assembleWithMemory("user-1", request, session, turn).block();
+
+            assertThat(ctx).isNotNull();
+            assertThat(ctx.userProfile()).isNotNull();
+            assertThat(ctx.userProfile().nickname()).isEqualTo("yuuki");
+            assertThat(ctx.previousRefs()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("无 nickname 时返回空昵称")
+        void assembleWithMemory_noNickname_returnsNullNickname() {
+            List<RetrievalResult> memories = List.of(
+                    profileMemory("1", "major", "CS", "2024-01-01T00:00:00Z")
+            );
+            when(memoryRetrievalService.loadProfileMemories("user-1")).thenReturn(memories);
+            when(agentTurnMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+
+            AgentSession session = AgentSession.builder().id("session-1").build();
+            AgentTurn turn = AgentTurn.builder().sessionId("session-1").turnNumber(1).build();
+            ChatRequest request = new ChatRequest();
+            request.setMessage("hello");
+
+            ChatContext ctx = assembler.assembleWithMemory("user-1", request, session, turn).block();
+
+            assertThat(ctx).isNotNull();
+            assertThat(ctx.userProfile()).isNotNull();
+            assertThat(ctx.userProfile().nickname()).isNull();
+        }
+
+        @Test
+        @DisplayName("加载并解析上一轮 refs")
+        void assembleWithMemory_loadsPreviousRefs() {
+            when(memoryRetrievalService.loadProfileMemories("user-1")).thenReturn(Collections.emptyList());
+
+            AgentTurn previousTurn = AgentTurn.builder()
+                    .sessionId("session-1")
+                    .turnNumber(1)
+                    .refs("[{\"index\":1,\"id\":\"post-1\",\"type\":\"POST\",\"title\":\"t1\",\"url\":\"/post/post-1\"}]")
+                    .build();
+            when(agentTurnMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(previousTurn);
+
+            AgentSession session = AgentSession.builder().id("session-1").build();
+            AgentTurn turn = AgentTurn.builder().sessionId("session-1").turnNumber(2).build();
+            ChatRequest request = new ChatRequest();
+            request.setMessage("tell me more");
+
+            ChatContext ctx = assembler.assembleWithMemory("user-1", request, session, turn).block();
+
+            assertThat(ctx).isNotNull();
+            assertThat(ctx.previousRefs()).hasSize(1);
+            assertThat(ctx.previousRefs().get(0)).containsEntry("index", 1)
+                    .containsEntry("id", "post-1")
+                    .containsEntry("type", "POST");
+        }
+
+        @Test
+        @DisplayName("无上一轮 refs 时返回空列表")
+        void assembleWithMemory_noPreviousRefs_returnsEmptyList() {
+            when(memoryRetrievalService.loadProfileMemories("user-1")).thenReturn(Collections.emptyList());
+
+            AgentTurn previousTurn = AgentTurn.builder()
+                    .sessionId("session-1")
+                    .turnNumber(1)
+                    .build();
+            when(agentTurnMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(previousTurn);
+
+            AgentSession session = AgentSession.builder().id("session-1").build();
+            AgentTurn turn = AgentTurn.builder().sessionId("session-1").turnNumber(2).build();
+            ChatRequest request = new ChatRequest();
+            request.setMessage("hello");
+
+            ChatContext ctx = assembler.assembleWithMemory("user-1", request, session, turn).block();
+
+            assertThat(ctx).isNotNull();
+            assertThat(ctx.previousRefs()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("buildProfilePrompt 有昵称时返回提示片段")
+        void buildProfilePrompt_withNickname_returnsSnippet() {
+            String snippet = assembler.buildProfilePrompt(new UserProfile("yuuki"));
+            assertThat(snippet).isEqualTo("用户昵称：yuuki\n请使用用户昵称进行友好回应。");
+        }
+
+        @Test
+        @DisplayName("buildProfilePrompt 无昵称时返回空字符串")
+        void buildProfilePrompt_withoutNickname_returnsEmpty() {
+            assertThat(assembler.buildProfilePrompt(new UserProfile(null))).isEmpty();
+            assertThat(assembler.buildProfilePrompt(new UserProfile(""))).isEmpty();
+            assertThat(assembler.buildProfilePrompt(null)).isEmpty();
         }
     }
 }

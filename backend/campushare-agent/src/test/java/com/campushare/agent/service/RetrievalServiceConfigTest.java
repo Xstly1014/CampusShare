@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 验证点：
  *  - null/空意图 → 默认均等配置
- *  - HOW_TO → 偏知识库（knowledgeTopK=8, postTopK=2），不启用帖子关键词
+ *  - HOW_TO → 偏知识库（knowledgeTopK=8, postTopK=0），不启用帖子关键词
  *  - SEARCH/resource → 偏帖子（postTopK=8），启用帖子关键词
  *  - SEARCH/discussion → 偏帖子，knowledgeKeywordTopK=0
  *  - SEARCH/content_qa → 偏知识库，启用帖子关键词
@@ -108,7 +108,7 @@ class RetrievalServiceConfigTest {
     class HowTo {
 
         @Test
-        @DisplayName("高置信度 → knowledgeTopK=8, postTopK=2")
+        @DisplayName("高置信度 → knowledgeTopK=8, postTopK=0")
         void howTo_highConfidence_knowledgeBiased() {
             IntentResult intent = IntentResult.builder()
                     .intent(Intent.HOW_TO)
@@ -120,12 +120,12 @@ class RetrievalServiceConfigTest {
 
             assertThat(config.knowledgeTopK()).isEqualTo(8);
             assertThat(config.knowledgeKeywordTopK()).isEqualTo(5);
-            assertThat(config.postTopK()).isEqualTo(2);
+            assertThat(config.postTopK()).isEqualTo(0);
             assertThat(config.usePostKeyword()).isFalse();
         }
 
         @Test
-        @DisplayName("低置信度 → knowledgeTopK=11（8+3 boost）")
+        @DisplayName("低置信度 → knowledgeTopK=11（8+3 boost），postTopK=0")
         void howTo_lowConfidence_expandedTopK() {
             IntentResult intent = IntentResult.builder()
                     .intent(Intent.HOW_TO)
@@ -137,7 +137,7 @@ class RetrievalServiceConfigTest {
 
             assertThat(config.knowledgeTopK()).isEqualTo(11);
             assertThat(config.knowledgeKeywordTopK()).isEqualTo(8);
-            assertThat(config.postTopK()).isEqualTo(2);
+            assertThat(config.postTopK()).isEqualTo(0);
         }
 
         @Test
@@ -152,7 +152,7 @@ class RetrievalServiceConfigTest {
             RetrievalConfig config = retrievalService.selectConfig(intent);
 
             assertThat(config.knowledgeTopK()).isEqualTo(8);
-            assertThat(config.postTopK()).isEqualTo(2);
+            assertThat(config.postTopK()).isEqualTo(0);
         }
     }
 

@@ -32,7 +32,9 @@ public class AuthenticationFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 
-        if (path.startsWith("/actuator/") || path.startsWith("/agent/config/rate-limit/")) {
+        if (path.startsWith("/actuator/")
+                || path.equals("/agent/config/rate-limit")
+                || path.startsWith("/agent/config/rate-limit/")) {
             return chain.filter(exchange);
         }
 

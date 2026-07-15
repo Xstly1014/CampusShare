@@ -157,7 +157,8 @@ public class AgentChatService {
 
                     // 慢路径：对话编排（支持 ReAct/CoT/Plan-and-Execute/Reflexion/CLARIFY 多种范式）
                     return dialogueOrchestrator.orchestrate(userId, ctx.session().getId(),
-                                    request.getMessage(), ctx.intentResult(), ctx.retrievalResults())
+                                    request.getMessage(), ctx.intentResult(), ctx.retrievalResults(),
+                                    ctx.userProfile(), ctx.previousRefs())
                             .flatMapMany(turnResponse -> {
                                 // 计算本轮引用 JSON 并持久化到 AgentTurn，供多轮锚定使用
                                 final String refsJson;
@@ -567,7 +568,8 @@ public class AgentChatService {
                 intentMetrics.recordRoute(true, intentResult.getIntent().name());
                 AgentTurn turn = createTurn(session, userMessage, intentResult);
                 return new ChatContext(session, null, turn, System.currentTimeMillis(),
-                        0, null, intentResult, shortCircuit.get(), null, null, traceId, rootSpan);
+                        0, null, intentResult, shortCircuit.get(), null, null, traceId, rootSpan,
+                        null, Collections.emptyList());
             }
 
             // ④ HOW_TO/SEARCH/CLARIFY → 走 RAG 管线（用改写后的 query 检索，意图驱动检索策略 ADR-024）
@@ -627,6 +629,13 @@ public class AgentChatService {
             // 创建当前 turn（先创建以获取 turnNumber，供快照使用）
             AgentTurn turn = createTurn(session, userMessage, intentResult);
 
+            // 加载用户画像与上一轮引用（供 LLM-first 工具决策使用）
+            com.campushare.agent.dto.ChatContext memoryCtx = contextAssembler.assembleWithMemory(
+                    userId, request, session, turn).block();
+            com.campushare.agent.dto.UserProfile profile = memoryCtx != null ? memoryCtx.userProfile() : null;
+            List<Map<String, Object>> prevRefs = memoryCtx != null && memoryCtx.previousRefs() != null
+                    ? memoryCtx.previousRefs() : Collections.emptyList();
+
             // 上下文工程：L0-L5 分层装载 + Token 预算 + 降级链（ADR-070~072）
             ContextAssembler.AssembledContext assembled = contextAssembler.assemble(
                     session.getId(), turn.getTurnNumber(), userMessage,
@@ -639,7 +648,7 @@ public class AgentChatService {
             String promptVersionStr = promptVersion != null ? promptVersion.getVersion() : null;
             return new ChatContext(session, assembled.messages(), turn, System.currentTimeMillis(),
                     assembled.totalTokens(), retrievalContextJson, intentResult, null, promptVersionStr,
-                    allResults, traceId, rootSpan);
+                    allResults, traceId, rootSpan, profile, prevRefs);
         } finally {
             MDC.remove("traceId");
         }
@@ -1184,7 +1193,8 @@ public class AgentChatService {
     private record ChatContext(AgentSession session, List<DeepSeekRequest.Message> messages,
             AgentTurn turn, long startTime, int inputTokens, String retrievalContext,
             IntentResult intentResult, RouteDecision routeDecision, String promptVersion,
-            List<RetrievalResult> retrievalResults, String traceId, com.campushare.agent.entity.TraceSpan rootSpan) {
+            List<RetrievalResult> retrievalResults, String traceId, com.campushare.agent.entity.TraceSpan rootSpan,
+            com.campushare.agent.dto.UserProfile userProfile, List<Map<String, Object>> previousRefs) {
     }
 
     /**

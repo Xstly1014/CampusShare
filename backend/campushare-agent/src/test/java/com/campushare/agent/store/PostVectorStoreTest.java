@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -76,7 +77,7 @@ class PostVectorStoreTest {
         }
 
         @Test
-        @DisplayName("有 school → SQL 含 AND school = ?")
+        @DisplayName("有 school → SQL 含 AND school_name ILIKE ?，空结果触发兜底查询")
         void search_withSchoolFilter_buildsWhereClause() {
             SlotResult slots = SlotResult.builder().school("清华").build();
             when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
@@ -85,16 +86,22 @@ class PostVectorStoreTest {
             store.search(new float[]{1.0f}, 10, slots);
 
             ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-            verify(jdbcTemplate).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
-            assertThat(sqlCaptor.getValue())
+            verify(jdbcTemplate, times(2)).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
+            List<String> sqls = sqlCaptor.getAllValues();
+            assertThat(sqls.get(0))
                     .contains("WHERE 1=1")
-                    .contains("AND school = ?")
-                    .doesNotContain("AND category = ?")
+                    .contains("AND school_name ILIKE ?")
+                    .doesNotContain("AND category_name ILIKE ?")
+                    .doesNotContain("AND post_type = ?");
+            assertThat(sqls.get(1))
+                    .contains("WHERE 1=1")
+                    .doesNotContain("AND school_name ILIKE ?")
+                    .doesNotContain("AND category_name ILIKE ?")
                     .doesNotContain("AND post_type = ?");
         }
 
         @Test
-        @DisplayName("有 category → SQL 含 AND category = ?")
+        @DisplayName("有 category → SQL 含 AND category_name ILIKE ?")
         void search_withCategoryFilter_buildsWhereClause() {
             SlotResult slots = SlotResult.builder().category("计科").build();
             when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
@@ -106,8 +113,8 @@ class PostVectorStoreTest {
             verify(jdbcTemplate).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
             assertThat(sqlCaptor.getValue())
                     .contains("WHERE 1=1")
-                    .contains("AND category = ?")
-                    .doesNotContain("AND school = ?");
+                    .contains("AND category_name ILIKE ?")
+                    .doesNotContain("AND school_name ILIKE ?");
         }
 
         @Test
@@ -127,7 +134,7 @@ class PostVectorStoreTest {
         }
 
         @Test
-        @DisplayName("全字段 slots → SQL 含三个 AND 条件")
+        @DisplayName("全字段 slots → SQL 含三个 AND 条件，空结果触发兜底查询")
         void search_withAllFilters_buildsAllWhereClauses() {
             SlotResult slots = SlotResult.builder()
                     .school("清华")
@@ -140,11 +147,17 @@ class PostVectorStoreTest {
             store.search(new float[]{1.0f}, 10, slots);
 
             ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-            verify(jdbcTemplate).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
-            assertThat(sqlCaptor.getValue())
+            verify(jdbcTemplate, times(2)).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
+            List<String> sqls = sqlCaptor.getAllValues();
+            assertThat(sqls.get(0))
                     .contains("WHERE 1=1")
-                    .contains("AND school = ?")
-                    .contains("AND category = ?")
+                    .contains("AND school_name ILIKE ?")
+                    .contains("AND category_name ILIKE ?")
+                    .contains("AND post_type = ?");
+            assertThat(sqls.get(1))
+                    .contains("WHERE 1=1")
+                    .doesNotContain("AND school_name ILIKE ?")
+                    .contains("AND category_name ILIKE ?")
                     .contains("AND post_type = ?");
         }
 
@@ -187,7 +200,7 @@ class PostVectorStoreTest {
         }
 
         @Test
-        @DisplayName("有 school → SQL 含 AND school = ?")
+        @DisplayName("有 school → SQL 含 AND school_name ILIKE ?")
         void keywordSearch_withSchoolFilter_buildsWhereClause() {
             SlotResult slots = SlotResult.builder().school("北大").build();
             when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
@@ -198,12 +211,12 @@ class PostVectorStoreTest {
             ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
             verify(jdbcTemplate).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
             assertThat(sqlCaptor.getValue())
-                    .contains("AND school = ?")
+                    .contains("AND school_name ILIKE ?")
                     .contains("ORDER BY sim DESC");
         }
 
         @Test
-        @DisplayName("有 category → SQL 含 AND category = ?")
+        @DisplayName("有 category → SQL 含 AND category_name ILIKE ?")
         void keywordSearch_withCategoryFilter_buildsWhereClause() {
             SlotResult slots = SlotResult.builder().category("音乐").build();
             when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
@@ -213,7 +226,7 @@ class PostVectorStoreTest {
 
             ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
             verify(jdbcTemplate).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
-            assertThat(sqlCaptor.getValue()).contains("AND category = ?");
+            assertThat(sqlCaptor.getValue()).contains("AND category_name ILIKE ?");
         }
 
         @Test
@@ -232,8 +245,8 @@ class PostVectorStoreTest {
             ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
             verify(jdbcTemplate).query(sqlCaptor.capture(), any(RowMapper.class), any(Object[].class));
             assertThat(sqlCaptor.getValue())
-                    .contains("AND school = ?")
-                    .contains("AND category = ?")
+                    .contains("AND school_name ILIKE ?")
+                    .contains("AND category_name ILIKE ?")
                     .contains("AND post_type = ?");
         }
 

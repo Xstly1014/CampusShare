@@ -1,16 +1,35 @@
 package com.campushare.agent.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campushare.agent.dto.ChatContext;
+import com.campushare.agent.dto.ChatRequest;
 import com.campushare.agent.dto.ContextSnapshot;
 import com.campushare.agent.dto.IntentResult;
+import com.campushare.agent.dto.RetrievalResult;
 import com.campushare.agent.dto.TokenBudget;
+import com.campushare.agent.dto.UserProfile;
+import com.campushare.agent.entity.AgentSession;
 import com.campushare.agent.entity.AgentTurn;
 import com.campushare.agent.llm.DeepSeekRequest;
+import com.campushare.agent.mapper.AgentTurnMapper;
 import com.campushare.agent.util.TokenCounter;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +64,14 @@ public class ContextAssembler {
 
     /** L1 用户画像的格式化 overhead */
     private static final int L1_FORMAT_OVERHEAD = 20;
+
+    @Autowired
+    private MemoryRetrievalService memoryRetrievalService;
+
+    @Autowired
+    private AgentTurnMapper agentTurnMapper;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 组装上下文（L0-L5 分层 + Token 预算 + 降级链）。
@@ -168,6 +195,117 @@ public class ContextAssembler {
         }
 
         return new AssembledContext(messages, total, snapshot);
+    }
+
+    /**
+     * 基于长期记忆与会话历史组装上下文（LLM-first 入口）。
+     *
+     * @param userId  用户 ID
+     * @param request 当前用户请求
+     * @param session 当前会话
+     * @param turn    当前轮次
+     * @return 包含用户画像与上一轮引用的 ChatContext
+     */
+    public Mono<ChatContext> assembleWithMemory(String userId, ChatRequest request,
+            AgentSession session, AgentTurn turn) {
+        return Mono.fromCallable(() -> {
+            List<RetrievalResult> profileMemories = memoryRetrievalService.loadProfileMemories(userId);
+            UserProfile profile = extractUserProfile(profileMemories);
+            List<Map<String, Object>> previousRefs = loadPreviousRefs(session, turn);
+            return new ChatContext(session, request, turn, profile, previousRefs);
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /**
+     * 根据用户画像生成系统提示片段。
+     *
+     * @param profile 用户画像
+     * @return 提示片段；无昵称时返回空字符串
+     */
+    public String buildProfilePrompt(UserProfile profile) {
+        if (profile == null || profile.nickname() == null || profile.nickname().isBlank()) {
+            return "";
+        }
+        return "用户昵称：" + profile.nickname() + "\n请使用用户昵称进行友好回应。";
+    }
+
+    private UserProfile extractUserProfile(List<RetrievalResult> memories) {
+        if (memories == null || memories.isEmpty()) {
+            return new UserProfile(null);
+        }
+        String nickname = memories.stream()
+                .filter(m -> m.metadata() != null && "nickname".equals(m.metadata().get("memoryKey")))
+                .max(Comparator.comparing(this::profileTimestamp, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(RetrievalResult::content)
+                .orElse(null);
+        return new UserProfile(nickname);
+    }
+
+    private Instant profileTimestamp(RetrievalResult memory) {
+        if (memory.metadata() == null) {
+            return null;
+        }
+        Instant updated = toInstant(memory.metadata().get("updatedAt"));
+        if (updated != null) {
+            return updated;
+        }
+        return toInstant(memory.metadata().get("createdAt"));
+    }
+
+    private Instant toInstant(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Instant i) {
+            return i;
+        }
+        if (value instanceof LocalDateTime ldt) {
+            return ldt.atZone(ZoneId.systemDefault()).toInstant();
+        }
+        if (value instanceof Timestamp ts) {
+            return ts.toInstant();
+        }
+        if (value instanceof Date d) {
+            return d.toInstant();
+        }
+        if (value instanceof Number n) {
+            return Instant.ofEpochMilli(n.longValue());
+        }
+        if (value instanceof String s) {
+            try {
+                return Instant.parse(s);
+            } catch (DateTimeParseException e) {
+                try {
+                    return LocalDateTime.parse(s).atZone(ZoneId.systemDefault()).toInstant();
+                } catch (DateTimeParseException ex) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<Map<String, Object>> loadPreviousRefs(AgentSession session, AgentTurn turn) {
+        if (session == null || turn == null || turn.getTurnNumber() == null) {
+            return Collections.emptyList();
+        }
+        AgentTurn previousTurn = agentTurnMapper.selectOne(
+                new LambdaQueryWrapper<AgentTurn>()
+                        .eq(AgentTurn::getSessionId, session.getId())
+                        .lt(AgentTurn::getTurnNumber, turn.getTurnNumber())
+                        .orderByDesc(AgentTurn::getTurnNumber)
+                        .last("LIMIT 1"));
+        if (previousTurn == null || previousTurn.getRefs() == null || previousTurn.getRefs().isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(previousTurn.getRefs(), new TypeReference<>() {
+            });
+        } catch (Exception e) {
+            log.warn("Failed to parse previous turn refs: sessionId={}, turnId={}",
+                    session.getId(), previousTurn.getId(), e);
+            return Collections.emptyList();
+        }
     }
 
     /**

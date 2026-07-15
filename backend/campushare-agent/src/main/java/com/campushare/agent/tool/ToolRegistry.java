@@ -23,6 +23,8 @@ public class ToolRegistry {
     private final Map<String, Tool> toolMap = new ConcurrentHashMap<>();
     private final Map<String, ToolDefinition> definitionMap = new ConcurrentHashMap<>();
 
+    private static final Set<String> MEMORY_WRITE_ALLOWLIST = Set.of("remember_name");
+
     @PostConstruct
     public void init() {
         Map<String, Tool> tools = applicationContext.getBeansOfType(Tool.class);
@@ -32,10 +34,13 @@ public class ToolRegistry {
                 log.warn("Tool {} has no @ToolDef annotation, skipping", tool.getClass().getName());
                 continue;
             }
-            if (!def.readOnly()) {
+            if (!def.readOnly() && !MEMORY_WRITE_ALLOWLIST.contains(def.name())) {
                 throw new IllegalStateException(
                         "Write operation tools are not allowed: " + def.name() +
                         " (ADR-TOOL-02: Agent cannot perform write operations)");
+            }
+            if (!def.readOnly() && MEMORY_WRITE_ALLOWLIST.contains(def.name())) {
+                log.warn("Registering memory-write tool: {}. This tool mutates long-term memory and is allowed only by explicit allowlist.", def.name());
             }
             if (toolMap.containsKey(def.name())) {
                 throw new IllegalStateException("Duplicate tool name: " + def.name());
