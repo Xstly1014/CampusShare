@@ -261,13 +261,6 @@ app:
     time-limiter:
       timeout-duration: 30s
 
-  # OpenTelemetry distributed tracing (design §5.5.3)
-  otel:
-    endpoint: ${OTEL_ENDPOINT:http://otel-collector:4317}
-    service-name: campushare-agent
-    service-version: 1.0.0
-    sampling-ratio: 0.1
-
 logging:
   level:
     root: INFO

@@ -1,11 +1,10 @@
 package com.campushare.agent.config;
 
 import com.campushare.agent.service.TraceService;
-import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.context.Context;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,12 +24,22 @@ import reactor.core.publisher.Mono;
 public class TraceIdFilter implements WebFilter {
 
     private final TraceService traceService;
-    private final OpenTelemetry openTelemetry;
 
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final String TRACE_ID_CONTEXT_KEY = "traceId";
-    private static final String SPAN_KEY = "otelSpan";
-    private static final String SCOPE_KEY = "otelScope";
+
+    private volatile Tracer tracer;
+
+    private Tracer getTracer() {
+        if (tracer == null) {
+            synchronized (this) {
+                if (tracer == null) {
+                    tracer = GlobalOpenTelemetry.getTracer("campushare-agent", "1.0.0");
+                }
+            }
+        }
+        return tracer;
+    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -47,8 +56,7 @@ public class TraceIdFilter implements WebFilter {
 
         exchange.getResponse().getHeaders().add(TRACE_ID_HEADER, traceId);
 
-        Tracer tracer = openTelemetry.getTracer("campushare-agent", "1.0.0");
-        Span span = tracer.spanBuilder("agent-request")
+        Span span = getTracer().spanBuilder("agent-request")
                 .setAttribute("request.path", exchange.getRequest().getPath().value())
                 .setAttribute("request.method", exchange.getRequest().getMethod().name())
                 .setAttribute("request.traceId", traceId)
