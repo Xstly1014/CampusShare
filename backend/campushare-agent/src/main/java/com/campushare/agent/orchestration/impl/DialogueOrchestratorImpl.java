@@ -446,12 +446,22 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                         return Mono.just(messages);
                     }
 
-                    return executeToolCalls(response.getToolCalls(), userId)
+                    // Append the assistant message that emitted tool_calls (required by OpenAI/DeepSeek protocol)
+                    List<com.campushare.agent.llm.DeepSeekResponse.ToolCall> responseToolCalls = response.getToolCalls();
+                    messages.add(DeepSeekRequest.Message.builder()
+                            .role("assistant")
+                            .content(response.getContent())
+                            .toolCalls(convertToRequestToolCalls(responseToolCalls))
+                            .build());
+
+                    return executeToolCalls(responseToolCalls, userId)
                             .flatMap(results -> {
-                                for (ToolResult result : results) {
+                                for (ToolCallResult result : results) {
                                     messages.add(DeepSeekRequest.Message.builder()
                                             .role("tool")
-                                            .content(toolExecutor.resultToJson(result))
+                                            .toolCallId(result.toolCallId())
+                                            .name(result.toolName())
+                                            .content(toolExecutor.resultToJson(result.result()))
                                             .build());
                                 }
                                 return runToolCallLoop(messages, toolSchemas, userId, round + 1);
@@ -463,10 +473,11 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                 });
     }
 
-    private Mono<List<ToolResult>> executeToolCalls(List<com.campushare.agent.llm.DeepSeekResponse.ToolCall> toolCalls,
-                                                     String userId) {
+    private Mono<List<ToolCallResult>> executeToolCalls(List<com.campushare.agent.llm.DeepSeekResponse.ToolCall> toolCalls,
+                                                        String userId) {
         return Flux.fromIterable(toolCalls)
                 .flatMap(toolCall -> {
+                    String toolCallId = toolCall.getId();
                     String toolName = toolCall.getFunction().getName();
                     String argumentsStr = toolCall.getFunction().getArguments();
 
@@ -479,16 +490,34 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                         return arguments;
                     })
                     .flatMap(arguments -> toolExecutor.execute(toolName, arguments, userId))
+                    .map(toolResult -> new ToolCallResult(toolCallId, toolName, toolResult))
                     .onErrorResume(e -> {
                         log.error("Tool execution failed: {}", toolName, e);
-                        return Mono.just(ToolResult.builder()
+                        ToolResult errorResult = ToolResult.builder()
                                 .status(ToolResult.Status.ERROR)
                                 .errorMessage(e.getMessage())
-                                .build());
+                                .build();
+                        return Mono.just(new ToolCallResult(toolCallId, toolName, errorResult));
                     });
                 })
                 .collectList();
     }
+
+    private List<DeepSeekRequest.ToolCall> convertToRequestToolCalls(
+            List<com.campushare.agent.llm.DeepSeekResponse.ToolCall> respCalls) {
+        return respCalls.stream()
+                .map(rc -> DeepSeekRequest.ToolCall.builder()
+                        .id(rc.getId())
+                        .type(rc.getType())
+                        .function(DeepSeekRequest.FunctionCall.builder()
+                                .name(rc.getFunction().getName())
+                                .arguments(rc.getFunction().getArguments())
+                                .build())
+                        .build())
+                .toList();
+    }
+
+    private record ToolCallResult(String toolCallId, String toolName, ToolResult result) {}
 
     private List<DeepSeekRequest.Message> buildClarifyMessages(String sessionId, String userMessage,
                                                                 IntentResult intentResult,
