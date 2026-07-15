@@ -96,9 +96,11 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
             resultsToUse = loadPreviousRetrievalSync(sessionId);
         }
 
+        // If we have retrieval results, answer directly instead of asking another clarification.
+        // The retrieval service already merged previous results for CLARIFY intent (ADR-026).
         boolean hasResults = resultsToUse != null && !resultsToUse.isEmpty();
-        if (hasResults && clarifyCount >= 1) {
-            log.info("Have retrieval results after 1 clarify round, answering directly");
+        if (hasResults) {
+            log.info("Have retrieval results ({}), answering directly instead of clarifying", resultsToUse.size());
             return directAnswerWithRetrieval(sessionId, userMessage, intentResult, resultsToUse);
         }
 
@@ -139,7 +141,10 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         systemContent.append("1. 基于参考资料回答，如资料不足请诚实说明\n");
         systemContent.append("2. 回答自然流畅，不要提到\"参考资料\"或\"检索\"等技术术语\n");
         systemContent.append("3. 如果用户没有指定具体条件（如校区、排序等），直接给出最相关的推荐即可\n");
-        systemContent.append("4. 使用中文回答，语气亲切友好\n\n");
+        systemContent.append("4. 使用中文回答，语气亲切友好，用Markdown格式\n");
+        systemContent.append("5. **只要检索结果非空，就不要说\"未找到相关资源\"**，列出找到的内容\n");
+        systemContent.append("6. 引用资料用 [1][2] 编号标注\n");
+        systemContent.append("7. **不要反复追问**，基于已有信息给出最佳推荐\n\n");
 
         if (results != null && !results.isEmpty()) {
             systemContent.append("=== 参考资料 ===\n");
@@ -176,7 +181,7 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
             }
         }
 
-        String effectiveQuery = intentResult.getRewrittenQuery() != null ? intentResult.getRewrittenQuery() : userMessage;
+        String effectiveQuery = buildEffectiveQuery(userMessage, intentResult);
         messages.add(DeepSeekRequest.Message.builder()
                 .role("user")
                 .content(effectiveQuery)
@@ -188,6 +193,20 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                         .isClarification(false)
                         .refs(buildRefsFromResults(results))
                         .build());
+    }
+
+    /**
+     * Build the effective user query for the LLM.
+     * - If the user surrendered (said "随便" etc.), replace with a contextual prompt
+     *   so the LLM knows to recommend from existing results without asking more questions.
+     * - Otherwise, prefer the rewritten query if available and different from the original.
+     */
+    private String buildEffectiveQuery(String userMessage, IntentResult intentResult) {
+        if (isSurrenderMessage(userMessage)) {
+            return "请基于已有资料给我推荐，不需要再追问细节";
+        }
+        String rewritten = intentResult.getRewrittenQuery();
+        return (rewritten != null && !rewritten.equals(userMessage)) ? rewritten : userMessage;
     }
 
     private List<Map<String, Object>> buildRefsFromResults(List<RetrievalResult> results) {
@@ -314,10 +333,8 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
             return OrchestrationMode.CLARIFY;
         }
 
-        if (isComplexTask(intentResult)) {
-            return OrchestrationMode.PLAN_AND_EXECUTE;
-        }
-
+        // HOW_TO → COT (includes retrieval results for step-by-step guidance)
+        // PLAN_AND_EXECUTE omitted for MVP: it doesn't pass retrieval results to steps
         if (isReasoningRequired(intentResult)) {
             return OrchestrationMode.COT;
         }
@@ -534,12 +551,72 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         StringBuilder systemContent = new StringBuilder();
         systemContent.append("你是CampusShare校园资源共享平台的AI助手小享，擅长帮助同学找资料、解答平台使用问题。\n");
         systemContent.append("回答要求：\n");
-        systemContent.append("1. 基于提供的参考资料回答问题\n");
+        systemContent.append("1. 基于提供的参考资料回答问题，引用资料时用 [1][2] 编号标注\n");
         systemContent.append("2. 回答自然流畅，不要提到\"参考资料\"或\"检索\"等技术术语\n");
         systemContent.append("3. 语气亲切友好，像学长学姐一样帮助同学\n");
-        systemContent.append("4. 使用中文回答\n");
+        systemContent.append("4. 使用中文回答，用Markdown格式（关键词**加粗**，步骤用有序列表）\n");
         systemContent.append("5. 如果参考资料中有相关帖子，推荐给用户\n");
-        systemContent.append("6. 如果信息不足，基于已有信息给出最佳建议，不要反复追问\n\n");
+        systemContent.append("6. **只要检索结果非空，就不要说\"未找到相关资源\"**，而是列出找到的内容\n");
+        systemContent.append("7. 如果信息不足，基于已有信息给出最佳建议，**不要反复追问**\n");
+        systemContent.append("8. 简单问题50-150字，复杂问题150-300字\n\n");
+
+        if (retrievalResults != null && !retrievalResults.isEmpty()) {
+            systemContent.append("=== 参考资料 ===\n");
+            systemContent.append("（注意：检索结果是语义匹配的，即使标题不完全包含搜索词也可能高度相关，请信任检索结果）\n");
+            for (int i = 0; i < Math.min(retrievalResults.size(), 8); i++) {
+                RetrievalResult r = retrievalResults.get(i);
+                systemContent.append(String.format("[%d] (%s) %s\n", i + 1, r.source(), r.title()));
+                if (r.content() != null && !r.content().isBlank()) {
+                    String snippet = r.content().length() > 300 ? r.content().substring(0, 300) + "..." : r.content();
+                    systemContent.append(snippet).append("\n");
+                }
+            }
+        }
+
+        messages.add(DeepSeekRequest.Message.builder()
+                .role("system")
+                .content(systemContent.toString())
+                .build());
+
+        List<AgentTurn> recentTurns = loadRecentTurns(sessionId, 5);
+        for (AgentTurn turn : recentTurns) {
+            if (turn.getUserMessage() != null) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("user")
+                        .content(turn.getUserMessage())
+                        .build());
+            }
+            if (turn.getAssistantMessage() != null && !turn.getAssistantMessage().isBlank()
+                    && !"[CLARIFY]".equals(turn.getAssistantMessage())) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("assistant")
+                        .content(turn.getAssistantMessage())
+                        .build());
+            }
+        }
+
+        String effectiveQuery = buildEffectiveQuery(userMessage, intentResult);
+        messages.add(DeepSeekRequest.Message.builder()
+                .role("user")
+                .content(effectiveQuery)
+                .build());
+        return messages;
+    }
+
+    private List<DeepSeekRequest.Message> buildCotMessages(String sessionId, String userMessage,
+                                                            IntentResult intentResult,
+                                                            List<RetrievalResult> retrievalResults) {
+        List<DeepSeekRequest.Message> messages = new ArrayList<>();
+
+        StringBuilder systemContent = new StringBuilder();
+        systemContent.append("你是CampusShare校园资源共享平台的AI助手小享。用户在询问平台使用方法，请逐步思考后给出答案。\n");
+        systemContent.append("回答要求：\n");
+        systemContent.append("1. 基于参考资料回答，步骤要具体可操作，用有序列表\n");
+        systemContent.append("2. 关键词用**加粗**，引用资料用 [1][2] 编号\n");
+        systemContent.append("3. 不要提到\"参考资料\"或\"检索\"等技术术语\n");
+        systemContent.append("4. 使用中文回答，语气亲切友好\n");
+        systemContent.append("5. **只要检索结果非空，就不要说\"未找到\"**，基于已有信息给出最佳指引\n");
+        systemContent.append("6. 不要反复追问，直接给出操作步骤\n\n");
 
         if (retrievalResults != null && !retrievalResults.isEmpty()) {
             systemContent.append("=== 参考资料 ===\n");
@@ -575,43 +652,10 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
             }
         }
 
-        String effectiveQuery = intentResult.getRewrittenQuery() != null
-                && !intentResult.getRewrittenQuery().equals(userMessage)
-                ? intentResult.getRewrittenQuery() : userMessage;
+        String effectiveQuery = buildEffectiveQuery(userMessage, intentResult);
         messages.add(DeepSeekRequest.Message.builder()
                 .role("user")
                 .content(effectiveQuery)
-                .build());
-        return messages;
-    }
-
-    private List<DeepSeekRequest.Message> buildCotMessages(String sessionId, String userMessage,
-                                                            IntentResult intentResult,
-                                                            List<RetrievalResult> retrievalResults) {
-        List<DeepSeekRequest.Message> messages = new ArrayList<>();
-
-        StringBuilder systemContent = new StringBuilder();
-        systemContent.append("你是CampusShare校园资源共享平台的AI助手小享。请逐步思考后给出答案。\n\n");
-
-        if (retrievalResults != null && !retrievalResults.isEmpty()) {
-            systemContent.append("=== 参考资料 ===\n");
-            for (int i = 0; i < Math.min(retrievalResults.size(), 8); i++) {
-                RetrievalResult r = retrievalResults.get(i);
-                systemContent.append(String.format("[%d] (%s) %s\n", i + 1, r.source(), r.title()));
-                if (r.content() != null && !r.content().isBlank()) {
-                    String snippet = r.content().length() > 300 ? r.content().substring(0, 300) + "..." : r.content();
-                    systemContent.append(snippet).append("\n");
-                }
-            }
-        }
-
-        messages.add(DeepSeekRequest.Message.builder()
-                .role("system")
-                .content(systemContent.toString())
-                .build());
-        messages.add(DeepSeekRequest.Message.builder()
-                .role("user")
-                .content(userMessage)
                 .build());
         return messages;
     }
@@ -694,18 +738,8 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         return sb.toString();
     }
 
-    private boolean isComplexTask(IntentResult intentResult) {
-        String subIntent = intentResult.getSubIntent();
-        return "feature_help".equals(subIntent) ||
-                "rule_explain".equals(subIntent);
-    }
-
     private boolean isReasoningRequired(IntentResult intentResult) {
         return intentResult.getIntent() == Intent.HOW_TO;
-    }
-
-    private boolean hasFailedAttempts(Intent intent) {
-        return false;
     }
 
     private int getTurnNumber(String sessionId) {
@@ -741,7 +775,25 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
     }
 
     private List<RetrievalResult> loadPreviousRetrievalSync(String sessionId) {
-        return Collections.emptyList();
+        try {
+            AgentTurn lastTurn = turnMapper.selectOne(
+                    new LambdaQueryWrapper<AgentTurn>()
+                            .eq(AgentTurn::getSessionId, sessionId)
+                            .eq(AgentTurn::getStatus, "COMPLETED")
+                            .orderByDesc(AgentTurn::getTurnNumber)
+                            .last("LIMIT 1"));
+            if (lastTurn == null || lastTurn.getRetrievalContext() == null) {
+                return Collections.emptyList();
+            }
+            List<RetrievalResult> previous = objectMapper.readValue(
+                    lastTurn.getRetrievalContext(),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, RetrievalResult.class));
+            log.debug("Loaded previous retrieval: {} results for sessionId={}", previous.size(), sessionId);
+            return previous;
+        } catch (Exception e) {
+            log.warn("Failed to load previous retrieval context for sessionId={}", sessionId, e);
+            return Collections.emptyList();
+        }
     }
 
     private String truncate(String s, int maxLen) {
