@@ -24,6 +24,7 @@ import java.util.Optional;
 public class AuthenticationFilter implements WebFilter {
 
     private final List<AuthenticationProvider> providers;
+    private final com.campushare.agent.service.SecurityAuditService securityAuditService;
 
     public static final String AUTH_CONTEXT_KEY = "authContext";
 
@@ -53,10 +54,19 @@ public class AuthenticationFilter implements WebFilter {
                 .doOnNext(ctx -> {
                     exchange.getAttributes().put(AUTH_CONTEXT_KEY, ctx);
                     log.debug("Authentication successful, userId={}, authType={}", ctx.getUserId(), ctx.getAuthType());
+                    // Async audit log (fire-and-forget, don't block the request)
+                    Mono.fromRunnable(() -> securityAuditService.logInput(
+                            null, ctx.getUserId(), null,
+                            "Auth success: type=" + ctx.getAuthType() + ", ip=" + ctx.getClientIp()
+                    )).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic()).subscribe();
                 })
                 .then(chain.filter(exchange))
                 .onErrorResume(e -> {
                     log.warn("Authentication failed: {}", e.getMessage());
+                    Mono.fromRunnable(() -> securityAuditService.logThreat(
+                            null, null, null, "AUTH_FAILURE", "WARN",
+                            e.getMessage(), "BLOCKED", null, true
+                    )).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic()).subscribe();
                     exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                     return exchange.getResponse().setComplete();
                 });

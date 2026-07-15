@@ -45,6 +45,8 @@ public class ApiKeyAuthenticationProvider implements AuthenticationProvider {
                         .roles(Set.of("API_USER"))
                         .permissions(Set.of("CHAT"))
                         .clientIp(getClientIp(request))
+                        .deviceId(request.getHeaders().getFirst("X-Device-Id"))
+                        .appVersion(request.getHeaders().getFirst("X-App-Version"))
                         .build());
     }
 

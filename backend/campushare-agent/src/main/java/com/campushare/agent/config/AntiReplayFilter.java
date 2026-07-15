@@ -1,6 +1,5 @@
 package com.campushare.agent.config;
 
-import com.campushare.agent.dto.AuthContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -42,33 +41,33 @@ public class AntiReplayFilter implements WebFilter {
             return exchange.getResponse().setComplete();
         }
 
-        AuthContext authContext = exchange.getAttribute(AuthenticationFilter.AUTH_CONTEXT_KEY);
-
-        if (authContext == null) {
-            String replayKey = REPLAY_PREFIX + "anonymous:" + requestId;
-            return redisTemplate.opsForValue().setIfAbsent(replayKey, "1", Duration.ofSeconds(REPLAY_TTL))
-                    .flatMap(set -> {
-                        if (Boolean.TRUE.equals(set)) {
-                            return chain.filter(exchange);
-                        } else {
-                            log.warn("Duplicate request detected, anonymous, requestId={}", requestId);
-                            exchange.getResponse().setStatusCode(HttpStatus.CONFLICT);
-                            return exchange.getResponse().setComplete();
-                        }
-                    });
-        }
-
-        String replayKey = REPLAY_PREFIX + authContext.getUserId() + ":" + requestId;
+        String clientIp = getClientIp(exchange);
+        String replayKey = REPLAY_PREFIX + clientIp + ":" + requestId;
 
         return redisTemplate.opsForValue().setIfAbsent(replayKey, "1", Duration.ofSeconds(REPLAY_TTL))
                 .flatMap(set -> {
                     if (Boolean.TRUE.equals(set)) {
                         return chain.filter(exchange);
                     } else {
-                        log.warn("Duplicate request detected, userId={}, requestId={}", authContext.getUserId(), requestId);
+                        log.warn("Duplicate request detected, clientIp={}, requestId={}", clientIp, requestId);
                         exchange.getResponse().setStatusCode(HttpStatus.CONFLICT);
                         return exchange.getResponse().setComplete();
                     }
                 });
+    }
+
+    private String getClientIp(ServerWebExchange exchange) {
+        String xForwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = exchange.getRequest().getHeaders().getFirst("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+        if (exchange.getRequest().getRemoteAddress() != null) {
+            return exchange.getRequest().getRemoteAddress().getAddress().getHostAddress();
+        }
+        return "anonymous";
     }
 }

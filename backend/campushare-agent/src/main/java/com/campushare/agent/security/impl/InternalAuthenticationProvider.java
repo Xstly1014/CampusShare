@@ -47,6 +47,8 @@ public class InternalAuthenticationProvider implements AuthenticationProvider {
                 .roles(Set.of("INTERNAL"))
                 .permissions(Set.of("ALL"))
                 .clientIp(getClientIp(request))
+                .deviceId(request.getHeaders().getFirst("X-Device-Id"))
+                .appVersion(request.getHeaders().getFirst("X-App-Version"))
                 .build());
     }
 

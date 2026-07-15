@@ -25,6 +25,7 @@ import java.util.List;
 public class RateLimitFilter implements WebFilter {
 
     private final RateLimitService rateLimitService;
+    private final com.campushare.agent.service.SecurityAuditService securityAuditService;
 
     @Value("${app.rate-limit.global.max-requests:1000}")
     private int globalMaxRequests;
@@ -43,6 +44,12 @@ public class RateLimitFilter implements WebFilter {
 
     @Value("${app.rate-limit.ip.window-seconds:60}")
     private int ipWindowSeconds;
+
+    @Value("${app.rate-limit.session.max-requests:30}")
+    private int sessionMaxRequests;
+
+    @Value("${app.rate-limit.session.window-seconds:60}")
+    private int sessionWindowSeconds;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -74,6 +81,12 @@ public class RateLimitFilter implements WebFilter {
             maxRequests.add(userMaxRequests);
         }
 
+        String sessionId = exchange.getRequest().getHeaders().getFirst("X-Session-Id");
+        if (sessionId != null && !sessionId.isBlank()) {
+            keys.add("session:" + sessionId);
+            maxRequests.add(sessionMaxRequests);
+        }
+
         return rateLimitService.checkMultiRateLimit(keys, maxRequests, globalWindowSeconds)
                 .flatMap(result -> {
                     if (result.isAllowed()) {
@@ -82,6 +95,13 @@ public class RateLimitFilter implements WebFilter {
                         String exceededKey = result.getExceededKey();
                         log.warn("Rate limit exceeded, key={}, current={}, max={}",
                                 exceededKey, result.getCurrent(), result.getMax());
+                        // Async audit log
+                        String userId = authContext != null ? authContext.getUserId() : "anonymous";
+                        Mono.fromRunnable(() -> securityAuditService.logThreat(
+                                null, userId, null, "RATE_LIMIT_EXCEEDED", "WARN",
+                                "Key=" + exceededKey + ", current=" + result.getCurrent() + ", max=" + result.getMax(),
+                                "BLOCKED", null, true
+                        )).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic()).subscribe();
                         exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
                         return exchange.getResponse().setComplete();
                     }

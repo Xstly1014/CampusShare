@@ -144,6 +144,33 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
+        <!-- OpenTelemetry: distributed tracing per design §5.5.3 -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <version>1.38.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+            <version>1.38.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-trace</artifactId>
+            <version>1.38.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+            <version>1.38.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-metrics</artifactId>
+            <version>1.38.0</version>
+        </dependency>
+
         <!-- 测试依赖：JUnit 5 + Mockito + AssertJ（spring-boot-starter-test 统一引入） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

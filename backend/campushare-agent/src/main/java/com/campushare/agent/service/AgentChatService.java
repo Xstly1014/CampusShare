@@ -92,6 +92,7 @@ public class AgentChatService {
     private final SloService sloService;
     private final MetricsService metricsService;
     private final DialogueOrchestrator dialogueOrchestrator;
+    private final io.github.resilience4j.circuitbreaker.CircuitBreaker agentChatCircuitBreaker;
 
     private volatile Counter violationCounter;
     private volatile Counter injectionDetectedCounter;
@@ -204,7 +205,14 @@ public class AgentChatService {
 
                                 return Flux.concat(sessionEvent, deltaStream, refsEvent, navigateEvent);
                             });
-                });
+                })
+            .transform(io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator.of(agentChatCircuitBreaker))
+            .onErrorResume(e -> fallbackChat(userId, request, e));
+    }
+
+    public Flux<ChatEvent> fallbackChat(String userId, ChatRequest request, Throwable e) {
+        log.error("Circuit breaker triggered for user: {}", userId, e);
+        return Flux.just(new ChatEvent("delta", "抱歉，服务暂时不可用，请稍后重试。"));
     }
 
     private String buildSessionJson(ChatContext ctx) {

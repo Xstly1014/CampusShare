@@ -7,6 +7,7 @@ import com.campushare.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
@@ -24,62 +25,33 @@ public class RateLimitConfigController {
 
     @GetMapping
     public Mono<Result<List<RateLimitConfig>>> getRateLimitConfigs() {
-        List<RateLimitConfig> configs = List.of(
-                RateLimitConfig.builder()
-                        .key("global")
-                        .maxRequests(1000)
-                        .windowSeconds(60)
-                        .strategy("SLIDING_WINDOW")
-                        .enabled(true)
-                        .description("全局限流：每分钟最多1000次请求")
-                        .createdAt(LocalDateTime.now())
-                        .updatedAt(LocalDateTime.now())
-                        .build(),
-                RateLimitConfig.builder()
-                        .key("user:{userId}")
-                        .maxRequests(60)
-                        .windowSeconds(60)
-                        .strategy("SLIDING_WINDOW")
-                        .enabled(true)
-                        .description("用户级限流：每分钟最多60次请求")
-                        .createdAt(LocalDateTime.now())
-                        .updatedAt(LocalDateTime.now())
-                        .build(),
-                RateLimitConfig.builder()
-                        .key("ip:{ip}")
-                        .maxRequests(500)
-                        .windowSeconds(60)
-                        .strategy("SLIDING_WINDOW")
-                        .enabled(true)
-                        .description("IP级限流：每分钟最多500次请求")
-                        .createdAt(LocalDateTime.now())
-                        .updatedAt(LocalDateTime.now())
-                        .build()
-        );
-        return Mono.just(Result.success(configs));
+        return rateLimitService.getAllConfigs()
+                .flatMap(configs -> {
+                    if (configs.isEmpty()) {
+                        // Initialize default configs on first access
+                        List<RateLimitConfig> defaults = createDefaultConfigs();
+                        return Flux.fromIterable(defaults)
+                                .flatMap(rateLimitService::saveConfig)
+                                .collectList()
+                                .map(saved -> Result.success(defaults));
+                    }
+                    return Mono.just(Result.success(configs));
+                });
     }
 
     @GetMapping("/{key}")
     public Mono<Result<RateLimitConfig>> getRateLimitConfig(@PathVariable String key) {
-        RateLimitConfig config = RateLimitConfig.builder()
-                .key(key)
-                .maxRequests(60)
-                .windowSeconds(60)
-                .strategy("SLIDING_WINDOW")
-                .enabled(true)
-                .description("限流配置")
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
-        return Mono.just(Result.success(config));
+        return rateLimitService.getConfig(key)
+                .map(Result::success)
+                .switchIfEmpty(Mono.just(Result.error(4040, "Config not found: " + key)));
     }
 
     @PostMapping
     public Mono<Result<RateLimitConfig>> createRateLimitConfig(@RequestBody RateLimitConfig config) {
         config.setCreatedAt(LocalDateTime.now());
         config.setUpdatedAt(LocalDateTime.now());
-        log.info("Created rate limit config: {}", config.getKey());
-        return Mono.just(Result.success(config));
+        return rateLimitService.saveConfig(config)
+                .map(Result::success);
     }
 
     @PutMapping("/{key}")
@@ -88,46 +60,58 @@ public class RateLimitConfigController {
             @RequestBody RateLimitConfig config) {
         config.setKey(key);
         config.setUpdatedAt(LocalDateTime.now());
-        log.info("Updated rate limit config: {}", key);
-        return Mono.just(Result.success(config));
+        return rateLimitService.saveConfig(config)
+                .map(Result::success);
     }
 
     @DeleteMapping("/{key}")
     public Mono<Result<Void>> deleteRateLimitConfig(@PathVariable String key) {
-        log.info("Deleted rate limit config: {}", key);
-        return Mono.just(Result.success(null));
+        return rateLimitService.deleteConfig(key)
+                .then(Mono.just(Result.success(null)));
     }
 
     @GetMapping("/status")
     public Mono<Result<Map<String, RateLimitStatus>>> getRateLimitStatus() {
-        Map<String, RateLimitStatus> statusMap = new HashMap<>();
-        statusMap.put("global", RateLimitStatus.builder()
-                .key("global")
-                .current(0)
-                .max(1000)
-                .remaining(1000)
-                .resetTime(System.currentTimeMillis() + 60000)
-                .strategy("SLIDING_WINDOW")
-                .build());
-        return Mono.just(Result.success(statusMap));
+        return rateLimitService.getStatus("global")
+                .map(status -> {
+                    Map<String, RateLimitStatus> map = new HashMap<>();
+                    map.put("global", status);
+                    return Result.success(map);
+                });
     }
 
     @GetMapping("/status/{key}")
     public Mono<Result<RateLimitStatus>> getRateLimitStatusByKey(@PathVariable String key) {
-        RateLimitStatus status = RateLimitStatus.builder()
-                .key(key)
-                .current(0)
-                .max(60)
-                .remaining(60)
-                .resetTime(System.currentTimeMillis() + 60000)
-                .strategy("SLIDING_WINDOW")
-                .build();
-        return Mono.just(Result.success(status));
+        return rateLimitService.getStatus(key)
+                .map(Result::success);
     }
 
     @PostMapping("/{key}/reset")
     public Mono<Result<Void>> resetRateLimit(@PathVariable String key) {
         return rateLimitService.resetRateLimit(key)
                 .then(Mono.just(Result.success(null)));
+    }
+
+    private List<RateLimitConfig> createDefaultConfigs() {
+        return List.of(
+                RateLimitConfig.builder()
+                        .key("global").maxRequests(1000).windowSeconds(60)
+                        .strategy("SLIDING_WINDOW").enabled(true)
+                        .description("Global rate limit: max 1000 requests per minute")
+                        .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
+                        .build(),
+                RateLimitConfig.builder()
+                        .key("user:{userId}").maxRequests(60).windowSeconds(60)
+                        .strategy("SLIDING_WINDOW").enabled(true)
+                        .description("User rate limit: max 60 requests per minute")
+                        .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
+                        .build(),
+                RateLimitConfig.builder()
+                        .key("ip:{ip}").maxRequests(500).windowSeconds(60)
+                        .strategy("SLIDING_WINDOW").enabled(true)
+                        .description("IP rate limit: max 500 requests per minute")
+                        .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())
+                        .build()
+        );
     }
 }

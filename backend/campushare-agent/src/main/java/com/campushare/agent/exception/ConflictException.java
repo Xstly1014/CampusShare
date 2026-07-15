@@ -4,11 +4,11 @@ import com.campushare.common.exception.BusinessException;
 import lombok.Getter;
 
 @Getter
-public class ReplayDetectedException extends BusinessException {
+public class ConflictException extends BusinessException {
 
     private final String errorCode;
 
-    public ReplayDetectedException(String message) {
+    public ConflictException(String message) {
         super(409, message);
         this.errorCode = "AGENT_REPLAY_DETECTED";
     }

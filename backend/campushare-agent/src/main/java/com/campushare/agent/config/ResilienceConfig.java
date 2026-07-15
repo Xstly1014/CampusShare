@@ -82,6 +82,30 @@ public class ResilienceConfig {
     @Value("${app.intent.classifier.circuit-breaker.permitted-number-of-calls-in-half-open-state:3}")
     private int intentHalfOpenCalls;
 
+    @Value("${app.agent-chat.circuit-breaker.sliding-window-size:100}")
+    private int agentChatSlidingWindowSize;
+
+    @Value("${app.agent-chat.circuit-breaker.minimum-number-of-calls:10}")
+    private int agentChatMinimumCalls;
+
+    @Value("${app.agent-chat.circuit-breaker.failure-rate-threshold:50.0}")
+    private float agentChatFailureRate;
+
+    @Value("${app.agent-chat.circuit-breaker.slow-call-rate-threshold:50.0}")
+    private float agentChatSlowCallRate;
+
+    @Value("${app.agent-chat.circuit-breaker.slow-call-duration-threshold:5s}")
+    private Duration agentChatSlowCallDuration;
+
+    @Value("${app.agent-chat.circuit-breaker.wait-duration-in-open-state:60s}")
+    private Duration agentChatWaitDuration;
+
+    @Value("${app.agent-chat.circuit-breaker.permitted-number-of-calls-in-half-open-state:3}")
+    private int agentChatHalfOpenCalls;
+
+    @Value("${app.agent-chat.time-limiter.timeout-duration:30s}")
+    private Duration agentChatTimeoutDuration;
+
     @Bean
     public CircuitBreakerRegistry circuitBreakerRegistry() {
         CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
@@ -90,6 +114,7 @@ public class ResilienceConfig {
         registry.circuitBreaker("embedding", embeddingConfig());
         registry.circuitBreaker("post-sync", postSyncConfig());
         registry.circuitBreaker("intent-classifier", intentClassifierConfig());
+        registry.circuitBreaker("agentChat", agentChatConfig());
 
         TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(registry).bindTo(meterRegistry);
 
@@ -112,6 +137,16 @@ public class ResilienceConfig {
     }
 
     @Bean
+    public io.github.resilience4j.timelimiter.TimeLimiterRegistry timeLimiterRegistry() {
+        io.github.resilience4j.timelimiter.TimeLimiterRegistry registry = io.github.resilience4j.timelimiter.TimeLimiterRegistry.ofDefaults();
+        registry.timeLimiter("agentChat", io.github.resilience4j.timelimiter.TimeLimiterConfig.custom()
+                .timeoutDuration(agentChatTimeoutDuration)
+                .cancelRunningFuture(true)
+                .build());
+        return registry;
+    }
+
+    @Bean
     public CircuitBreaker deepSeekCircuitBreaker(CircuitBreakerRegistry registry) {
         return registry.circuitBreaker("deepseek");
     }
@@ -129,6 +164,16 @@ public class ResilienceConfig {
     @Bean
     public CircuitBreaker intentClassifierCircuitBreaker(CircuitBreakerRegistry registry) {
         return registry.circuitBreaker("intent-classifier");
+    }
+
+    @Bean
+    public CircuitBreaker agentChatCircuitBreaker(CircuitBreakerRegistry registry) {
+        return registry.circuitBreaker("agentChat");
+    }
+
+    @Bean
+    public io.github.resilience4j.timelimiter.TimeLimiter agentChatTimeLimiter(io.github.resilience4j.timelimiter.TimeLimiterRegistry registry) {
+        return registry.timeLimiter("agentChat");
     }
 
     @Bean
@@ -199,6 +244,28 @@ public class ResilienceConfig {
                 .recordExceptions(
                         java.util.concurrent.TimeoutException.class,
                         java.io.IOException.class
+                )
+                .ignoreExceptions(com.campushare.common.exception.BusinessException.class)
+                .build();
+    }
+
+    private CircuitBreakerConfig agentChatConfig() {
+        return CircuitBreakerConfig.custom()
+                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+                .slidingWindowSize(agentChatSlidingWindowSize)
+                .minimumNumberOfCalls(agentChatMinimumCalls)
+                .failureRateThreshold(agentChatFailureRate)
+                .slowCallRateThreshold(agentChatSlowCallRate)
+                .slowCallDurationThreshold(agentChatSlowCallDuration)
+                .waitDurationInOpenState(agentChatWaitDuration)
+                .permittedNumberOfCallsInHalfOpenState(agentChatHalfOpenCalls)
+                .automaticTransitionFromOpenToHalfOpenEnabled(true)
+                .recordExceptions(
+                        java.util.concurrent.TimeoutException.class,
+                        java.net.SocketTimeoutException.class,
+                        org.springframework.web.reactive.function.client.WebClientRequestException.class,
+                        org.springframework.web.reactive.function.client.WebClientResponseException.ServiceUnavailable.class,
+                        com.campushare.agent.exception.LlmApiException.class
                 )
                 .ignoreExceptions(com.campushare.common.exception.BusinessException.class)
                 .build();
