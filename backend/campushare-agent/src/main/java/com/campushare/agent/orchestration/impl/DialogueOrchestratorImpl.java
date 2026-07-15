@@ -26,10 +26,10 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -48,20 +48,24 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
     @Value("${app.orchestrator.max-plan-steps:5}")
     private int maxPlanSteps;
 
-    @Value("${app.orchestrator.max-clarify-rounds:3}")
+    @Value("${app.orchestrator.max-clarify-rounds:2}")
     private int maxClarifyRounds;
 
     @Value("${app.orchestrator.reflexion-threshold:0.5}")
     private double reflexionThreshold;
 
+    private static final Pattern SURRENDER_PATTERN = Pattern.compile(
+            "^(随便|都行|都可以|无所谓|随便吧|都行吧|你看着办|你定|随便你|不用了|没事|算了|不用问了|直接给|直接说|你推荐|随便推荐|你觉得呢)$"
+    );
+
     @Override
     public Mono<TurnResponse> orchestrate(String userId, String sessionId, String userMessage,
                                            IntentResult intentResult, List<RetrievalResult> retrievalResults) {
         int turnNumber = getTurnNumber(sessionId);
-        OrchestrationMode mode = selectMode(intentResult, turnNumber);
+        OrchestrationMode mode = selectMode(intentResult, turnNumber, userMessage, sessionId);
 
-        log.info("Selected orchestration mode: {} for intent: {}, turn: {}",
-                mode, intentResult.getIntent(), turnNumber);
+        log.info("Selected orchestration mode: {} for intent: {}, turn: {}, message: '{}'",
+                mode, intentResult.getIntent(), turnNumber, truncate(userMessage, 30));
 
         return switch (mode) {
             case CLARIFY -> clarify(userId, sessionId, userMessage, intentResult, retrievalResults);
@@ -75,20 +79,167 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
     @Override
     public Mono<TurnResponse> clarify(String userId, String sessionId, String userMessage,
                                       IntentResult intentResult, List<RetrievalResult> retrievalResults) {
-        int clarifyCount = getClarifyCount(sessionId);
-        if (clarifyCount >= maxClarifyRounds) {
-            return Mono.just(TurnResponse.builder()
-                    .content("抱歉，我已经多次尝试确认信息，但仍未能获取足够的细节。请您提供更完整的信息后再试。")
-                    .build());
+        if (isSurrenderMessage(userMessage)) {
+            log.info("User surrendered (said '{}'), proceeding with defaults and existing results", userMessage);
+            return directAnswerWithDefaults(userId, sessionId, userMessage, intentResult, retrievalResults);
         }
 
-        List<DeepSeekRequest.Message> messages = buildClarifyMessages(sessionId, userMessage, intentResult);
+        int clarifyCount = getClarifyCount(sessionId);
+        if (clarifyCount >= maxClarifyRounds) {
+            log.info("Clarify rounds exhausted ({}), proceeding with defaults for query='{}'",
+                    clarifyCount, truncate(userMessage, 30));
+            return directAnswerWithDefaults(userId, sessionId, userMessage, intentResult, retrievalResults);
+        }
+
+        List<RetrievalResult> resultsToUse = retrievalResults;
+        if (resultsToUse == null || resultsToUse.isEmpty()) {
+            resultsToUse = loadPreviousRetrievalSync(sessionId);
+        }
+
+        boolean hasResults = resultsToUse != null && !resultsToUse.isEmpty();
+        if (hasResults && clarifyCount >= 1) {
+            log.info("Have retrieval results after 1 clarify round, answering directly");
+            return directAnswerWithRetrieval(sessionId, userMessage, intentResult, resultsToUse);
+        }
+
+        List<DeepSeekRequest.Message> messages = buildClarifyMessages(sessionId, userMessage, intentResult, resultsToUse);
 
         return deepSeekClient.chatCompletion(messages, Collections.emptyList())
                 .map(response -> TurnResponse.builder()
                         .content(response.getContent())
                         .isClarification(true)
                         .build());
+    }
+
+    private Mono<TurnResponse> directAnswerWithDefaults(String userId, String sessionId, String userMessage,
+                                                         IntentResult intentResult, List<RetrievalResult> retrievalResults) {
+        fillDefaultSlots(intentResult);
+
+        List<RetrievalResult> resultsToUse = retrievalResults;
+        if (resultsToUse == null || resultsToUse.isEmpty()) {
+            resultsToUse = loadPreviousRetrievalSync(sessionId);
+        }
+
+        return buildRagAnswer(sessionId, userMessage, intentResult, resultsToUse);
+    }
+
+    private Mono<TurnResponse> directAnswerWithRetrieval(String sessionId, String userMessage,
+                                                          IntentResult intentResult, List<RetrievalResult> results) {
+        fillDefaultSlots(intentResult);
+        return buildRagAnswer(sessionId, userMessage, intentResult, results);
+    }
+
+    private Mono<TurnResponse> buildRagAnswer(String sessionId, String userMessage,
+                                               IntentResult intentResult, List<RetrievalResult> results) {
+        List<DeepSeekRequest.Message> messages = new ArrayList<>();
+
+        StringBuilder systemContent = new StringBuilder();
+        systemContent.append("你是CampusShare校园资源共享平台的AI助手小享。请根据提供的参考资料回答用户问题。\n");
+        systemContent.append("回答要求：\n");
+        systemContent.append("1. 基于参考资料回答，如资料不足请诚实说明\n");
+        systemContent.append("2. 回答自然流畅，不要提到\"参考资料\"或\"检索\"等技术术语\n");
+        systemContent.append("3. 如果用户没有指定具体条件（如校区、排序等），直接给出最相关的推荐即可\n");
+        systemContent.append("4. 使用中文回答，语气亲切友好\n\n");
+
+        if (results != null && !results.isEmpty()) {
+            systemContent.append("=== 参考资料 ===\n");
+            for (int i = 0; i < Math.min(results.size(), 8); i++) {
+                RetrievalResult r = results.get(i);
+                systemContent.append(String.format("[%d] (%s) %s\n", i + 1, r.source(), r.title()));
+                if (r.content() != null && !r.content().isBlank()) {
+                    String snippet = r.content().length() > 200 ? r.content().substring(0, 200) + "..." : r.content();
+                    systemContent.append(snippet).append("\n");
+                }
+            }
+        } else {
+            systemContent.append("=== 无参考资料 ===\n请基于你的知识为用户提供帮助，注意你是CampusShare平台助手。\n");
+        }
+
+        messages.add(DeepSeekRequest.Message.builder()
+                .role("system")
+                .content(systemContent.toString())
+                .build());
+
+        List<AgentTurn> recentTurns = loadRecentTurns(sessionId, 5);
+        for (AgentTurn turn : recentTurns) {
+            if (turn.getUserMessage() != null) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("user")
+                        .content(turn.getUserMessage())
+                        .build());
+            }
+            if (turn.getAssistantMessage() != null && !"[CLARIFY]".equals(turn.getAssistantMessage())) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("assistant")
+                        .content(turn.getAssistantMessage())
+                        .build());
+            }
+        }
+
+        String effectiveQuery = intentResult.getRewrittenQuery() != null ? intentResult.getRewrittenQuery() : userMessage;
+        messages.add(DeepSeekRequest.Message.builder()
+                .role("user")
+                .content(effectiveQuery)
+                .build());
+
+        return deepSeekClient.chatCompletion(messages, Collections.emptyList())
+                .map(response -> TurnResponse.builder()
+                        .content(response.getContent())
+                        .isClarification(false)
+                        .refs(buildRefsFromResults(results))
+                        .build());
+    }
+
+    private List<Map<String, Object>> buildRefsFromResults(List<RetrievalResult> results) {
+        if (results == null || results.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, Object>> refs = new ArrayList<>();
+        int index = 1;
+        Set<String> seenIds = new HashSet<>();
+        for (RetrievalResult r : results) {
+            if (r.id() == null || seenIds.contains(r.id())) continue;
+            seenIds.add(r.id());
+            Map<String, Object> ref = new HashMap<>();
+            ref.put("index", index);
+            ref.put("id", r.id());
+            ref.put("type", r.source() != null ? r.source().name() : "POST");
+            ref.put("title", r.title());
+            if (r.source() == RetrievalResult.Source.POST) {
+                ref.put("url", "/post/" + r.id());
+            }
+            refs.add(ref);
+            index++;
+            if (index > 10) break;
+        }
+        return refs;
+    }
+
+    private void fillDefaultSlots(IntentResult intentResult) {
+        if (intentResult.getSlots() == null) {
+            intentResult.setSlots(IntentResult.SlotResult.builder()
+                    .sort("latest")
+                    .postType("all")
+                    .build());
+        } else {
+            if (intentResult.getSlots().getSort() == null || intentResult.getSlots().getSort().isBlank()) {
+                intentResult.getSlots().setSort("latest");
+            }
+            if (intentResult.getSlots().getPostType() == null || intentResult.getSlots().getPostType().isBlank()) {
+                intentResult.getSlots().setPostType("all");
+            }
+        }
+        if (intentResult.getIntent() == Intent.CLARIFY) {
+            intentResult.setIntent(Intent.SEARCH);
+            if (intentResult.getSubIntent() == null || intentResult.getSubIntent().isBlank()) {
+                intentResult.setSubIntent(Intent.SubIntent.RESOURCE);
+            }
+        }
+    }
+
+    private boolean isSurrenderMessage(String message) {
+        if (message == null || message.isBlank()) return false;
+        return SURRENDER_PATTERN.matcher(message.trim()).matches();
     }
 
     @Override
@@ -146,17 +297,25 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
 
     @Override
     public OrchestrationMode selectMode(IntentResult intentResult, int turnNumber) {
-        if (intentResult.getIntent() == Intent.CLARIFY ||
-            intentResult.getSlots() == null || hasMissingSlots(intentResult)) {
+        return selectMode(intentResult, turnNumber, null, null);
+    }
+
+    private OrchestrationMode selectMode(IntentResult intentResult, int turnNumber, String userMessage, String sessionId) {
+        if (intentResult.getIntent() == Intent.CLARIFY) {
+            if (userMessage != null && isSurrenderMessage(userMessage)) {
+                return OrchestrationMode.REACT;
+            }
+            if (sessionId != null) {
+                int clarifyCount = getClarifyCount(sessionId);
+                if (clarifyCount >= maxClarifyRounds) {
+                    return OrchestrationMode.REACT;
+                }
+            }
             return OrchestrationMode.CLARIFY;
         }
 
         if (isComplexTask(intentResult)) {
             return OrchestrationMode.PLAN_AND_EXECUTE;
-        }
-
-        if (turnNumber > 1 && hasFailedAttempts(intentResult.getIntent())) {
-            return OrchestrationMode.REFLEXION;
         }
 
         if (isReasoningRequired(intentResult)) {
@@ -168,7 +327,7 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
 
     private Mono<TurnResponse> react(String userId, String sessionId, String userMessage,
                                       IntentResult intentResult, List<RetrievalResult> retrievalResults) {
-        List<DeepSeekRequest.Message> messages = buildReactMessages(sessionId, userMessage, intentResult);
+        List<DeepSeekRequest.Message> messages = buildReactMessages(sessionId, userMessage, intentResult, retrievalResults);
         List<Map<String, Object>> toolSchemas = toolRegistry.getToolSchemas(intentResult.getIntent());
 
         return runToolCallLoop(messages, toolSchemas, userId, 0)
@@ -176,17 +335,19 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                     return deepSeekClient.chatCompletion(finalMessages, Collections.emptyList())
                             .map(response -> TurnResponse.builder()
                                     .content(response.getContent())
+                                    .refs(buildRefsFromResults(retrievalResults))
                                     .build());
                 });
     }
 
     private Mono<TurnResponse> chainOfThought(String userId, String sessionId, String userMessage,
                                                IntentResult intentResult, List<RetrievalResult> retrievalResults) {
-        List<DeepSeekRequest.Message> messages = buildCotMessages(sessionId, userMessage, intentResult);
+        List<DeepSeekRequest.Message> messages = buildCotMessages(sessionId, userMessage, intentResult, retrievalResults);
 
         return deepSeekClient.chatCompletion(messages, Collections.emptyList())
                 .map(response -> TurnResponse.builder()
                         .content(response.getContent())
+                        .refs(buildRefsFromResults(retrievalResults))
                         .build());
     }
 
@@ -203,7 +364,7 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
     }
 
     private Mono<TurnResponse> executePlan(String userId, String sessionId, List<String> plan) {
-        AtomicReference<String> executionLog = new AtomicReference<>();
+        AtomicReference<String> executionLog = new AtomicReference<>("");
         AtomicInteger indexRef = new AtomicInteger(0);
 
         return Flux.fromIterable(plan)
@@ -213,8 +374,10 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                     log.info("Executing plan step {}/{}: {}", index + 1, plan.size(), step);
 
                     IntentResult stepIntent = IntentResult.builder()
-                            .intent(intentResultFromStep(step))
+                            .intent(Intent.SEARCH)
+                            .subIntent(Intent.SubIntent.RESOURCE)
                             .rewrittenQuery(step)
+                            .slots(IntentResult.SlotResult.builder().sort("latest").postType("all").build())
                             .build();
 
                     return react(userId, sessionId, step, stepIntent, Collections.emptyList())
@@ -244,7 +407,9 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
             analysis.append("过去的尝试：\n");
             for (AgentTurn turn : recentTurns) {
                 analysis.append(String.format("- 用户: %s\n  助手: %s\n  意图: %s\n",
-                        turn.getUserMessage(), turn.getAssistantMessage(), turn.getIntent()));
+                        turn.getUserMessage(),
+                        truncate(turn.getAssistantMessage(), 100),
+                        turn.getIntent()));
             }
 
             return new ReflexionAnalysis(false, analysis.toString());
@@ -309,13 +474,20 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
     }
 
     private List<DeepSeekRequest.Message> buildClarifyMessages(String sessionId, String userMessage,
-                                                                IntentResult intentResult) {
+                                                                IntentResult intentResult,
+                                                                List<RetrievalResult> retrievalResults) {
         List<DeepSeekRequest.Message> messages = new ArrayList<>();
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
-                .content("你是一个对话澄清助手。你的任务是向用户提问以获取完成任务所需的缺失信息。" +
-                        "请以自然、友好的方式提问，每次只问一个问题。" +
-                        "\n\n重要：请根据历史对话上下文进行追问，不要忘记之前讨论的主题。")
+                .content("你是一个对话澄清助手。你的任务是向用户提问以获取完成任务所需的关键缺失信息。" +
+                        "请以自然、友好的方式提问，每次只问一个最关键的问题。\n\n" +
+                        "重要规则：\n" +
+                        "1. 只问真正影响结果的关键信息（如校区、分类），不要问无关紧要的细节\n" +
+                        "2. 如果已经有检索结果，优先基于结果内容提问\n" +
+                        "3. 不要重复问同样的问题\n" +
+                        "4. 如果用户之前已经回答过某个问题，不要再次询问\n" +
+                        "5. 最多追问1-2个问题，如果用户仍然无法提供，直接基于已有信息给出最佳推荐\n" +
+                        "6. 根据历史对话上下文进行追问，不要忘记之前讨论的主题")
                 .build());
 
         List<AgentTurn> recentTurns = loadRecentTurns(sessionId, 5);
@@ -326,7 +498,8 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                         .content(turn.getUserMessage())
                         .build());
             }
-            if (turn.getAssistantMessage() != null) {
+            if (turn.getAssistantMessage() != null && !turn.getAssistantMessage().isBlank()
+                    && !"[CLARIFY]".equals(turn.getAssistantMessage())) {
                 messages.add(DeepSeekRequest.Message.builder()
                         .role("assistant")
                         .content(turn.getAssistantMessage())
@@ -334,34 +507,107 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
             }
         }
 
+        StringBuilder userContent = new StringBuilder();
+        userContent.append("用户最新回复: ").append(userMessage).append("\n");
+        userContent.append("当前意图: ").append(intentResult.getIntent()).append("/").append(intentResult.getSubIntent()).append("\n");
+        userContent.append("已识别的槽位: ").append(intentResult.getSlots() != null ? intentResult.getSlots() : "无").append("\n");
+        if (retrievalResults != null && !retrievalResults.isEmpty()) {
+            userContent.append("已检索到 ").append(retrievalResults.size()).append(" 条相关结果：\n");
+            for (int i = 0; i < Math.min(retrievalResults.size(), 5); i++) {
+                userContent.append(String.format("  - %s\n", retrievalResults.get(i).title()));
+            }
+        }
+        userContent.append("\n请基于以上信息，提出一个最关键的澄清问题。如果已经有足够信息或检索结果，请直接回答用户问题。");
+
         messages.add(DeepSeekRequest.Message.builder()
                 .role("user")
-                .content("用户问题: " + userMessage + "\n当前意图: " + intentResult.getIntent() +
-                        "\n已识别的槽位: " + (intentResult.getSlots() != null ? intentResult.getSlots() : "无"))
+                .content(userContent.toString())
                 .build());
         return messages;
     }
 
     private List<DeepSeekRequest.Message> buildReactMessages(String sessionId, String userMessage,
-                                                               IntentResult intentResult) {
+                                                               IntentResult intentResult,
+                                                               List<RetrievalResult> retrievalResults) {
         List<DeepSeekRequest.Message> messages = new ArrayList<>();
+
+        StringBuilder systemContent = new StringBuilder();
+        systemContent.append("你是CampusShare校园资源共享平台的AI助手小享，擅长帮助同学找资料、解答平台使用问题。\n");
+        systemContent.append("回答要求：\n");
+        systemContent.append("1. 基于提供的参考资料回答问题\n");
+        systemContent.append("2. 回答自然流畅，不要提到\"参考资料\"或\"检索\"等技术术语\n");
+        systemContent.append("3. 语气亲切友好，像学长学姐一样帮助同学\n");
+        systemContent.append("4. 使用中文回答\n");
+        systemContent.append("5. 如果参考资料中有相关帖子，推荐给用户\n");
+        systemContent.append("6. 如果信息不足，基于已有信息给出最佳建议，不要反复追问\n\n");
+
+        if (retrievalResults != null && !retrievalResults.isEmpty()) {
+            systemContent.append("=== 参考资料 ===\n");
+            for (int i = 0; i < Math.min(retrievalResults.size(), 8); i++) {
+                RetrievalResult r = retrievalResults.get(i);
+                systemContent.append(String.format("[%d] (%s) %s\n", i + 1, r.source(), r.title()));
+                if (r.content() != null && !r.content().isBlank()) {
+                    String snippet = r.content().length() > 300 ? r.content().substring(0, 300) + "..." : r.content();
+                    systemContent.append(snippet).append("\n");
+                }
+            }
+        }
+
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
-                .content("你是一个ReAct风格的AI助手。使用思考-行动-观察循环来解决问题。")
+                .content(systemContent.toString())
                 .build());
+
+        List<AgentTurn> recentTurns = loadRecentTurns(sessionId, 5);
+        for (AgentTurn turn : recentTurns) {
+            if (turn.getUserMessage() != null) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("user")
+                        .content(turn.getUserMessage())
+                        .build());
+            }
+            if (turn.getAssistantMessage() != null && !turn.getAssistantMessage().isBlank()
+                    && !"[CLARIFY]".equals(turn.getAssistantMessage())) {
+                messages.add(DeepSeekRequest.Message.builder()
+                        .role("assistant")
+                        .content(turn.getAssistantMessage())
+                        .build());
+            }
+        }
+
+        String effectiveQuery = intentResult.getRewrittenQuery() != null
+                && !intentResult.getRewrittenQuery().equals(userMessage)
+                ? intentResult.getRewrittenQuery() : userMessage;
         messages.add(DeepSeekRequest.Message.builder()
                 .role("user")
-                .content(userMessage)
+                .content(effectiveQuery)
                 .build());
         return messages;
     }
 
     private List<DeepSeekRequest.Message> buildCotMessages(String sessionId, String userMessage,
-                                                            IntentResult intentResult) {
+                                                            IntentResult intentResult,
+                                                            List<RetrievalResult> retrievalResults) {
         List<DeepSeekRequest.Message> messages = new ArrayList<>();
+
+        StringBuilder systemContent = new StringBuilder();
+        systemContent.append("你是CampusShare校园资源共享平台的AI助手小享。请逐步思考后给出答案。\n\n");
+
+        if (retrievalResults != null && !retrievalResults.isEmpty()) {
+            systemContent.append("=== 参考资料 ===\n");
+            for (int i = 0; i < Math.min(retrievalResults.size(), 8); i++) {
+                RetrievalResult r = retrievalResults.get(i);
+                systemContent.append(String.format("[%d] (%s) %s\n", i + 1, r.source(), r.title()));
+                if (r.content() != null && !r.content().isBlank()) {
+                    String snippet = r.content().length() > 300 ? r.content().substring(0, 300) + "..." : r.content();
+                    systemContent.append(snippet).append("\n");
+                }
+            }
+        }
+
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
-                .content("你是一个善于推理的AI助手。请逐步思考你的答案，展示你的推理过程。")
+                .content(systemContent.toString())
                 .build());
         messages.add(DeepSeekRequest.Message.builder()
                 .role("user")
@@ -433,7 +679,9 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         for (int i = 0; i < plan.size(); i++) {
             sb.append((i + 1)).append(". ").append(plan.get(i)).append("\n");
         }
-        sb.append("\n执行详情:\n").append(executionLog);
+        if (executionLog != null && !executionLog.isBlank()) {
+            sb.append("\n执行详情:\n").append(executionLog);
+        }
         return sb.toString();
     }
 
@@ -446,28 +694,14 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         return sb.toString();
     }
 
-    private Intent intentResultFromStep(String step) {
-        return Intent.SEARCH;
-    }
-
-    private boolean hasMissingSlots(IntentResult intentResult) {
-        if (intentResult.getSlots() == null) {
-            return true;
-        }
-        return intentResult.getSlots().getSchool() == null ||
-                intentResult.getSlots().getSchool().isBlank();
-    }
-
     private boolean isComplexTask(IntentResult intentResult) {
         String subIntent = intentResult.getSubIntent();
         return "feature_help".equals(subIntent) ||
-                "rule_explain".equals(subIntent) ||
-                "write_action".equals(subIntent);
+                "rule_explain".equals(subIntent);
     }
 
     private boolean isReasoningRequired(IntentResult intentResult) {
-        return intentResult.getIntent() == Intent.HOW_TO ||
-                intentResult.getIntent() == Intent.SEARCH;
+        return intentResult.getIntent() == Intent.HOW_TO;
     }
 
     private boolean hasFailedAttempts(Intent intent) {
@@ -504,6 +738,15 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         List<AgentTurn> turns = turnMapper.selectList(wrapper);
         Collections.reverse(turns);
         return turns;
+    }
+
+    private List<RetrievalResult> loadPreviousRetrievalSync(String sessionId) {
+        return Collections.emptyList();
+    }
+
+    private String truncate(String s, int maxLen) {
+        if (s == null) return "";
+        return s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
     private record ReflexionAnalysis(boolean confident, String reflection) {}
