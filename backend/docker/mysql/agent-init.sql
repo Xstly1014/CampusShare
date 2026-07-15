@@ -49,6 +49,7 @@ CREATE TABLE agent_turns (
   tokens_used INT COMMENT '本轮使用 token 数',
   model_name VARCHAR(64) COMMENT '使用的模型名',
   retrieval_context TEXT COMMENT '检索上下文（JSON）',
+  refs TEXT COMMENT '引用列表 JSON，如 [{"index":1,"id":"...","type":"POST","title":"...","url":"..."}]',
   tools_used VARCHAR(512) COMMENT '使用的工具列表（JSON）',
   response_time_ms INT COMMENT '响应时间（毫秒）',
   status VARCHAR(32) NOT NULL DEFAULT 'STREAMING' COMMENT '轮次状态（STREAMING/COMPLETED/ERROR）',
@@ -499,6 +500,12 @@ DROP PROCEDURE IF EXISTS migrate_agent_turns_context_engineering;
 DELIMITER $$
 CREATE PROCEDURE migrate_agent_turns_context_engineering()
 BEGIN
+    -- refs TEXT：引用列表 JSON（多轮锚定用）
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'refs') THEN
+        ALTER TABLE agent_turns ADD COLUMN refs TEXT DEFAULT NULL COMMENT '引用列表 JSON，如 [{"index":1,"id":"...","type":"POST","title":"...","url":"..."}]' AFTER retrieval_context;
+    END IF;
+
     -- intent VARCHAR(32)：本轮识别到的 L1 意图（HOW_TO/SEARCH/NAVIGATE/CLARIFY/OUT_OF_SCOPE）
     IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
                    WHERE TABLE_SCHEMA = 'campushare' AND TABLE_NAME = 'agent_turns' AND COLUMN_NAME = 'intent') THEN
