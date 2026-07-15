@@ -85,7 +85,19 @@ public class IntentClassifier {
         // 1. 查 Redis 缓存
         return cacheService.get(query)
                 .cast(IntentResult.class)
-                .doOnNext(cached -> log.debug("Intent cache hit for query='{}'", query))
+                .map(cached -> {
+                    log.debug("Intent cache hit for query='{}'", query);
+                    // Guard：缓存中也可能保存了旧版本代码误分类的 OUT_OF_SCOPE/open_domain
+                    if (cached.getIntent() == Intent.OUT_OF_SCOPE
+                            && Intent.SubIntent.OPEN_DOMAIN.equals(cached.getSubIntent())
+                            && looksLikeResourceRequest(query)) {
+                        log.warn("Cached intent was OUT_OF_SCOPE/open_domain for resource query '{}'. Downgrade to SEARCH/resource",
+                                query);
+                        cached.setIntent(Intent.SEARCH);
+                        cached.setSubIntent(Intent.SubIntent.RESOURCE);
+                    }
+                    return cached;
+                })
                 .switchIfEmpty(Mono.defer(() ->
                         // 2. 缓存未命中，调用 LLM 分类
                         classifyByLLM(query)
