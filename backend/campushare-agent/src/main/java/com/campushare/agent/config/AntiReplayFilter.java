@@ -13,6 +13,7 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -22,6 +23,7 @@ public class AntiReplayFilter implements WebFilter {
 
     private final ReactiveStringRedisTemplate redisTemplate;
 
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
     private static final String REPLAY_PREFIX = "agent:replay:";
     private static final int REPLAY_TTL = 300;
 
@@ -33,23 +35,26 @@ public class AntiReplayFilter implements WebFilter {
             return chain.filter(exchange);
         }
 
-        String requestId = exchange.getRequest().getHeaders().getFirst("X-Request-Id");
-
+        String requestId = exchange.getRequest().getHeaders().getFirst(REQUEST_ID_HEADER);
         if (requestId == null || requestId.isBlank()) {
-            log.warn("X-Request-Id is required");
-            exchange.getResponse().setStatusCode(HttpStatus.BAD_REQUEST);
-            return exchange.getResponse().setComplete();
+            requestId = UUID.randomUUID().toString().replace("-", "");
         }
 
+        exchange.getResponse().getHeaders().add(REQUEST_ID_HEADER, requestId);
+
+        final String finalRequestId = requestId;
         String clientIp = getClientIp(exchange);
-        String replayKey = REPLAY_PREFIX + clientIp + ":" + requestId;
+        String replayKey = REPLAY_PREFIX + clientIp + ":" + finalRequestId;
 
         return redisTemplate.opsForValue().setIfAbsent(replayKey, "1", Duration.ofSeconds(REPLAY_TTL))
                 .flatMap(set -> {
                     if (Boolean.TRUE.equals(set)) {
-                        return chain.filter(exchange);
+                        ServerWebExchange mutatedExchange = exchange.mutate()
+                                .request(builder -> builder.header(REQUEST_ID_HEADER, finalRequestId))
+                                .build();
+                        return chain.filter(mutatedExchange);
                     } else {
-                        log.warn("Duplicate request detected, clientIp={}, requestId={}", clientIp, requestId);
+                        log.warn("Duplicate request detected, clientIp={}, requestId={}", clientIp, finalRequestId);
                         exchange.getResponse().setStatusCode(HttpStatus.CONFLICT);
                         return exchange.getResponse().setComplete();
                     }

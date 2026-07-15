@@ -209,8 +209,9 @@ services:
     container_name: campushare-agent-service
     restart: unless-stopped
     mem_limit: 1536m
-    # DNS 配置：容器内需解析外网 api.deepseek.com 域名
+    # DNS 配置：容器内需解析外网 api.deepseek.com 域名，同时保留 Docker 内部 DNS 解析服务名
     dns:
+      - 127.0.0.11
       - 8.8.8.8
       - 114.114.114.114
     ports:
@@ -222,6 +223,7 @@ services:
       - OTEL_SERVICE_NAME=agent-service
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
       - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=none
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
