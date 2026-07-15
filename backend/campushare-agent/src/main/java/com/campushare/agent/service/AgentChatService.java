@@ -73,6 +73,7 @@ public class AgentChatService {
     private final ConstitutionalAIValidator constitutionalAIValidator;
     private final RuleShortCircuitFilter ruleShortCircuitFilter;
     private final IntentClassifier intentClassifier;
+    private final IntentPolicyService intentPolicyService;
     private final IntentRouter intentRouter;
     private final IntentMetricsConfig intentMetrics;
     private final PromptVersionManager promptVersionManager;
@@ -158,17 +159,27 @@ public class AgentChatService {
                     return dialogueOrchestrator.orchestrate(userId, ctx.session().getId(),
                                     request.getMessage(), ctx.intentResult(), ctx.retrievalResults())
                             .flatMapMany(turnResponse -> {
-                                // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
-                                // CLARIFY 意图时不显示引用卡片，因为只是追问澄清，不需要引用
-                                Flux<ChatEvent> refsEvent = Flux.empty();
+                                // 计算本轮引用 JSON 并持久化到 AgentTurn，供多轮锚定使用
+                                final String refsJson;
                                 if (ctx.intentResult().getIntent() != Intent.CLARIFY) {
                                     if (turnResponse.getRefs() != null && !turnResponse.getRefs().isEmpty()) {
-                                        String refsJson = buildRefsJsonFromTurnResponse(turnResponse.getRefs());
-                                        refsEvent = Flux.just(new ChatEvent("refs", refsJson));
+                                        refsJson = buildRefsJsonFromTurnResponse(turnResponse.getRefs());
                                     } else if (ctx.retrievalResults() != null && !ctx.retrievalResults().isEmpty()) {
-                                        String refsJson = buildRefsJson(ctx.retrievalResults());
-                                        refsEvent = Flux.just(new ChatEvent("refs", refsJson));
+                                        refsJson = buildRefsJson(ctx.retrievalResults());
+                                    } else {
+                                        refsJson = null;
                                     }
+                                } else {
+                                    refsJson = null;
+                                }
+                                if (refsJson != null && !refsJson.isBlank()) {
+                                    ctx.turn().setRefs(refsJson);
+                                }
+
+                                // refs 事件：发送引用源数据（前端用于渲染可点击引用卡片）
+                                Flux<ChatEvent> refsEvent = Flux.empty();
+                                if (refsJson != null && !refsJson.isBlank()) {
+                                    refsEvent = Flux.just(new ChatEvent("refs", refsJson));
                                 }
 
                                 // navigate 事件：如果存在跳转信息
@@ -193,7 +204,8 @@ public class AgentChatService {
                                                 if (signalType == SignalType.ON_COMPLETE) {
                                                     completeTurn(ctx.turn(), ctx.session(), content, elapsed,
                                                             null, ctx.inputTokens(), ctx.retrievalContext(),
-                                                            ctx.intentResult(), ctx.promptVersion(), ctx.rootSpan());
+                                                            ctx.intentResult(), ctx.promptVersion(), ctx.rootSpan(),
+                                                            refsJson);
                                                 } else if (signalType == SignalType.ON_ERROR) {
                                                     errorTurn(ctx.turn(), "Stream terminated with error");
                                                     if (ctx.rootSpan() != null) {
@@ -514,7 +526,7 @@ public class AgentChatService {
             String userMessage = request.getMessage();
 
             // ① 意图识别（三层漏斗：规则 → LLM → Embedding → SEARCH 兜底）
-            IntentResult intentResult = recognizeIntent(userMessage, session.getId());
+            IntentResult intentResult = recognizeIntent(userMessage, session.getId(), userId);
             traceService.recordIntent(intentSpan, intentResult.getIntent().name());
             traceService.endSpan(intentSpan);
 
@@ -647,11 +659,12 @@ public class AgentChatService {
      * Layer 4: Embedding 兜底（由 IntentClassifier 内部调用）
      * Default: SEARCH 兜底（全部失败时）
      */
-    private IntentResult recognizeIntent(String query, String sessionId) {
-        // Layer 1: 规则短路
-        Optional<IntentResult> ruleResult = ruleShortCircuitFilter.filter(query);
+    private IntentResult recognizeIntent(String query, String sessionId, String userId) {
+        // Layer 1: 规则短路（携带 userId 以支持昵称持久化）
+        Optional<IntentResult> ruleResult = ruleShortCircuitFilter.filter(userId, query);
         if (ruleResult.isPresent()) {
             IntentResult r = ruleResult.get();
+            r = intentPolicyService.applyPolicy(r, query, sessionId);
             intentMetrics.recordClassification(r.getIntent(), r.getSubIntent(), r.getClassifyLayer(), "SUCCESS");
             return r;
         }
@@ -672,6 +685,7 @@ public class AgentChatService {
                             .rewrittenQuery(trimmed)
                             .classifyLayer("RULE")
                             .build();
+                    result = intentPolicyService.applyPolicy(result, query, sessionId);
                     intentMetrics.recordClassification(result.getIntent(), result.getSubIntent(),
                             result.getClassifyLayer(), "SUCCESS");
                     return result;
@@ -680,6 +694,7 @@ public class AgentChatService {
         }
 
         // Layer 3/4: LLM 分类 + Embedding 兜底 + Default SEARCH
+        // IntentClassifier 内部已调用 IntentPolicyService.applyPolicy
         IntentResult result = intentClassifier.classify(query, sessionId)
                 .defaultIfEmpty(buildDefaultSearchIntent(query))
                 .block();
@@ -848,7 +863,8 @@ public class AgentChatService {
 
     private void completeTurn(AgentTurn turn, AgentSession session, String content, long elapsedMs,
             DeepSeekResponse.Usage usage, int inputTokens, String retrievalContextJson,
-            IntentResult intentResult, String promptVersion, com.campushare.agent.entity.TraceSpan rootSpan) {
+            IntentResult intentResult, String promptVersion, com.campushare.agent.entity.TraceSpan rootSpan,
+            String refsJson) {
         try {
             int completionTokens;
             int totalTokens;
@@ -875,6 +891,9 @@ public class AgentChatService {
             turn.setResponseTimeMs((int) elapsedMs);
             turn.setTokensUsed(totalTokens);
             turn.setRetrievalContext(retrievalContextJson);
+            if (refsJson != null && !refsJson.isBlank()) {
+                turn.setRefs(refsJson);
+            }
             turn.setInputTokens(inputTokens);
             turn.setOutputTokens(completionTokens);
 

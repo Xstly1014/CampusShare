@@ -20,6 +20,7 @@ import com.campushare.agent.service.ContextCompressionService;
 import com.campushare.agent.service.ContextSnapshotService;
 import com.campushare.agent.service.ConversationMemoryService;
 import com.campushare.agent.service.IntentClassifier;
+import com.campushare.agent.service.IntentPolicyService;
 import com.campushare.agent.service.IntentRouter;
 import com.campushare.agent.service.LongTermMemoryService;
 import com.campushare.agent.service.MemoryRetrievalService;
@@ -44,6 +45,7 @@ import reactor.test.StepVerifier;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -134,6 +136,11 @@ class AgentChatServicePromptIntegrationTest {
                 // 默认 stub：检索返回空（无 RAG 上下文）
                 when(retrievalService.retrieve(anyString(), any(), any())).thenReturn(Mono.just(new ArrayList<>()));
 
+                MemoryRetrievalService memoryRetrievalService = mock(MemoryRetrievalService.class);
+                when(memoryRetrievalService.loadProfileMemories(anyString())).thenReturn(Collections.emptyList());
+                when(memoryRetrievalService.retrieveRelevantMemories(anyString(), anyString(), any()))
+                                .thenReturn(Mono.just(Collections.emptyList()));
+
                 // 默认 stub：IntentClassifier 返回 SEARCH（非规则命中的 query 走 RAG）
                 when(intentClassifier.classify(anyString(), anyString())).thenReturn(
                                 Mono.just(IntentResult.builder()
@@ -167,6 +174,15 @@ class AgentChatServicePromptIntegrationTest {
                                                 .content("我是小享，CampusShare 的智能助手。")
                                                 .build()));
 
+                TraceService traceService = mock(TraceService.class);
+                when(traceService.generateTraceId()).thenReturn("test-trace-id");
+                com.campushare.agent.entity.TraceSpan rootSpan = com.campushare.agent.entity.TraceSpan.builder()
+                                .spanId("root-span-id")
+                                .traceId("test-trace-id")
+                                .build();
+                when(traceService.startSpan(anyString(), anyString(), anyString())).thenReturn(rootSpan);
+                when(traceService.startSpan(anyString(), anyString(), anyString(), anyString())).thenReturn(rootSpan);
+
                 chatService = new AgentChatService(
                                 deepSeekClient,
                                 sessionMapper,
@@ -176,6 +192,7 @@ class AgentChatServicePromptIntegrationTest {
                                 new ConstitutionalAIValidator(),
                                 new RuleShortCircuitFilter(),
                                 intentClassifier,
+                                new IntentPolicyService(),
                                 new IntentRouter(),
                                 new IntentMetricsConfig(meterRegistry),
                                 promptVersionManager,
@@ -184,14 +201,14 @@ class AgentChatServicePromptIntegrationTest {
                                 mock(ConversationMemoryService.class),
                                 mock(ContextCompressionService.class),
                                 mock(LongTermMemoryService.class),
-                                mock(MemoryRetrievalService.class),
+                                memoryRetrievalService,
                                 mock(SessionStateMachine.class),
                                 mock(com.campushare.agent.tool.ToolRegistry.class),
                                 mock(com.campushare.agent.tool.ToolExecutor.class),
                                 meterRegistry,
                                 new ObjectMapper(),
                                 transactionTemplate,
-                                mock(TraceService.class),
+                                traceService,
                                 mock(SloService.class),
                                 mock(MetricsService.class),
                                 dialogueOrchestrator,

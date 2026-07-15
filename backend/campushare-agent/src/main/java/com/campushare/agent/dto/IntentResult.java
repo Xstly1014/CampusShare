@@ -42,8 +42,16 @@ public class IntentResult {
     /** HyDE 假设文档（仅 SEARCH+短query 时生成，MVP 阶段暂不启用） */
     private String hydeDoc;
 
-    /** 分类层级：RULE / LLM / EMBEDDING / DEFAULT */
+    /** 分类层级：RULE / LLM / EMBEDDING / DEFAULT / POLICY */
     private String classifyLayer;
+
+    /** 规则层自定义模板回复（如昵称识别后的个性化回复） */
+    @JsonIgnore
+    private String templateReply;
+
+    /** 本轮是否声明了昵称（不参与 JSON 序列化，避免破坏缓存格式） */
+    @JsonIgnore
+    private boolean nicknameDeclared;
 
     /**
      * 槽位抽取结果。

@@ -739,4 +739,19 @@ public class LongTermMemoryService {
             asyncDeleteVector(memory.getId());
         }
     }
+
+    /**
+     * 保存用户昵称（FACT/nickname）。
+     *
+     * @param userId   用户ID
+     * @param nickname 昵称（trim 后最多 20 字符，调用方已处理）
+     */
+    public void saveNickname(String userId, String nickname) {
+        if (userId == null || userId.isBlank() || nickname == null || nickname.isBlank()) {
+            log.warn("Cannot save nickname: userId or nickname is blank");
+            return;
+        }
+        upsertMemory(userId, "FACT", "nickname", nickname, "EXPLICIT", BigDecimal.ONE,
+                "用户说：" + nickname);
+    }
 }

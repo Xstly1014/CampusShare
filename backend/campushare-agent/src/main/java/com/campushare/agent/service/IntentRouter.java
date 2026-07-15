@@ -35,17 +35,9 @@ public class IntentRouter {
     private static final String WRITE_ACTION_REPLY =
             "抱歉，我无法代替你执行发帖、点赞等操作。请前往对应页面手动操作。如果你不知道在哪操作，可以问我「怎么发帖」。";
 
-    /** OUT_OF_SCOPE/open_domain 模板 */
-    private static final String OPEN_DOMAIN_REPLY =
-            "抱歉，我是 CampusShare 平台助手，只能回答与校园资源共享相关的问题。";
-
     /** OUT_OF_SCOPE/sensitive 模板 */
     private static final String SENSITIVE_REPLY =
             "抱歉，这个问题我无法回答。";
-
-    /** OUT_OF_SCOPE 兜底模板（未知子意图） */
-    private static final String OUT_OF_SCOPE_DEFAULT_REPLY =
-            "抱歉，我无法处理这个请求。我可以帮你找资料、解答平台使用问题。";
 
     /** NAVIGATE/my_list 子意图 → 前端路由映射（LinkedHashMap 保证匹配顺序，「帖子」放最后避免误匹配） */
     private static final Map<String, String> MY_LIST_ROUTES;
@@ -97,36 +89,48 @@ public class IntentRouter {
         }
 
         return switch (intent.getIntent()) {
-            case OUT_OF_SCOPE -> Optional.of(buildOutOfScopeRoute(intent));
+            case OUT_OF_SCOPE -> buildOutOfScopeRoute(intent);
             case NAVIGATE -> Optional.of(buildNavigateRoute(intent));
             default -> Optional.empty();  // HOW_TO/SEARCH/CLARIFY 走 RAG
         };
     }
 
     /**
-     * 构建 OUT_OF_SCOPE 快路径路由（按子意图选模板）。
+     * 构建 OUT_OF_SCOPE 路由：只有 chitchat/write_action/sensitive 才走快路径拒绝；
+     * open_domain 及未知子意图不短接，返回 shortCircuit=false 继续走 RAG/检索优先路径。
      */
-    private RouteDecision buildOutOfScopeRoute(IntentResult intent) {
-        String reply = selectOutOfScopeReply(intent.getSubIntent());
-        log.info("Short-circuit OUT_OF_SCOPE/{} → template reply", intent.getSubIntent());
-        return RouteDecision.builder()
+    private Optional<RouteDecision> buildOutOfScopeRoute(IntentResult intent) {
+        // 优先使用规则层自定义模板（如昵称识别后的个性化回复）
+        String reply = intent.getTemplateReply();
+        if (reply == null || reply.isBlank()) {
+            reply = selectOutOfScopeReply(intent.getSubIntent());
+        }
+        if (reply == null || reply.isBlank()) {
+            log.info("OUT_OF_SCOPE/{} -> not short-circuiting, flowing to RAG", intent.getSubIntent());
+            return Optional.of(RouteDecision.builder()
+                    .shortCircuit(false)
+                    .intent(intent.getIntent())
+                    .rewrittenQuery(intent.getRewrittenQuery())
+                    .build());
+        }
+        log.info("Short-circuit OUT_OF_SCOPE/{} -> template reply", intent.getSubIntent());
+        return Optional.of(RouteDecision.builder()
                 .shortCircuit(true)
                 .templateReply(reply)
                 .intent(intent.getIntent())
                 .rewrittenQuery(intent.getRewrittenQuery())
-                .build();
+                .build());
     }
 
     private String selectOutOfScopeReply(String subIntent) {
         if (subIntent == null) {
-            return OUT_OF_SCOPE_DEFAULT_REPLY;
+            return null;
         }
         return switch (subIntent) {
             case Intent.SubIntent.CHITCHAT -> CHITCHAT_REPLY;
             case Intent.SubIntent.WRITE_ACTION -> WRITE_ACTION_REPLY;
-            case Intent.SubIntent.OPEN_DOMAIN -> OPEN_DOMAIN_REPLY;
             case Intent.SubIntent.SENSITIVE -> SENSITIVE_REPLY;
-            default -> OUT_OF_SCOPE_DEFAULT_REPLY;
+            default -> null;
         };
     }
 

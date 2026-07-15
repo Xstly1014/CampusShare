@@ -7,6 +7,7 @@ import com.campushare.agent.llm.DeepSeekResponse;
 import com.campushare.agent.service.EmbeddingIntentFallback;
 import com.campushare.agent.service.IntentCacheService;
 import com.campushare.agent.service.IntentClassifier;
+import com.campushare.agent.service.IntentPolicyService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -68,8 +69,9 @@ class IntentClassifierTest {
                 .build();
         circuitBreaker = CircuitBreaker.of("intent-classifier-test", config);
 
+        IntentPolicyService policyService = new IntentPolicyService();
         classifier = new IntentClassifier(deepSeekClient, cacheService, embeddingFallback,
-                objectMapper, circuitBreaker);
+                objectMapper, circuitBreaker, policyService);
 
         // 默认 stub：缓存未命中
         when(cacheService.get(anyString())).thenReturn(Mono.empty());

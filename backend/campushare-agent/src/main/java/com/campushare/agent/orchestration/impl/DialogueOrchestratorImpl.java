@@ -62,10 +62,28 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
     public Mono<TurnResponse> orchestrate(String userId, String sessionId, String userMessage,
                                            IntentResult intentResult, List<RetrievalResult> retrievalResults) {
         int turnNumber = getTurnNumber(sessionId);
+
+        // 记录原始 open_domain 标记：selectMode 会把它降级为 SEARCH/resource
+        boolean isOpenDomain = intentResult.getIntent() == Intent.OUT_OF_SCOPE
+                && Intent.SubIntent.OPEN_DOMAIN.equals(intentResult.getSubIntent());
+
         OrchestrationMode mode = selectMode(intentResult, turnNumber, userMessage, sessionId);
 
         log.info("Selected orchestration mode: {} for intent: {}, turn: {}, message: '{}'",
                 mode, intentResult.getIntent(), turnNumber, truncate(userMessage, 30));
+
+        // 开放域问题：优先检索，有结果则走 RAG，无结果则礼貌拒绝
+        if (isOpenDomain) {
+            if (retrievalResults != null && !retrievalResults.isEmpty()) {
+                log.info("Open-domain query has retrieval results ({}), answering via RAG", retrievalResults.size());
+                return directAnswerWithRetrieval(sessionId, userMessage, intentResult, retrievalResults);
+            } else {
+                log.info("Open-domain query has no retrieval results, refusing politely");
+                return Mono.just(TurnResponse.builder()
+                        .content("这个问题我不太确定，换个和校园资源相关的关键词试试？")
+                        .build());
+            }
+        }
 
         return switch (mode) {
             case CLARIFY -> clarify(userId, sessionId, userMessage, intentResult, retrievalResults);
@@ -91,13 +109,30 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
             return directAnswerWithDefaults(userId, sessionId, userMessage, intentResult, retrievalResults);
         }
 
+        boolean hasCoreference = containsCoreference(userMessage);
         List<RetrievalResult> resultsToUse = retrievalResults;
-        if (resultsToUse == null || resultsToUse.isEmpty()) {
+
+        // 含指代词时优先锚定上一轮检索结果，不再重新检索
+        if (hasCoreference) {
+            log.info("Coreference detected in CLARIFY turn, loading previous retrieval results");
+            List<RetrievalResult> previousResults = loadPreviousRetrievalSync(sessionId);
+            if (previousResults != null && !previousResults.isEmpty()) {
+                resultsToUse = previousResults;
+            } else if (resultsToUse == null || resultsToUse.isEmpty()) {
+                resultsToUse = Collections.emptyList();
+            }
+        } else if (resultsToUse == null || resultsToUse.isEmpty()) {
             resultsToUse = loadPreviousRetrievalSync(sessionId);
         }
 
+        // 如果用户问的是"刚刚推荐的内容"，直接用上一轮检索结果作答，不再澄清
+        if (hasCoreference && resultsToUse != null && !resultsToUse.isEmpty()
+                && isAskingAboutJustRecommended(userMessage)) {
+            log.info("User asks about just-recommended content, answering directly with previous retrieval results");
+            return directAnswerWithRetrieval(sessionId, userMessage, intentResult, resultsToUse);
+        }
+
         // If we have retrieval results, answer directly instead of asking another clarification.
-        // The retrieval service already merged previous results for CLARIFY intent (ADR-026).
         boolean hasResults = resultsToUse != null && !resultsToUse.isEmpty();
         if (hasResults) {
             log.info("Have retrieval results ({}), answering directly instead of clarifying", resultsToUse.size());
@@ -144,7 +179,8 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         systemContent.append("4. 使用中文回答，语气亲切友好，用Markdown格式\n");
         systemContent.append("5. **只要检索结果非空，就不要说\"未找到相关资源\"**，列出找到的内容\n");
         systemContent.append("6. 引用资料用 [1][2] 编号标注\n");
-        systemContent.append("7. **不要反复追问**，基于已有信息给出最佳推荐\n\n");
+        systemContent.append("7. 如果检索结果为空，礼貌拒绝并建议用户换关键词，不要编造内容\n");
+        systemContent.append("8. **不要反复追问**，基于已有信息给出最佳推荐\n\n");
 
         if (results != null && !results.isEmpty()) {
             systemContent.append("=== 参考资料 ===\n");
@@ -157,7 +193,7 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                 }
             }
         } else {
-            systemContent.append("=== 无参考资料 ===\n请基于你的知识为用户提供帮助，注意你是CampusShare平台助手。\n");
+            systemContent.append("=== 无参考资料 ===\n检索结果为空。请礼貌回答：\"这个问题我不太确定，换个和校园资源相关的关键词试试？\"\n不要基于你的自身知识编造内容，不要回答用户问题。\n");
         }
 
         messages.add(DeepSeekRequest.Message.builder()
@@ -261,6 +297,17 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
         return SURRENDER_PATTERN.matcher(message.trim()).matches();
     }
 
+    private boolean containsCoreference(String message) {
+        if (message == null || message.isBlank()) return false;
+        return message.contains("那个") || message.contains("刚刚") || message.contains("之前")
+                || message.contains("上一轮") || message.contains("上面那个");
+    }
+
+    private boolean isAskingAboutJustRecommended(String message) {
+        if (message == null || message.isBlank()) return false;
+        return message.contains("刚刚推荐的内容") || message.contains("刚刚推荐");
+    }
+
     @Override
     public Mono<TurnResponse> summarize(String userId, String sessionId) {
         return Mono.fromCallable(() -> loadSessionHistory(sessionId))
@@ -320,6 +367,14 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
     }
 
     private OrchestrationMode selectMode(IntentResult intentResult, int turnNumber, String userMessage, String sessionId) {
+        // 开放域问题先降级为 SEARCH/resource，再走正常检索优先路径
+        if (intentResult.getIntent() == Intent.OUT_OF_SCOPE
+                && Intent.SubIntent.OPEN_DOMAIN.equals(intentResult.getSubIntent())) {
+            log.info("Downgrading OUT_OF_SCOPE/open_domain to SEARCH/resource before mode selection");
+            intentResult.setIntent(Intent.SEARCH);
+            intentResult.setSubIntent(Intent.SubIntent.RESOURCE);
+        }
+
         if (intentResult.getIntent() == Intent.CLARIFY) {
             if (userMessage != null && isSurrenderMessage(userMessage)) {
                 return OrchestrationMode.REACT;
@@ -523,17 +578,34 @@ public class DialogueOrchestratorImpl implements DialogueOrchestrator {
                                                                 IntentResult intentResult,
                                                                 List<RetrievalResult> retrievalResults) {
         List<DeepSeekRequest.Message> messages = new ArrayList<>();
+
+        StringBuilder systemContent = new StringBuilder();
+        systemContent.append("你是一个对话澄清助手。你的任务是向用户提问以获取完成任务所需的关键缺失信息。")
+                .append("请以自然、友好的方式提问，每次只问一个最关键的问题。\n\n")
+                .append("重要规则：\n")
+                .append("1. 只问真正影响结果的关键信息（如校区、分类），不要问无关紧要的细节\n")
+                .append("2. 如果已经有检索结果，优先基于结果内容提问\n")
+                .append("3. 不要重复问同样的问题\n")
+                .append("4. 如果用户之前已经回答过某个问题，不要再次询问\n")
+                .append("5. 最多追问1-2个问题，如果用户仍然无法提供，直接基于已有信息给出最佳推荐\n")
+                .append("6. 根据历史对话上下文进行追问，不要忘记之前讨论的主题\n")
+                .append("7. 如果用户消息含指代词（那个/刚刚/之前/上一轮/上面那个），优先基于上一轮的检索结果回答，不要重新检索\n");
+
+        if (retrievalResults != null && !retrievalResults.isEmpty()) {
+            systemContent.append("\n=== 上一轮检索结果 ===\n");
+            for (int i = 0; i < Math.min(retrievalResults.size(), 8); i++) {
+                RetrievalResult r = retrievalResults.get(i);
+                systemContent.append(String.format("[%d] (%s) %s\n", i + 1, r.source(), r.title()));
+                if (r.content() != null && !r.content().isBlank()) {
+                    String snippet = r.content().length() > 200 ? r.content().substring(0, 200) + "..." : r.content();
+                    systemContent.append(snippet).append("\n");
+                }
+            }
+        }
+
         messages.add(DeepSeekRequest.Message.builder()
                 .role("system")
-                .content("你是一个对话澄清助手。你的任务是向用户提问以获取完成任务所需的关键缺失信息。" +
-                        "请以自然、友好的方式提问，每次只问一个最关键的问题。\n\n" +
-                        "重要规则：\n" +
-                        "1. 只问真正影响结果的关键信息（如校区、分类），不要问无关紧要的细节\n" +
-                        "2. 如果已经有检索结果，优先基于结果内容提问\n" +
-                        "3. 不要重复问同样的问题\n" +
-                        "4. 如果用户之前已经回答过某个问题，不要再次询问\n" +
-                        "5. 最多追问1-2个问题，如果用户仍然无法提供，直接基于已有信息给出最佳推荐\n" +
-                        "6. 根据历史对话上下文进行追问，不要忘记之前讨论的主题")
+                .content(systemContent.toString())
                 .build());
 
         List<AgentTurn> recentTurns = loadRecentTurns(sessionId, 5);

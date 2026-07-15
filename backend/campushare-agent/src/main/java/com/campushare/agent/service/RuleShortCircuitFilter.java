@@ -3,10 +3,12 @@ package com.campushare.agent.service;
 import com.campushare.agent.dto.IntentResult;
 import com.campushare.agent.enums.Intent;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -64,6 +66,28 @@ public class RuleShortCircuitFilter {
             Pattern.compile("我的(点赞|收藏|回复|评论|浏览|关注|粉丝).*")
     );
 
+    /** 昵称声明模式（我叫/叫我/我的名字是） */
+    private static final List<Pattern> NICKNAME_PATTERNS = List.of(
+            Pattern.compile("我叫\\s*(.+?)(?:[。，！？；：,.!?;:\\s]|$)"),
+            Pattern.compile("叫我\\s*(.+?)(?:[。，！？；：,.!?;:\\s]|$)"),
+            Pattern.compile("我的名字是\\s*(.+?)(?:[。，！？；：,.!?;:\\s]|$)")
+    );
+
+    private static final int MAX_NICKNAME_LENGTH = 20;
+
+    private static final String NICKNAME_REPLY_TEMPLATE = "好的 {nickname}，我记住啦～";
+
+    private final LongTermMemoryService longTermMemoryService;
+
+    public RuleShortCircuitFilter() {
+        this(null);
+    }
+
+    @Autowired
+    public RuleShortCircuitFilter(LongTermMemoryService longTermMemoryService) {
+        this.longTermMemoryService = longTermMemoryService;
+    }
+
     /**
      * 规则短路：命中返回 IntentResult，未命中返回 empty。
      *
@@ -71,6 +95,17 @@ public class RuleShortCircuitFilter {
      * @return Optional<IntentResult>，命中时包含分类结果
      */
     public Optional<IntentResult> filter(String query) {
+        return filter(null, query);
+    }
+
+    /**
+     * 规则短路（携带 userId，支持昵称持久化）。
+     *
+     * @param userId 用户ID（可为 null，为 null 时不保存记忆）
+     * @param query  用户查询文本（可为 null/空）
+     * @return Optional<IntentResult>，命中时包含分类结果
+     */
+    public Optional<IntentResult> filter(String userId, String query) {
         if (query == null || query.isBlank()) {
             return Optional.empty();
         }
@@ -109,7 +144,13 @@ public class RuleShortCircuitFilter {
             }
         }
 
-        // 优先级 3：闲聊 → OUT_OF_SCOPE/chitchat
+        // 优先级 3：昵称声明 → OUT_OF_SCOPE/chitchat + 自定义模板回复
+        Optional<IntentResult> nicknameResult = tryNickname(userId, trimmed);
+        if (nicknameResult.isPresent()) {
+            return nicknameResult;
+        }
+
+        // 优先级 4：闲聊 → OUT_OF_SCOPE/chitchat
         for (Pattern p : CHITCHAT_PATTERNS) {
             if (p.matcher(trimmed).matches()) {
                 log.debug("Rule matched: CHITCHAT for query='{}'", trimmed);
@@ -123,7 +164,7 @@ public class RuleShortCircuitFilter {
             }
         }
 
-        // 优先级 4：个人列表 → NAVIGATE/my_list
+        // 优先级 5：个人列表 → NAVIGATE/my_list
         for (Pattern p : MY_LIST_PATTERNS) {
             if (p.matcher(trimmed).find()) {
                 log.debug("Rule matched: MY_LIST for query='{}'", trimmed);
@@ -138,5 +179,52 @@ public class RuleShortCircuitFilter {
         }
 
         return Optional.empty();
+    }
+
+    /**
+     * 尝试抽取并保存昵称。
+     */
+    private Optional<IntentResult> tryNickname(String userId, String query) {
+        String nickname = extractNickname(query);
+        if (nickname == null || nickname.isBlank()) {
+            return Optional.empty();
+        }
+
+        if (userId != null && !userId.isBlank() && longTermMemoryService != null) {
+            longTermMemoryService.saveNickname(userId, nickname);
+        } else {
+            log.debug("Nickname detected but no userId or memory service available: nickname={}", nickname);
+        }
+
+        String reply = NICKNAME_REPLY_TEMPLATE.replace("{nickname}", nickname);
+        log.debug("Rule matched: NICKNAME for query='{}', nickname='{}'", query, nickname);
+        return Optional.of(IntentResult.builder()
+                .intent(Intent.OUT_OF_SCOPE)
+                .subIntent(Intent.SubIntent.CHITCHAT)
+                .confidence(0.99)
+                .rewrittenQuery(query)
+                .classifyLayer("RULE")
+                .templateReply(reply)
+                .nicknameDeclared(true)
+                .build());
+    }
+
+    /**
+     * 从 query 中抽取昵称（trim 后最多 20 字符）。
+     */
+    private String extractNickname(String query) {
+        for (Pattern p : NICKNAME_PATTERNS) {
+            Matcher matcher = p.matcher(query);
+            if (matcher.find()) {
+                String nickname = matcher.group(1).trim();
+                if (nickname.length() > MAX_NICKNAME_LENGTH) {
+                    nickname = nickname.substring(0, MAX_NICKNAME_LENGTH);
+                }
+                if (!nickname.isBlank()) {
+                    return nickname;
+                }
+            }
+        }
+        return null;
     }
 }

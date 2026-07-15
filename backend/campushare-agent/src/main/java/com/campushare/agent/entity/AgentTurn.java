@@ -38,6 +38,10 @@ public class AgentTurn implements Serializable {
 
     private String retrievalContext;
 
+    /** 引用列表 JSON，如 [{"index":1,"id":"...","type":"POST","title":"...","url":"..."}] */
+    @TableField("refs")
+    private String refs;
+
     private String toolsUsed;
 
     private Integer responseTimeMs;
